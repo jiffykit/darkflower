@@ -3597,6 +3597,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       assert(src.includes("state.pressedKeys.delete(keyId);"),"failed POLY construction key cleanup missing");
       assert(src.includes("slot.voiceGain.gain.setValueAtTime(0, now)"),"release-tail zero fallback missing");
       assert(src.includes("if (state.polyMode && keyId)"),"poly key-up gate path missing");
+      assert(src.includes("state.polyReleaseTails ? [...state.polyReleaseTails] : []"),"poly release-tail orbit panners missing");
+      assert(src.includes("so an orbiting sound source never freezes in place during release"),"release orbit continuity guard missing");
       const result={ok:!failures.length,failures};
       console[result.ok?'log':'error']('POLY RELEASE SELF-TEST',result);
       return result;
@@ -5186,16 +5188,28 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const mainGear = state.gears.find(g => g.isMain) || state.gears[0];
       if (!mainGear) return;
       const nowAudio = state.audioCtx.currentTime;
-      state.polyVoices.forEach(voice => {
-        voice.gears.forEach(pg => {
-          const gear = pg.gear;
+
+      // Release voices are removed from state.polyVoices as soon as the physical
+      // key is released, but their individual ADSR tails remain audible until the
+      // release envelope finishes. Keep updating those tails' spatial positions
+      // so an orbiting sound source never freezes in place during release.
+      const activeVoices = [
+        ...state.polyVoices.values(),
+        ...(state.polyReleaseTails ? [...state.polyReleaseTails] : [])
+      ].filter(Boolean);
+
+      activeVoices.forEach(voice => {
+        voice.gears?.forEach(pg => {
+          const gear = pg?.gear;
+          if (!gear) return;
           const relX = gear.isMain ? 0 : (gear.x - mainGear.x);
           const relY = gear.isMain ? 0 : (gear.y - mainGear.y);
           const px = state.spatialEnabled ? relX * state.spatialScale : 0;
           const pz = state.spatialEnabled ? relY * state.spatialScale : 0;
 
           // Keep hidden POLY gear trains phase-locked to their visible gear unless
-          // Preserve Phase is explicitly disabled on that gear.
+          // Preserve Phase is explicitly disabled on that gear. This applies equally
+          // during the release tail, because the orbit phase continues advancing.
           if (!gear.isMain && !gear.orbitPreservePhase && pg.delayNode) {
             const voiceFreq = Math.max(0.1, state.audioDriver.buffer && state.audioDriver.playing
               ? (state.audioDriver.detectedFreq * state.audioDriver.driverRate * Math.abs(gear.ratio) * (state.audioDriver.keyboardKeyRatio || 1))
@@ -5295,13 +5309,26 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     /* ANIMATION LOOP */
     let lastTime = performance.now();
 
+    function hasLiveReleaseTail(now = state.audioCtx?.currentTime || 0) {
+      if (state.polyReleaseTails?.size) return true;
+      if (state.polyMode) return false;
+      return state.gears.some(g => {
+        const env = g?._neonEnvelope;
+        if (!env || env.releaseStart == null) return false;
+        const release = Math.max(0, Number(env.release) || 0);
+        return release > 0 && now < Number(env.releaseStart) + release;
+      });
+    }
+
     function renderLoop(now) {
       const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
       lastTime = now;
+      const audioNow = state.audioCtx?.currentTime || 0;
       const keyboardTransportIdle = state.releaseOnKeyup &&
         state.pressedKeys.size === 0 &&
         state.midiHeldNotes.size === 0 &&
         state.polyVoices.size === 0 &&
+        !hasLiveReleaseTail(audioNow) &&
         !state.audioDriver.playing &&
         !state.crankTool.hovered;
       if (!state.animationStopped && !keyboardTransportIdle) state.visualFXTime += dt;
