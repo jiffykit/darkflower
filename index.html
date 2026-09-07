@@ -245,7 +245,7 @@
     #ratio-palette-modal {
       position: fixed;
       top: 72px;
-      left: 18px;
+      left: 378px;
       right: auto;
       width: min(430px, calc(100vw - 36px));
       max-height: min(72vh, 620px);
@@ -725,6 +725,8 @@
     .gear-adsr-handle-hit { fill:transparent; stroke:transparent; stroke-width:18; cursor:grab; pointer-events:all; }
     .gear-adsr-label { fill:#d9c49a; font:700 7px Georgia,serif; pointer-events:none; }
     .gear-adsr-value { fill:#f1d184; font:700 6px Georgia,serif; pointer-events:none; }
+
+    .gear-adsr-independent-path{stroke:#3aa7ff!important;}
     .gear-adsr-caption { color:#bda379; font:600 9px Georgia,serif; }
     .gear-adsr-svg { pointer-events:all; touch-action:none; }
     .gear-adsr-hitline { pointer-events:stroke !important; }
@@ -1745,6 +1747,54 @@
 
     #ratio-palette-modal .floating-title::after{content:" · EDITS ACTIVE GEAR";font-size:.58rem;color:#8fc7a0;letter-spacing:.4px;}
 </style>
+<style id="user-presets-css">
+#user-presets-toggle{font:700 10px/1 Arial,sans-serif;letter-spacing:.6px;padding:4px 8px;min-width:58px;}
+#user-preset-menu{position:fixed;display:none;z-index:12000;width:min(420px,calc(100vw - 16px));max-height:min(46vh,430px);box-sizing:border-box;overflow:hidden;background:rgba(18,14,10,.98);border:1px solid #75552d;border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.65);color:var(--text-main,#eee);font-family:Arial,sans-serif;}
+#user-preset-menu.is-open{display:flex;flex-direction:column;}
+#user-preset-menu .preset-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid #4f3b22;}
+#user-preset-menu .preset-head strong{font-size:10px;letter-spacing:.8px;flex:1;}
+#user-preset-menu .preset-head input{min-width:0;flex:1;height:26px;box-sizing:border-box;}
+#user-preset-menu .preset-head button{height:26px;padding:2px 7px;font-size:9px;}
+#user-preset-menu .preset-list{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:5px;}
+#user-preset-menu .preset-empty{padding:12px 8px;color:var(--text-muted,#9a9a9a);font-size:10px;text-align:center;}
+#user-preset-menu .preset-item{display:flex;align-items:center;gap:6px;padding:6px 7px;border:1px solid rgba(117,85,45,.7);border-radius:6px;background:rgba(45,31,18,.48);}
+#user-preset-menu .preset-name{min-width:0;flex:1;font-size:10px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#user-preset-menu .preset-actions{display:flex;gap:4px;flex:0 0 auto;}
+#user-preset-menu .preset-actions button{font-size:8px;padding:3px 6px;}
+#user-preset-menu .preset-foot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid #4f3b22;}
+#user-preset-menu .preset-foot button{flex:1;font-size:8px;padding:5px 6px;}
+#user-preset-menu .preset-status{font-size:8px;color:var(--text-muted,#9a9a9a);min-height:11px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+body.neon-visual-mode #user-preset-menu{background:rgba(0,8,4,.98);border-color:#39ff88;box-shadow:0 0 25px rgba(57,255,136,.18),0 12px 36px rgba(0,0,0,.85);font-family:"Rajdhani","Arial Narrow",Arial,sans-serif;}
+body.neon-visual-mode #user-preset-menu .preset-head,body.neon-visual-mode #user-preset-menu .preset-foot{border-color:rgba(57,255,136,.32);}
+body.neon-visual-mode #user-preset-menu .preset-item{border-color:rgba(57,255,136,.28);background:rgba(0,18,9,.62);box-shadow:inset 0 0 10px rgba(57,255,136,.035);}
+body.neon-visual-mode #user-preset-menu .preset-head strong,body.neon-visual-mode #user-preset-menu .preset-name{color:#8bffb7;letter-spacing:.8px;text-shadow:0 0 6px rgba(57,255,136,.28);}
+#user-presets-toggle{display:none!important;}
+#keyboard-user-presets-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:27px;padding:3px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;margin-left:auto;}
+@media(max-width:900px) and (orientation:portrait){#keyboard-user-presets-toggle{display:none!important;}}
+#mobile-user-presets-toggle{z-index:12550;box-sizing:border-box;min-width:62px;padding:5px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;}
+
+@media(max-width:900px) and (orientation:portrait){
+  #user-preset-menu{max-height:min(55vh,500px);width:calc(100vw - 10px);border-radius:7px;}
+}
+/* Mobile one-page duplicate cleanup: Harmonic Presets owns active gear shape,
+   source/width/volume and ADSR. Keep only inspector controls that are not elsewhere. */
+@media(max-width:900px) and (orientation:portrait){
+  #mobile-current-gear-editor [hidden]{display:none!important;}
+  #mobile-current-gear-editor #inspector-adsr-graph{display:none!important;}
+  #mobile-current-gear-editor #inspector-gear-shape{display:none!important;}
+  #mobile-current-gear-editor #inspector-gear-shape + #inspector-shape-params{display:none!important;}
+  #mobile-current-gear-editor .gear-adsr-section{display:none!important;}
+  #mobile-current-gear-editor #inspector-source-buttons,
+  #mobile-current-gear-editor #inspector-noise-config,
+  #mobile-current-gear-editor #inspector-audio-config,
+  #mobile-current-gear-editor #inspector-midi-config,
+  #mobile-current-gear-editor #slider-inspector-tooth-width,
+  #mobile-current-gear-editor #val-inspector-tooth-width,
+  #mobile-current-gear-editor #slider-inspector-volume,
+  #mobile-current-gear-editor #val-inspector-volume{display:none!important;}
+  #mobile-current-gear-editor .inspector-duplicate-source-section{display:none!important;}
+}
+</style>
 <style id="neon-visual-mode-css">
 body.neon-visual-mode,
 #app-container.neon-visual-mode,
@@ -1987,6 +2037,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     <aside id="sidebar">
       <div class="sidebar-header">
         <h1><span>SteamWhistle</span><label class="desktop-visual-mode" title="Switch between the mechanical and Neon visual modes"><input id="chk-visual-mode-desktop" type="checkbox"> NEON</label></h1>
+        <button id="desktop-focus-toggle" type="button" aria-expanded="false" title="Hide the left control panel">FULL SCREEN</button>
         <p>Clockwork  Synthesizer</p>
       </div>
 
@@ -2114,6 +2165,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         <div class="panel-box">
           <div class="panel-title keyboard-panel-title">
             <span class="keyboard-title-label">KEYBOARD</span>
+            <button id="keyboard-user-presets-toggle" type="button" title="User presets" aria-label="User presets">PRESETS</button>
             <span id="hud-current-note" style="color: var(--accent-cyan); font-weight: bold; white-space:nowrap;">C (1.00x)</span>
             <div class="keyboard-bloom-wrap" aria-label="Global harmonic bloom">
               <div class="keyboard-bloom-label"><strong>BLOOM</strong><span id="keyboard-bloom-value">0.00s · normal</span></div>
@@ -2478,6 +2530,10 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         this.toothWidth = 0.50; // 0..1 shape width; 0.50 = neutral/default
         this.sourceMode = this.toothWaveform === 'clockwork' ? 'clockwork' : this.toothWaveform;
         this.adsr = { ...state.adsr };
+        // Per-stage ADSR linkage. New gears are fully linked by default. When a
+        // stage is unlocked it can diverge; re-linking preserves its current
+        // offset so later linked edits move every member by the same delta.
+        this.adsrLinks = { attack:true, decay:true, sustain:true, release:true };
         this.audioBuffer = null;
         this.audioFileName = '';
         this.audioLoopStart = 0;
@@ -4113,6 +4169,25 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       syncPaletteGearEditor();
       renderRationalGearPalette();
       updateInspector();
+      renderGearList();
+    }
+
+    // Single authoritative selection path for editing. Selecting a gear from
+    // either the canvas or GEAR NETWORK must recall that exact gear into every
+    // editor surface (Harmonic Presets, ADSR/shape inspector, etc.).
+    function selectGearForEditing(gear){
+      if(!gear) return;
+      // One selection is shared by every editor surface. The Harmonic Presets
+      // editor is the authoritative source for shape/source/volume/ADSR, while
+      // the inspector exposes the full per-gear settings for the same object.
+      state.selectedGearId=gear.id;
+      state.activePaletteGearId=gear.id;
+      syncPaletteGearEditor();
+      updateInspector();
+      renderGearList();
+      try{
+        document.querySelector('.palette-active-gear')?.scrollIntoView({block:'nearest',behavior:'auto'});
+      }catch(_){}
     }
     function copyPaletteEditorFromGear(gear){
       if(!gear) return;
@@ -4144,7 +4219,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if(['sine','triangle','sawtooth','square','clockwork'].includes(src)) gear.toothWaveform=src;
         copyPaletteEditorFromGear(gear); refreshPaletteSourceUI(); updateAudioNodes(); renderGearList();
       });
-      const graph=document.getElementById('palette-adsr-graph'); if(graph) renderAdsrGraph(graph,gear.adsr||state.adsr,'palette-adsr');
+      const graph=document.getElementById('palette-adsr-graph'); if(graph){ renderAdsrGraph(graph,gear.adsr||state.adsr,'palette-adsr'); renderAdsrLinkVisuals(graph,gear.adsr||state.adsr,'palette-adsr',gear); }
     }
 
     function renderRationalGearPalette() {
@@ -4609,7 +4684,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function neonGearPoint(gear,theta,toothCount){
       const pitch=Math.max(12,Number(gear?.pitchRadius)||40);
-      const base=Math.max(8,neonShapeRadius(gear,theta,pitch));
+      const contour=Math.max(8,neonShapeRadius(gear,theta,pitch));
       const toothAngle=TAU/Math.max(3,toothCount);
       const toothPhase=((theta/toothAngle)+0.5)%1;
       const width=normalizeToothWidth(gear?.toothWidth);
@@ -4619,12 +4694,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       // changes the visible tooth duty/rounding in exactly the same direction as audio.
       let profile=neonProfile(gear,toothPhase*TAU);
 
-      // The visual tooth amplitude is deliberately modest: the underlying contour
-      // remains visible, so e.g. a hexagon with square teeth still reads as a hexagon.
-      // Wider gears get a slightly deeper visual cut while retaining interlocking pitch.
+      // Neon is intentionally much deeper than the mechanical gear. The waveform's
+      // zero crossing sits well outside the axle, while its negative half is compressed
+      // into a narrow inner petal/root and its positive half reaches almost a full pitch
+      // radius outward. This turns sine waves into petals and square waves into distorted
+      // windmills while keeping the real gear contour underneath them.
       const shape=gear?.shape||'circular';
-      const shapeDepth = shape==='circular' ? 1 : 0.82;
-      const amplitude=Math.max(2.2,Math.min(pitch*.17,pitch/toothCount*1.15))*shapeDepth;
+      const shapeDepth = shape==='circular' ? 1 : 0.88;
+      const visualCenter = pitch * 0.64 * shapeDepth;
+      const positiveDepth = pitch * 0.56 * shapeDepth;
+      const negativeDepth = pitch * 0.44 * shapeDepth;
 
       // Explicit width-dependent edge shaping for square/saw teeth. This keeps very
       // narrow square pulses narrow on screen and makes wide saw settings visibly round.
@@ -4638,13 +4717,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           profile = 1 - k*k*1.8;
           if(profile< -1) profile=-1;
         }
-      } else if(wf==='sawtooth') {
+      } else if(wf==='sawtooth'){
         // The audio saw becomes progressively rounded at larger width values.
         const rounded=width>.5 ? (width-.5)*2 : 0;
         if(rounded>0) profile = profile*(1-rounded) + Math.sin(Math.PI*(toothPhase*2-.5))*rounded;
       }
 
-      const r=base + profile*amplitude;
+      // Use asymmetric amplitude: positive waveform excursions go outward strongly;
+      // negative excursions collapse toward the axle. Clamp away from the literal
+      // centre so the glowing gear still leaves a crisp, readable hub.
+      const radialDelta = profile>=0 ? profile*positiveDepth : profile*negativeDepth;
+      const r=Math.max(pitch*.06,contour*0.10 + visualCenter + radialDelta);
       return {x:Math.cos(theta)*r,y:Math.sin(theta)*r};
     }
 
@@ -4753,9 +4836,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
     function neonTrainScale(absoluteSemitone,rootSemitone){
       const delta=Math.max(0,Number(absoluteSemitone)-Number(rootSemitone));
-      // Lower notes are larger. One octave up is 0.707x, giving a clear nested
-      // hierarchy without collapsing the upper voices into an unreadable point.
-      return Math.max(.48,Math.pow(2,-delta/24));
+      // Lower notes own the outside of the visual field. Higher voices collapse rapidly
+      // into that lower voice's compressed inner half, so a chord behaves like several
+      // wave-shaped gear flowers sharing one radial space rather than three copies merely
+      // scaled down uniformly. C-E-G therefore nests clearly while remaining visible.
+      return Math.max(.075,Math.pow(.32,delta/4));
     }
     function neonVoiceRootPhase(voice){
       return state.masterPhase*Math.max(.000001,Number(voice?.voiceRatio)||1);
@@ -5790,9 +5875,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           }
         }
         if (!wasMoved) {
-          state.selectedGearId = gear.id;
-          updateInspector();
-          renderGearList();
+          selectGearForEditing(gear);
         } else {
           state.selectedGearId = null;
           updateInspector();
@@ -5874,9 +5957,34 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     });
 
     /* SYNTHESIZER CORE & PRESETS */
+    function getCommonLinkedAdsr() {
+      const common = { ...state.adsr };
+      const groups = ['attack', 'decay', 'sustain', 'release'];
+      groups.forEach(group => {
+        const linkedGear = state.gears.find(g => {
+          if (!g?.adsr) return false;
+          const links = ensureAdsrLinks(g);
+          return links[group] === true;
+        });
+        if (linkedGear) {
+          common[group] = clampAdsrField(group, linkedGear.adsr[group]);
+          const curveKey = ADSR_LINK_GROUPS[group];
+          if (curveKey) common[curveKey] = clampAdsrField(curveKey, linkedGear.adsr[curveKey]);
+        }
+      });
+      return common;
+    }
+
     function addGear(teeth = 60, x = null, y = null, isMain = false) {
       const color = isMain ? '#f59e0b' : COLOR_PALETTE[(state.gears.length - 1) % COLOR_PALETTE.length];
       const gear = new Gear(state.nextGearId++, teeth, color, isMain);
+      if (!isMain) {
+        // New gears inherit the active shared ADSR curve, stage-by-stage.
+        // Independent blue stages are deliberately ignored; the new gear starts
+        // fully linked to the currently shared curve instead of the global/default ADSR.
+        gear.adsr = { ...getCommonLinkedAdsr() };
+        gear.adsrLinks = { attack:true, decay:true, sustain:true, release:true };
+      }
       if (!isMain && window.__paletteSourceMode) {
         gear.sourceMode = window.__paletteSourceMode;
         gear.toothWaveform = window.__paletteToothWaveform || gear.toothWaveform;
@@ -6569,6 +6677,126 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const v=Math.max(0.005,Number(seconds)||0.005);
       return v<0.1 ? `${Math.round(v*1000)}ms` : `${v.toFixed(2)}s`;
     }
+    const ADSR_LINK_GROUPS = { attack:'attackCurve', decay:'decayCurve', sustain:null, release:'releaseCurve' };
+    const ADSR_NUMERIC_LIMITS = { attack:[0,2], decay:[0,2], sustain:[0,1], release:[0,10], attackCurve:[-1,1], decayCurve:[-1,1], releaseCurve:[-1,1] };
+    function ensureAdsrLinks(gear){
+      if(!gear) return {attack:true,decay:true,sustain:true,release:true};
+      gear.adsrLinks = {...{attack:true,decay:true,sustain:true,release:true}, ...(gear.adsrLinks||{})};
+      return gear.adsrLinks;
+    }
+    function adsrLinkGroupForKey(key){
+      if(!key) return null;
+      return Object.prototype.hasOwnProperty.call(ADSR_LINK_GROUPS,key) ? key : Object.entries(ADSR_LINK_GROUPS).find(([,curve])=>curve===key)?.[0] || null;
+    }
+    function clampAdsrField(key,value){
+      const [lo,hi]=ADSR_NUMERIC_LIMITS[key]||[-Infinity,Infinity];
+      return Math.max(lo,Math.min(hi,Number(value)||0));
+    }
+    function applyLinkedAdsrChange(sourceGear, nextAdsr, changedKey){
+      if(!sourceGear || !nextAdsr || !changedKey) { if(sourceGear) sourceGear.adsr={...sourceGear.adsr,...nextAdsr}; return; }
+      const group=adsrLinkGroupForKey(changedKey);
+      const source=sourceGear.adsr||{};
+      const next={...source,...nextAdsr};
+      const before=Number(source[changedKey])||0;
+      const after=clampAdsrField(changedKey,next[changedKey]);
+      const delta=after-before;
+      const sourceLinked=group ? ensureAdsrLinks(sourceGear)[group]===true : false;
+      sourceGear.adsr={...source, [changedKey]:after};
+      if(group && sourceLinked){
+        state.gears.forEach(g=>{
+          if(g===sourceGear || ensureAdsrLinks(g)[group]!==true) return;
+          const current=Number(g.adsr?.[changedKey])||0;
+          g.adsr={...g.adsr,[changedKey]:clampAdsrField(changedKey,current+delta)};
+        });
+        const curveKey=ADSR_LINK_GROUPS[group];
+        // The time handle and its matching curve belong to the same link group,
+        // but dragging one changes only that property. Both become independent\n        // together when unlocked.
+      }
+      try{updateAudioNodes();}catch(_){ }
+      try{renderGearList();}catch(_){ }
+    }
+    function toggleAdsrLink(gear,group){
+      if(!gear || !group) return null;
+      const links=ensureAdsrLinks(gear);
+      links[group]=!links[group];
+      // Deliberately preserve the current value when re-linking. The gear's\n      // existing offset from the linked group becomes part of its shared motion,\n      // so future edits move it by the same delta (e.g. 1.0 -> 1.5 while others\n      // move 0.5 -> 1.0).
+      try{renderGearList();}catch(_){ }
+      return links[group];
+    }
+    function isAdsrFieldLinked(gear,key){
+      const group=adsrLinkGroupForKey(key); return !group || ensureAdsrLinks(gear)[group]===true;
+    }
+    function renderAdsrLinkVisuals(svg, adsr, id, gear){
+      if(!svg) return;
+      const links=ensureAdsrLinks(gear);
+      const l=8,r=192,t=8,b=61;
+      const A=Math.max(0,Math.min(2,Number(adsr?.attack)||0)),D=Math.max(0,Math.min(2,Number(adsr?.decay)||0)),S=Math.max(0,Math.min(1,Number(adsr?.sustain ?? .8))),R=Math.max(0,Math.min(10,Number(adsr?.release)||0));
+      const ax=l+47*adsrTimeToUnit(A,2), dx=55+45*adsrTimeToUnit(D,2), sx=125, rx=sx+67*adsrTimeToUnit(R,10), yp=t+2, ys=b-S*(b-t);
+      const bend=(x1,y1,x2,y2,c)=>`${((x1+x2)/2).toFixed(2)} ${((y1+y2)/2-c*12).toFixed(2)}`;
+      const segs={
+        attack:`M ${l} ${b} Q ${bend(l,b,ax,yp,adsr?.attackCurve)} ${ax} ${yp}`,
+        decay:`M ${ax} ${yp} Q ${bend(ax,yp,dx,ys,adsr?.decayCurve)} ${dx} ${ys}`,
+        sustain:`M ${dx} ${ys} L ${sx} ${ys}`,
+        release:`M ${sx} ${ys} Q ${bend(sx,ys,rx,b,adsr?.releaseCurve)} ${rx} ${b}`
+      };
+      for(const [k,d] of Object.entries(segs)){
+        let path=svg.querySelector(`#${id}-ind-${k}`);
+        if(!path){path=document.createElementNS('http://www.w3.org/2000/svg','path');path.id=`${id}-ind-${k}`;path.setAttribute('fill','none');path.setAttribute('stroke','#3aa7ff');path.setAttribute('stroke-width','3');path.setAttribute('vector-effect','non-scaling-stroke');path.setAttribute('pointer-events','none');svg.appendChild(path);}
+        path.setAttribute('d',d); path.style.display=links[k]===false?'block':'none';
+      }
+      for(const k of ['attack','decay','sustain','release']){
+        const h=svg.querySelector(`#${id}-h-${k}`), hit=svg.querySelector(`#${id}-hit-${k}`);
+        const independent=links[k]===false;
+        if(h){h.setAttribute('fill',independent?'#3aa7ff':'url(#adsrGlassHandle)');h.setAttribute('stroke',independent?'#8fd1ff':'#5a3813');h.setAttribute('title',independent?'Hold 1s to link':'Hold 1s to unlock');}
+        if(hit){hit.setAttribute('data-adsr-group',k);}
+      }
+      svg.querySelector(`#${id}-values`)?.setAttribute('data-adsr-links',JSON.stringify(links));
+    }
+    function runAdsrLinkingConsoleTest(){
+      const failures=[];const assert=(ok,msg)=>{if(!ok)failures.push(msg);};
+      const original=state.gears.slice();
+      try{
+        const mk=n=>({id:n,adsr:{attack:.5,decay:.4,sustain:.7,release:1,attackCurve:0,decayCurve:0,releaseCurve:0},adsrLinks:{attack:true,decay:true,sustain:true,release:true}});
+        const a=mk(1),b=mk(2),c=mk(3);state.gears.length=0;state.gears.push(a,b,c);
+        applyLinkedAdsrChange(a,{...a.adsr,attack:1},'attack');
+        assert(Math.abs(b.adsr.attack-1)<1e-9&&Math.abs(c.adsr.attack-1)<1e-9,'linked attack did not propagate');
+        toggleAdsrLink(a,'attack');
+        applyLinkedAdsrChange(a,{...a.adsr,attack:1.5},'attack');
+        assert(Math.abs(a.adsr.attack-1.5)<1e-9&&Math.abs(b.adsr.attack-1)<1e-9,'independent attack did not isolate');
+        toggleAdsrLink(a,'attack');
+        applyLinkedAdsrChange(b,{...b.adsr,attack:1.5},'attack');
+        assert(Math.abs(a.adsr.attack-2.0)<1e-9&&Math.abs(b.adsr.attack-1.5)<1e-9&&Math.abs(c.adsr.attack-1.5)<1e-9,'relinked attack offset did not scale by shared delta');
+        assert(isAdsrFieldLinked(a,'attackCurve')===true,'relinked attack curve state mismatch');
+        assert(isAdsrFieldLinked(b,'decayCurve')===true,'default decay curve link mismatch');
+      }finally{state.gears.length=0;original.forEach(g=>state.gears.push(g));}
+      const result={ok:!failures.length,failures};console[result.ok?'log':'error']('ADSR LINK SELF-TEST',result);return result;
+    }
+
+    function runNewGearAdsrConsoleTest(){
+      const failures=[];const assert=(ok,msg)=>{if(!ok)failures.push(msg);};
+      const original=state.gears.slice();
+      const originalNextId=state.nextGearId;
+      const base={...state.adsr};
+      try{
+        const mk=(id,values,links)=>({id,adsr:{...base,...values},adsrLinks:{attack:true,decay:true,sustain:true,release:true,...links},neighbors:new Set(),isMain:false,ratio:1,teeth:60,pitchRadius:72,x:0,y:0,angle:-Math.PI/2});
+        const shared=mk(101,{attack:.42,decay:.31,sustain:.68,release:1.7,attackCurve:.33,decayCurve:-.22,releaseCurve:.27},{});
+        const independent=mk(102,{attack:1.6,decay:1.1,sustain:.19,release:8.5,attackCurve:-.91,decayCurve:.88,releaseCurve:-.77},{attack:false,decay:false,sustain:false,release:false});
+        state.gears.length=0;state.gearMap.clear();state.gears.push(independent,shared);
+        const common=getCommonLinkedAdsr();
+        assert(Math.abs(common.attack-.42)<1e-9 && Math.abs(common.decay-.31)<1e-9 && Math.abs(common.sustain-.68)<1e-9 && Math.abs(common.release-1.7)<1e-9,'common ADSR did not use the linked gear');
+        assert(Math.abs(common.attackCurve-.33)<1e-9 && Math.abs(common.decayCurve+.22)<1e-9 && Math.abs(common.releaseCurve-.27)<1e-9,'common ADSR curves did not ignore independent blue curves');
+        const created=addGear(60,undefined,undefined,false);
+        assert(created?.adsrLinks?.attack===true && created?.adsrLinks?.decay===true && created?.adsrLinks?.sustain===true && created?.adsrLinks?.release===true,'new gear is not fully linked');
+        assert(JSON.stringify(created?.adsr)===JSON.stringify(common),'new gear ADSR does not match the common linked curve');
+        state.gearMap.delete(created.id);
+      }finally{
+        state.gears.length=0;original.forEach(g=>state.gears.push(g));
+        state.nextGearId=originalNextId;
+        base;
+      }
+      const result={ok:!failures.length,failures};console[result.ok?'log':'error']('NEW GEAR ADSR SELF-TEST',result);return result;
+    }
+
     function renderAdsrGraph(svg, adsr, id) {
       if(!svg || !adsr) return;
       const l=8,r=192,t=8,b=61,w=r-l,h=b-t;
@@ -6581,13 +6809,18 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       for(const [k,[x,y]] of Object.entries(pts)){svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cy',y);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cy',y);}
       const val=svg.querySelector(`#${id}-values`); if(val)val.textContent=`A ${formatAdsrTime(A)}   D ${formatAdsrTime(D)}   S ${Math.round(S*100)}%   R ${formatAdsrTime(R)}`;
     }
-    function bindAdsrGraph(svg, getAdsr, setAdsr, id) {
+    function bindAdsrGraph(svg, getAdsr, setAdsr, id, getGear=null) {
       if (!svg || svg.dataset.bound === '1') return;
       svg.dataset.bound = '1';
       svg.style.touchAction = 'none';
       svg.style.pointerEvents = 'all';
 
       let drag = null;
+      let holdTimer = null;
+      let pointerStart = null;
+      let holdTriggered = false;
+      const HOLD_MS = 1000;
+      const MOVE_EPS = 4;
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
       const toSvg = e => {
         const q = svg.getBoundingClientRect();
@@ -6632,17 +6865,34 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const p = toSvg(e);
         let k = e.target?.dataset?.adsr || nearestHandle(p);
         if (!k && (e.target?.id === `${id}-hitline` || e.target?.id === `${id}-line`)) k = curveKind(p);
-        if (!k) return;
-        drag = { k, id:e.pointerId };
+        const gear = getGear?.();
+        if (!k || !gear) return;
+        drag = { k, id:e.pointerId, moved:false, holding:true, startedAt:performance.now() };
+        pointerStart = {x:e.clientX,y:e.clientY}; holdTriggered = false;
         state.adsrGraphDragging = true;
         try { svg.setPointerCapture(e.pointerId); } catch (_) {}
-        e.preventDefault();
-        e.stopPropagation();
-        e.stopImmediatePropagation?.();
+        clearTimeout(holdTimer);
+        holdTimer=setTimeout(()=>{
+          if(!drag || drag.id!==e.pointerId || drag.moved || !drag.holding) return;
+          holdTriggered=true;
+          drag.holding=false;
+          const group=adsrLinkGroupForKey(drag.k);
+          if(group){
+            toggleAdsrLink(gear,group);
+            renderAdsrGraph(svg,getAdsr(),id);
+            renderAdsrLinkVisuals(svg,getAdsr(),id,gear);
+          }
+        },HOLD_MS);
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
       };
       const move = e => {
         if (!drag || drag.id !== e.pointerId) return;
-        const p = toSvg(e), a = { ...(getAdsr() || {}) }, q = getPts();
+        const p = toSvg(e);
+        if(pointerStart && Math.hypot(e.clientX-pointerStart.x,e.clientY-pointerStart.y)>MOVE_EPS){
+          drag.moved=true; drag.holding=false; clearTimeout(holdTimer);
+        }
+        if(holdTriggered) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.(); return; }
+        const a = { ...(getAdsr() || {}) }, q = getPts();
         if (drag.k === 'attack') {
           a.attack = adsrTimeFromUnit(clamp((p.x - 8) / 47, 0, 1), 2);
         } else if (drag.k === 'decay') {
@@ -6662,18 +6912,21 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           if (mid) a[drag.k] = clamp((mid[1] - p.y) / 18, -1, 1);
         }
 
-        // Update only the SVG geometry. Never replace the graph's DOM while the
-        // pointer is captured; this prevents the editor disappearing mid-drag.
-        setAdsr(a);
-        renderAdsrGraph(svg, a, id);
+        // Update the selected stage either for every linked gear (default) or only
+        // this gear when the stage has been unlocked. Never replace the graph's DOM
+        // while the pointer is captured.
+        setAdsr(a, drag.k);
+        renderAdsrGraph(svg, getAdsr(), id);
+        renderAdsrLinkVisuals(svg, getAdsr(), id, getGear?.());
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation?.();
       };
       const end = e => {
         if (!drag || drag.id !== e.pointerId) return;
+        clearTimeout(holdTimer); holdTimer=null;
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.();
-        drag = null;
+        drag = null; pointerStart=null; holdTriggered=false;
         state.adsrGraphDragging = false;
         try { svg.releasePointerCapture(e.pointerId); } catch (_) {}
       };
@@ -6682,9 +6935,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       svg.addEventListener('pointermove', move, {capture:true, passive:false});
       svg.addEventListener('pointerup', end, {capture:true, passive:false});
       svg.addEventListener('pointercancel', end, {capture:true, passive:false});
-      svg.addEventListener('lostpointercapture', () => { drag = null; state.adsrGraphDragging = false; });
+      svg.addEventListener('lostpointercapture', () => { clearTimeout(holdTimer); holdTimer=null; drag = null; pointerStart=null; holdTriggered=false; state.adsrGraphDragging = false; });
       svg.addEventListener('contextmenu', e => e.preventDefault());
       renderAdsrGraph(svg, getAdsr(), id);
+      renderAdsrLinkVisuals(svg, getAdsr(), id, getGear?.());
     }
 
     function getBloomOrderedGears(){const gs=state.gears.filter(g=>!g.muted&&!g.isUltrasonic&&Math.abs(g.ratio)>0);return state.bloom?.placementOrder?gs.slice():gs.slice().sort((a,b)=>Math.abs(a.ratio)-Math.abs(b.ratio));}
@@ -7743,9 +7997,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
         item.addEventListener('click', (e) => {
           if (!e.target.tagName.match(/BUTTON/i)) {
-            state.selectedGearId = gear.id;
-            renderGearList();
-            updateInspector();
+            selectGearForEditing(gear);
           }
         });
 
@@ -8003,12 +8255,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         // The inspector DOM is rebuilt on every selection. Bind and paint both
         // immediately and on the next frame so layout/visibility cannot leave
         // a freshly-created SVG blank.
-        bindAdsrGraph(inspectorAdsrGraph,()=>gear.adsr,a=>{gear.adsr={...gear.adsr,...a};},'inspector-adsr');
-        renderAdsrGraph(inspectorAdsrGraph, gear.adsr || state.adsr, 'inspector-adsr');
+        bindAdsrGraph(inspectorAdsrGraph,()=>gear.adsr,(a,k)=>{applyLinkedAdsrChange(gear,a,k);},'inspector-adsr',()=>gear);
+        renderAdsrGraph(inspectorAdsrGraph, gear.adsr || state.adsr, 'inspector-adsr'); renderAdsrLinkVisuals(inspectorAdsrGraph, gear.adsr || state.adsr, 'inspector-adsr', gear);
         const paintInspectorAdsr=()=>{
           const g=document.getElementById('inspector-adsr-graph');
           const selected=state.gearMap.get(state.selectedGearId);
-          if(g&&selected) renderAdsrGraph(g, selected.adsr||state.adsr, 'inspector-adsr');
+          if(g&&selected){ renderAdsrGraph(g, selected.adsr||state.adsr, 'inspector-adsr'); renderAdsrLinkVisuals(g, selected.adsr||state.adsr, 'inspector-adsr', selected); }
         };
         requestAnimationFrame(()=>requestAnimationFrame(paintInspectorAdsr));
         setTimeout(paintInspectorAdsr,0);
@@ -8900,7 +9152,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if (mainToothWidthValue) mainToothWidthValue.textContent = width.toFixed(2);
       if (mainVolumeSlider) mainVolumeSlider.value = Math.max(0, Math.min(1, Number(main.volume) || 0.2));
       if (mainVolumeValue) mainVolumeValue.textContent = `${Math.round((Number(main.volume) || 0.2) * 100)}%`;
-      if (mainAdsrGraph) renderAdsrGraph(mainAdsrGraph, main.adsr || state.adsr, 'main-adsr');
+      if (mainAdsrGraph) { renderAdsrGraph(mainAdsrGraph, main.adsr || state.adsr, 'main-adsr'); renderAdsrLinkVisuals(mainAdsrGraph, main.adsr || state.adsr, 'main-adsr', main); }
       if (mainToothPreview) mainToothPreview.innerHTML = `<svg viewBox="0 0 120 22" preserveAspectRatio="none" aria-label="${type} tooth waveform preview">${drawToothWaveGlyph(type, width, 2, 3, 116, 16)}</svg>`;
     };
     mainToothWaveSelect?.addEventListener('change', e => {
@@ -8937,8 +9189,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     });
     const mainAdsrGraph = document.getElementById('main-adsr-graph');
     const paletteAdsrGraph = document.getElementById('palette-adsr-graph');
-    if (paletteAdsrGraph) bindAdsrGraph(paletteAdsrGraph,()=>getActivePaletteGear()?.adsr||state.adsr,a=>{const g=getActivePaletteGear();if(g)g.adsr={...g.adsr,...a};else state.adsr={...state.adsr,...a};updateAudioNodes();},'palette-adsr');
-    if (mainAdsrGraph) bindAdsrGraph(mainAdsrGraph,()=>state.gears.find(g=>g.isMain)?.adsr||state.adsr,a=>{const m=state.gears.find(g=>g.isMain);if(m)m.adsr={...m.adsr,...a};},'main-adsr');
+    if (paletteAdsrGraph) bindAdsrGraph(paletteAdsrGraph,()=>getActivePaletteGear()?.adsr||state.adsr,(a,k)=>{const g=getActivePaletteGear();if(g)applyLinkedAdsrChange(g,a,k);else state.adsr={...state.adsr,...a};updateAudioNodes();},'palette-adsr',()=>getActivePaletteGear());
+    if (mainAdsrGraph) bindAdsrGraph(mainAdsrGraph,()=>state.gears.find(g=>g.isMain)?.adsr||state.adsr,(a,k)=>{const m=state.gears.find(g=>g.isMain);if(m)applyLinkedAdsrChange(m,a,k);},'main-adsr',()=>state.gears.find(g=>g.isMain));
 
     refreshPaletteShapeDescription();
     syncMainSourceConfigs();
@@ -8954,7 +9206,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     });
     document.getElementById('btn-add-crank-tool')?.addEventListener('click', () => {
       placeCrankTool(true);
-      fitMachineToView(true);
+      fitMachineToView(state.visualMode !== 'neon' && !!state.crankTool.enabled);
       document.getElementById('startup-tooltip')?.remove();
     });
 
@@ -9156,7 +9408,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       const width = Math.max(1, maxX - minX);
       const height = Math.max(1, maxY - minY);
-      const pad = 1.16;
+      const pad = state.visualMode === 'neon' ? 1.035 : 1.16;
       const fitZoom = Math.min(canvas.width / (width * pad), canvas.height / (height * pad));
       const zoom = Math.min(8, Math.max(0.01, fitZoom));
       const centerX = (minX + maxX) * 0.5;
@@ -9164,7 +9416,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       state.camera = { x: -centerX * zoom, y: -centerY * zoom, zoom };
     }
 
-    document.getElementById('btn-reset-view').addEventListener('click', fitMachineToView);
+    document.getElementById('btn-reset-view').addEventListener('click', () => fitMachineToView(state.visualMode !== 'neon' && !!state.crankTool.enabled));
 
     document.getElementById('btn-sync-phase').addEventListener('click', () => {
       // Hard Mod-0: every gear hand is 12 o'clock and every audible source restarts
@@ -9194,6 +9446,33 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       updateAudioNodes();
     });
 
+    // DESKTOP CANVAS FOCUS / FULL SCREEN MODE
+    (function initDesktopFocusMode(){
+      const app=document.getElementById('app-container');
+      const btn=document.getElementById('desktop-focus-toggle');
+      if(!app||!btn)return;
+      const mq=window.matchMedia('(min-width:901px)');
+      const sync=()=>{
+        const active=app.classList.contains('desktop-focus-mode');
+        btn.textContent=active?'⚙':'FULL SCREEN';
+        btn.title=active?'Show controls':'Hide the left control panel';
+        btn.setAttribute('aria-expanded',active?'true':'false');
+        btn.setAttribute('aria-label',active?'Show controls':'Hide controls');
+      };
+      const set=(active)=>{
+        if(!mq.matches && active) active=false;
+        app.classList.toggle('desktop-focus-mode',!!active);
+        document.body.classList.toggle('desktop-focus-mode',!!active);
+        sync();
+        requestAnimationFrame(()=>{ try{fitMachineToView(state.visualMode!=='neon' && !!state.crankTool.enabled);}catch(_){} });
+      };
+      btn.addEventListener('click',()=>set(!app.classList.contains('desktop-focus-mode')));
+      mq.addEventListener?.('change',()=>{ if(!mq.matches) set(false); else sync(); });
+      window.addEventListener('resize',()=>{ if(app.classList.contains('desktop-focus-mode')) requestAnimationFrame(()=>{try{fitMachineToView(state.visualMode!=='neon' && !!state.crankTool.enabled);}catch(_){}}); });
+      sync();
+      window.setDesktopFocusMode=set;
+    })();
+
     // KEYBOARD SHORTCUTS
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName.match(/INPUT|SELECT/i)) return;
@@ -9222,7 +9501,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         document.getElementById('val-oct-shift').textContent = state.octaveShift > 0 ? `+${state.octaveShift}` : state.octaveShift;
         if (state.activeSemitone !== null) playSemitone(state.activeSemitone);
       } else if (e.code === 'KeyR') {
-        fitMachineToView();
+        fitMachineToView(state.visualMode !== 'neon' && !!state.crankTool.enabled);
       }
     });
 
@@ -9514,13 +9793,72 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       sync();
     })();
     window.runPolyReleaseConsoleTests=runPolyReleaseConsoleTests;
+    window.runNewGearAdsrConsoleTest=runNewGearAdsrConsoleTest;
     window.runNeonVisualModeConsoleTest=runNeonVisualModeConsoleTest;
+    function runNeonShapeDepthConsoleTest(){
+      const failures=[]; const assert=(ok,msg)=>{if(!ok)failures.push(msg);};
+      const fakeBase={pitchRadius:100,toothWaveform:'sine',sourceMode:'sine',toothWidth:.5,shape:'circular',shapeParams:{}};
+      const toothCount=12;
+      // At width .5 sine reaches +1 near phase .25 and -1 near .75.
+      const pos=neonGearPoint(fakeBase,(TAU/toothCount)*0.75,toothCount);
+      const neg=neonGearPoint(fakeBase,(TAU/toothCount)*0.25,toothCount);
+      const posR=Math.hypot(pos.x,pos.y),negR=Math.hypot(neg.x,neg.y);
+      assert(posR>100,'positive waveform excursion is not deep/outward enough');
+      assert(negR<40,'negative waveform excursion is not compressed toward the axle');
+      assert(posR>negR*2.4,'positive/negative radial depth contrast is too small');
+      const root=neonTrainScale(0,0),third=neonTrainScale(4,0),fifth=neonTrainScale(7,0),oct=neonTrainScale(12,0);
+      assert(root===1,'root train must remain full size');
+      assert(root>third && third>fifth && fifth>oct,'poly neon scales must descend with pitch');
+      assert(third<.4 && fifth<.25,'higher poly notes should move substantially into the shared inner space');
+      const result={ok:!failures.length,failures,positiveRadius:posR,negativeRadius:negR,scales:[root,third,fifth,oct]};
+      console[result.ok?'log':'error']('NEON SHAPE DEPTH SELF-TEST',result); return result;
+    }
+    window.runNeonShapeDepthConsoleTest=runNeonShapeDepthConsoleTest;
     window.runNeonPolyVisualConsoleTest=runNeonPolyVisualConsoleTest;
     window.runPolyAdditiveGainConsoleTest=runPolyAdditiveGainConsoleTest;
     window.runAudioCombinationFallbackTests=runAudioCombinationFallbackTests;
     window.runNeonEnvelopeVisualTest=runNeonEnvelopeVisualTest;
 </script>
 
+<style id="desktop-focus-mode-css">
+/* Desktop canvas focus mode: hide the entire left control column, leaving a small
+   small controls gear to bring the sidebar back. This is app fullscreen, not browser fullscreen. */
+#desktop-focus-toggle{
+  position:static; z-index:14000; display:flex; align-items:center; justify-content:center;
+  width:100%; min-width:0; height:30px; margin-top:10px; padding:4px 10px;
+  border:1px solid rgba(255,255,255,.16); border-radius:5px;
+  background:rgba(15,23,42,.92); color:#eef2f7;
+  box-shadow:0 4px 18px rgba(0,0,0,.45);
+  font:700 10px/1 Arial,sans-serif; letter-spacing:.7px;
+  backdrop-filter:blur(8px); box-sizing:border-box;
+}
+#desktop-focus-toggle:hover,#desktop-focus-toggle:focus-visible{
+  border-color:#67e8f9; box-shadow:0 0 12px rgba(103,232,249,.22),0 4px 18px rgba(0,0,0,.45);
+}
+#app-container.desktop-focus-mode #sidebar{
+  display:flex!important; position:fixed!important; left:0!important; top:0!important; width:0!important; min-width:0!important; height:0!important;
+  border:0!important; box-shadow:none!important; overflow:visible!important; pointer-events:none!important; z-index:14000!important;
+}
+#app-container.desktop-focus-mode #sidebar > .sidebar-header{
+  padding:0!important; border:0!important; background:transparent!important; width:0!important; overflow:visible!important; pointer-events:none!important;
+}
+#app-container.desktop-focus-mode #sidebar > .sidebar-header h1,#app-container.desktop-focus-mode #sidebar > .sidebar-header p{display:none!important;}
+#app-container.desktop-focus-mode #desktop-focus-toggle{
+  position:fixed!important; left:10px!important; top:10px!important; width:30px!important; min-width:30px!important; height:30px!important; margin:0!important;
+  padding:0!important; border-radius:50%!important; font-size:16px!important; line-height:1!important; letter-spacing:0!important;
+  pointer-events:auto!important;
+}
+body.desktop-focus-mode #fundamental-topbar{display:none!important;}
+#app-container.desktop-focus-mode{padding-top:0!important;}
+#app-container.desktop-focus-mode #sidebar > .sidebar-scroll{display:none!important;}
+#app-container.desktop-focus-mode #canvas-container{width:100vw!important;max-width:100vw!important;flex:1 1 100vw!important;}
+#app-container.desktop-focus-mode #ratio-palette-modal{left:18px!important;}
+@media(max-width:900px){#desktop-focus-toggle{display:none!important;}#app-container.desktop-focus-mode #sidebar{display:none!important;}}
+body.neon-visual-mode #desktop-focus-toggle{
+  background:rgba(0,9,4,.92); color:#b8ffd0; border-color:rgba(73,255,140,.68);
+  box-shadow:0 0 14px rgba(73,255,140,.18),0 4px 18px rgba(0,0,0,.72);
+}
+</style>
 <style id="desktop-neon-mode-control-css">
 .desktop-visual-mode{display:inline-flex;align-items:center;gap:5px;margin-left:auto!important;margin-bottom:0!important;font-size:.68rem!important;font-weight:800;color:#9ff!important;white-space:nowrap;cursor:pointer;}
 .desktop-visual-mode input{margin:0;width:auto!important;min-width:0!important;accent-color:#00eaff;}
@@ -9662,8 +10000,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 (function(){
   window.setSteamWhistleVisualMode=function(mode){
     const neon=mode==='neon';
-    state.visualMode=neon?'neon':'default';
     const app=document.getElementById('app-container');
+
+    // Neon is a purely visual mode: temporarily remove the physical crank from
+    // the machine, then restore it exactly when returning to the mechanical view.
+    if(neon){
+      if(state.visualMode!=='neon') state._neonCrankWasEnabled=!!state.crankTool.enabled;
+      if(state.crankTool.enabled && typeof removeCrankTool==='function') {
+        try{removeCrankTool();}catch(_){}
+      }
+    }else if(state.visualMode==='neon' && state._neonCrankWasEnabled){
+      if(typeof placeCrankTool==='function') {
+        try{placeCrankTool(true);}catch(_){}
+      }
+      state._neonCrankWasEnabled=false;
+    }
+
+    state.visualMode=neon?'neon':'default';
     app?.classList.toggle('neon-visual-mode',neon);
     document.body.classList.toggle('neon-visual-mode',neon);
     state.neonPalette?.clear();
@@ -9673,7 +10026,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     if(desktop)desktop.checked=neon;
     const mobile=document.getElementById('chk-visual-mode');
     if(mobile)mobile.checked=neon;
-    try{fitMachineToView(true);}catch(_){ }
+    // Neon ignores the crank in the fit calculation and uses a tighter pad so
+    // the gear machine fills the viewport. Mechanical mode restores normal fit.
+    try{fitMachineToView(!neon && !!state.crankTool.enabled);}catch(_){ }
     try{requestAnimationFrame(()=>drawNeonMachine?.());}catch(_){ }
   };
   const desktop=document.getElementById('chk-visual-mode-desktop');
@@ -9686,6 +10041,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
   document.body.classList.toggle('neon-visual-mode',state.visualMode==='neon');
 })();
 </script>
+
 <script id="mobile-one-screen-mode-js">
 (function initMobileOneScreenMode(){
   const mq=window.matchMedia('(max-width:900px) and (orientation:portrait)');
@@ -9724,9 +10080,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     if(drawer)return;
     dock=document.createElement('div');dock.id='mobile-keyboard-dock';
     const kb=q('#virtual-keyboard');
+    const presetBtn=document.createElement('button');presetBtn.id='mobile-user-presets-toggle';presetBtn.type='button';presetBtn.textContent='PRESETS';presetBtn.title='User presets';presetBtn.setAttribute('aria-label','User presets');
+    presetBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();window.__toggleUserPresetMenu?.();});
     const settingsBtn=document.createElement('button');settingsBtn.id='mobile-keyboard-settings-button';settingsBtn.type='button';settingsBtn.textContent='⚙';settingsBtn.title='Open controls';settingsBtn.setAttribute('aria-label','Open controls');
     settingsBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setDrawer(!drawerOpen);});
-    dock.append(settingsBtn,kb);
+    dock.append(presetBtn,settingsBtn,kb);
     app.appendChild(dock);
 
     drawer=document.createElement('section');drawer.id='mobile-one-screen-drawer';drawer.setAttribute('aria-label','Synth controls');
@@ -9755,7 +10113,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     if(octaveRow)keyboardOptions.appendChild(octaveRow);
     keyboardOptions.style.display='block';
     bloomDrawer=document.createElement('div');bloomDrawer.id='keyboard-bloom-drawer';bloomDrawer.appendChild(makeSectionTitle('BLOOM'));if(bloom)bloomDrawer.appendChild(bloom);
-    drawerScroll.appendChild(keyboardOptions);drawerScroll.appendChild(bloomDrawer);
 
     // Master, MIDI, spatial and legacy driver controls.
     [nodes.master,nodes.midi,nodes.spatial,nodes.audioDriver].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
@@ -9771,6 +10128,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     if(nodes.inspector){
       const wrap=document.createElement('div');wrap.id='mobile-current-gear-editor';wrap.appendChild(makeSectionTitle('CURRENT GEAR'));wrap.appendChild(nodes.inspector);drawerScroll.appendChild(wrap);
     }
+
+    // Keep Performance and Bloom at the bottom of the one-page controls, directly above the keyboard.
+    drawerScroll.appendChild(keyboardOptions);
+    drawerScroll.appendChild(bloomDrawer);
 
     // Keep the existing network/open-ratio panels out of the one-screen layout.
     if(nodes.openRatio)nodes.openRatio.style.display='none';
@@ -9790,6 +10151,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         }
         window.updateInspector?.();
         window.renderGearList?.();
+        document.getElementById('mobile-current-gear-editor')?.querySelector('#inspector-adsr-graph')?.closest('.gear-adsr-section')?.setAttribute('hidden','hidden');
+        const mobileShape=document.getElementById('mobile-current-gear-editor')?.querySelector('#inspector-gear-shape');
+        if(mobileShape){mobileShape.closest('div[style*="border-top"]')?.setAttribute('hidden','hidden');}
+        ['#inspector-source-buttons','#inspector-noise-config','#inspector-audio-config','#inspector-midi-config','#slider-inspector-tooth-width','#val-inspector-tooth-width','#slider-inspector-volume','#val-inspector-volume'].forEach(sel=>{const n=document.getElementById('mobile-current-gear-editor')?.querySelector(sel);if(n)n.setAttribute('hidden','hidden');});
       }catch(_){ }
       requestAnimationFrame(()=>drawerScroll?.scrollTo({top:0,behavior:'auto'}));
     } else if(inMode) {
@@ -9814,6 +10179,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     if(nodes.ratioModal){nodes.ratioModal.classList.remove('is-hidden');nodes.ratioModal.style.display='flex';drawerScroll.appendChild(nodes.ratioModal);}
     if(nodes.gearNetwork){const wrap=q('#gear-network-mobile');if(wrap&&!wrap.contains(nodes.gearNetwork))wrap.appendChild(nodes.gearNetwork);}
     if(nodes.inspector){const wrap=q('#mobile-current-gear-editor');if(wrap&&!wrap.contains(nodes.inspector))wrap.appendChild(nodes.inspector);}
+    // Performance and Bloom remain the final controls in the one-page drawer, directly above the keyboard.
+    if(keyboardOptions)drawerScroll.appendChild(keyboardOptions);
+    if(bloomDrawer)drawerScroll.appendChild(bloomDrawer);
     setDrawer(false);
   }
 
@@ -9844,6 +10212,135 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 })();
 
     window.runNeonEnvelopeVisualTest = runNeonEnvelopeVisualTest;
+    window.runAdsrLinkingConsoleTest = runAdsrLinkingConsoleTest;
+</script>
+
+<script id="user-presets-js">
+(function initUserPresets(){
+  const STORAGE_KEY='steamwhistle.userPresets.v1';
+  const el=id=>document.getElementById(id);
+  const safeNumber=(v,d=0)=>Number.isFinite(Number(v))?Number(v):d;
+  const cloneJSON=o=>JSON.parse(JSON.stringify(o));
+  const toBase64=u8=>{let bin='';const chunk=0x8000;for(let i=0;i<u8.length;i+=chunk)bin+=String.fromCharCode(...u8.subarray(i,i+chunk));return btoa(bin);};
+  const fromBase64=b64=>{const bin=atob(b64);const u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return u8;};
+  function audioBufferToWavBase64(buffer){
+    if(!buffer)return null;
+    const channels=Math.max(1,Math.min(2,buffer.numberOfChannels||1)), rate=buffer.sampleRate||44100, frames=buffer.length;
+    const dataSize=frames*channels*2, ab=new ArrayBuffer(44+dataSize), dv=new DataView(ab);
+    const w=(o,str)=>{for(let i=0;i<str.length;i++)dv.setUint8(o+i,str.charCodeAt(i));};
+    w(0,'RIFF');dv.setUint32(4,36+dataSize,true);w(8,'WAVE');w(12,'fmt ');dv.setUint32(16,16,true);dv.setUint16(20,1,true);dv.setUint16(22,channels,true);dv.setUint32(24,rate,true);dv.setUint32(28,rate*channels*2,true);dv.setUint16(32,channels*2,true);dv.setUint16(34,16,true);w(36,'data');dv.setUint32(40,dataSize,true);
+    const sources=[];for(let c=0;c<channels;c++)sources.push(buffer.getChannelData(c));
+    let off=44;for(let i=0;i<frames;i++)for(let c=0;c<channels;c++){let x=Math.max(-1,Math.min(1,sources[c][i]));dv.setInt16(off,x<0?x*0x8000:x*0x7fff,true);off+=2;}
+    return {sampleRate:rate,channels,frames,data:toBase64(new Uint8Array(ab))};
+  }
+  async function wavBase64ToAudioBuffer(wav,stateCtx){
+    if(!wav?.data||!stateCtx)return null;
+    try{return await stateCtx.decodeAudioData(fromBase64(wav.data).buffer.slice(0));}catch(_){return null;}
+  }
+  function gearSnapshot(g){
+    const audio=audioBufferToWavBase64(g.audioBuffer);
+    return {
+      id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
+      volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
+      orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,
+      shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:g.toothWidth,sourceMode:g.sourceMode,adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
+      audioFileName:g.audioFileName||'',audioLoopStart:g.audioLoopStart||0,audioLoopEnd:g.audioLoopEnd||0,midiNote:g.midiNote||60,magneticMesh:g.magneticMesh!==false,
+      shapeParams:g.shapeParams?cloneJSON(g.shapeParams):{},neighbors:Array.from(g.neighbors||[]),audioWav:audio
+    };
+  }
+  function makePreset(name){
+    return {format:'STEAMWHISTLE-COG',version:1,name:String(name||'Untitled').trim().slice(0,80)||'Untitled',createdAt:new Date().toISOString(),state:{
+      waveform:state.waveform,clockworkTickWidthMs:state.clockworkTickWidthMs,masterVolume:state.masterVolume,spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:state.spatialScale,
+      fundamentalFreq:state.fundamentalFreq,targetFundamentalFreq:state.targetFundamentalFreq,baseFundamentalFreq:state.baseFundamentalFreq,octaveShift:state.octaveShift,releaseOnKeyup:!!state.releaseOnKeyup,legato:!!state.legato,glissTime:state.glissTime,
+      adsr:cloneJSON(state.adsr),bloom:cloneJSON(state.bloom),mainTeeth:state.mainTeeth,camera:cloneJSON(state.camera),driveDirection:state.driveDirection,pitchModule:state.pitchModule,polyMode:!!state.polyMode,jiKeyboard:!!state.jiKeyboard,visualMode:state.visualMode,
+      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
+    }};
+  }
+  let presets=[];
+  try{presets=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');if(!Array.isArray(presets))presets=[];}catch(_){presets=[];}
+  const menu=document.createElement('section');menu.id='user-preset-menu';menu.setAttribute('aria-label','User Presets');menu.innerHTML=`
+    <div class="preset-head"><strong>USER PRESETS</strong><input id="user-preset-name" type="text" maxlength="80" placeholder="Preset name"><button id="user-preset-save" class="btn-primary">SAVE</button><button id="user-preset-close" title="Close">×</button></div>
+    <div class="preset-list" id="user-preset-list"></div>
+    <div class="preset-foot"><button id="user-preset-export-current">EXPORT CURRENT .COG</button><button id="user-preset-import">IMPORT .COG</button><input id="user-preset-file" type="file" accept=".cog,application/json" hidden><span class="preset-status" id="user-preset-status"></span></div>`;
+  document.body.appendChild(menu);
+  const desktopLauncher=document.getElementById('keyboard-user-presets-toggle');if(desktopLauncher)desktopLauncher.setAttribute('aria-expanded','false');
+  const inputName=el('user-preset-name'), list=el('user-preset-list'), status=el('user-preset-status');
+  let open=false;
+  function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(presets));return true;}catch(_){status.textContent='Local storage full - use .COG export';return false;}}
+  function setStatus(t){if(status){status.textContent=t||'';clearTimeout(setStatus.t);setStatus.t=setTimeout(()=>status.textContent='',2600);}}
+  function render(){
+    if(!presets.length){list.innerHTML='<div class="preset-empty">No saved presets yet.</div>';return;}
+    list.innerHTML='';presets.forEach((p,i)=>{
+      const row=document.createElement('div');row.className='preset-item';
+      const name=document.createElement('div');name.className='preset-name';name.textContent=p.name||'Untitled';
+      const actions=document.createElement('div');actions.className='preset-actions';
+      const mk=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.type='button';b.addEventListener('click',fn);return b;};
+      actions.append(mk('LOAD',()=>loadPreset(p)),mk('EXPORT',()=>exportPreset(p)),mk('DELETE',()=>{if(!confirm(`Delete preset “${p.name}”?`))return;presets.splice(i,1);persist();render();setStatus('Deleted');}));
+      row.append(name,actions);list.appendChild(row);
+    });
+  }
+  function anchorMenu(){
+    const key=el('virtual-keyboard');if(!key)return;
+    const r=key.getBoundingClientRect();const mw=Math.min(420,window.innerWidth-16), mh=Math.min(window.innerHeight*.55,500);
+    let left=Math.max(8,Math.min(window.innerWidth-mw-8,r.left+(r.width-mw)/2));
+    let top=r.top-mh-7;if(top<8)top=Math.min(window.innerHeight-mh-8, r.bottom+7);
+    menu.style.width=mw+'px';menu.style.maxHeight=mh+'px';menu.style.left=left+'px';menu.style.top=Math.max(8,top)+'px';
+    if(desktopLauncher) desktopLauncher.setAttribute('aria-expanded',open?'true':'false');
+  }
+  function setOpen(v){open=!!v;menu.classList.toggle('is-open',open);document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));if(open){anchorMenu();render();inputName?.focus();}}
+  function toggle(){setOpen(!open);}
+  function downloadText(name,text,type){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),500);}
+  function exportPreset(p){downloadText((p.name||'preset').replace(/[^a-z0-9 _.-]/gi,'_')+'.cog',JSON.stringify(p,null,2),'application/octet-stream');setStatus('Exported .COG');}
+  function exportCurrent(){const name=inputName.value.trim()||'SteamWhistle Preset';exportPreset(makePreset(name));}
+  function saveCurrent(){const name=inputName.value.trim()||`Preset ${presets.length+1}`;const p=makePreset(name);const idx=presets.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase());if(idx>=0)presets[idx]=p;else presets.unshift(p);persist();render();setStatus('Saved');}
+  function assignStateValues(st){
+    state.waveform=st.waveform||state.waveform;state.clockworkTickWidthMs=safeNumber(st.clockworkTickWidthMs,state.clockworkTickWidthMs);state.masterVolume=Math.max(0,Math.min(1,safeNumber(st.masterVolume,state.masterVolume)));
+    state.spatialEnabled=st.spatialEnabled!==false;state.spatialMode=st.spatialMode||state.spatialMode;state.spatialScale=safeNumber(st.spatialScale,state.spatialScale);
+    state.fundamentalFreq=Math.max(0,safeNumber(st.fundamentalFreq,state.fundamentalFreq));state.targetFundamentalFreq=safeNumber(st.targetFundamentalFreq,state.fundamentalFreq);state.baseFundamentalFreq=Math.max(.001,safeNumber(st.baseFundamentalFreq,state.baseFundamentalFreq));state.octaveShift=Math.max(-3,Math.min(3,Math.round(safeNumber(st.octaveShift,state.octaveShift))));
+    state.releaseOnKeyup=!!st.releaseOnKeyup;state.legato=!!st.legato;state.glissTime=Math.max(0,safeNumber(st.glissTime,state.glissTime));if(st.adsr)state.adsr={...state.adsr,...cloneJSON(st.adsr)};if(st.bloom)state.bloom={...state.bloom,...cloneJSON(st.bloom)};
+    state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
+    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};
+  }
+  async function loadPreset(p){
+    if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
+    const wasRunning=!!state.audioRunning;try{if(wasRunning)stopAudio();}catch(_){ }
+    try{state.gears.forEach(g=>{try{removeGearAudio(g);}catch(_){}});}catch(_){ }
+    assignStateValues(p.state);
+    state.gears=[];state.gearMap.clear();
+    const snapshots=Array.isArray(p.state.gears)?p.state.gears:[];
+    for(const sg of snapshots){
+      const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
+      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      state.gears.push(g);state.gearMap.set(g.id,g);
+    }
+    const byId=new Map(state.gears.map(g=>[g.id,g]));
+    snapshots.forEach(sg=>{const g=byId.get(sg.id);if(g)g.neighbors=new Set((sg.neighbors||[]).filter(id=>byId.has(id)));});
+    state.mainTeeth=state.gears.find(g=>g.isMain)?.teeth||safeNumber(p.state.mainTeeth,120);state.nextGearId=Math.max(safeNumber(p.state.nextGearId,1),...state.gears.map(g=>safeNumber(g.id,0)+1),1);
+    state.selectedGearId=byId.has(p.state.selectedGearId)?p.state.selectedGearId:(state.gears.find(g=>g.isMain)?.id||null);state.activePaletteGearId=byId.has(p.state.activePaletteGearId)?p.state.activePaletteGearId:state.selectedGearId;
+    updateKinematicNetwork();
+    // Restore persisted positions/angles after kinematic recomputation.
+    snapshots.forEach(sg=>{const g=byId.get(sg.id);if(g){g.x=safeNumber(sg.x,g.x);g.y=safeNumber(sg.y,g.y);g.angle=safeNumber(sg.angle,g.angle);}});
+    try{setFundamentalFrequency(state.fundamentalFreq,false,true);}catch(_){ }
+    const ui=[['input-master-vol',state.masterVolume],['slider-clockwork-width',state.clockworkTickWidthMs],['input-octave-shift',state.octaveShift],['slider-gliss-time',state.glissTime]];
+    ui.forEach(([id,val])=>{const x=el(id);if(x){x.value=String(val);x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}));}});
+    const checks=[['chk-poly',state.polyMode],['chk-continuous',!state.releaseOnKeyup],['chk-legato',state.legato],['chk-ji-keyboard',state.jiKeyboard]];checks.forEach(([id,val])=>{const x=el(id);if(x){x.checked=!!val;}});
+    if(typeof window.setSteamWhistleVisualMode==='function')window.setSteamWhistleVisualMode(state.visualMode);
+    const loadedBloomAmount=Number(state.bloom?.amount)||0;const loadedBloomSlider=el('slider-keyboard-bloom'),loadedBloomPlacement=el('chk-bloom-placement-order'),loadedBloomValue=el('keyboard-bloom-value');if(loadedBloomSlider)loadedBloomSlider.value=loadedBloomAmount;if(loadedBloomPlacement)loadedBloomPlacement.checked=!!state.bloom?.placementOrder;if(loadedBloomValue){const label=Math.abs(loadedBloomAmount)<.005?'normal':loadedBloomAmount<0?'high → fundamental':'fundamental → high';loadedBloomValue.textContent=`${loadedBloomAmount>0?'+':''}${loadedBloomAmount.toFixed(2)}s · ${label}`;}renderRationalGearPalette?.();window.updateInspector?.();window.renderGearList?.();
+    setStatus('Loaded '+(p.name||'preset'));
+    if(wasRunning){try{initAudio();}catch(_){}}
+    setTimeout(()=>{snapshots.forEach(async sg=>{const g=byId.get(sg.id);if(!g||!sg.audioWav)return;const b=await wavBase64ToAudioBuffer(sg.audioWav,state.audioCtx);if(b){g.audioBuffer=b;g.audioLoopEnd=Math.min(g.audioLoopEnd||b.duration,b.duration);g.audioSource=null;updateAudioNodes();renderRationalGearPalette?.();window.updateInspector?.();}});},0);
+  }
+  inputName?.addEventListener('keydown',e=>{if(e.key==='Enter')saveCurrent();});
+  el('user-preset-save')?.addEventListener('click',saveCurrent);el('user-preset-close')?.addEventListener('click',()=>setOpen(false));el('user-preset-export-current')?.addEventListener('click',exportCurrent);el('user-preset-import')?.addEventListener('click',()=>el('user-preset-file')?.click());
+  el('user-preset-file')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text());if(!p.format)p.format='STEAMWHISTLE-COG';p.name=p.name||f.name.replace(/\.cog$/i,'');presets.unshift(p);persist();render();setStatus('Imported '+p.name);}catch(_){setStatus('Invalid .COG file');}e.target.value='';});
+  window.addUserPreset=saveCurrent;window.exportUserPreset=exportCurrent;
+  window.__toggleUserPresetMenu=toggle;
+  desktopLauncher?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggle();});
+  document.addEventListener('click',e=>{const b=e.target.closest?.('#mobile-user-presets-toggle');if(!b)return;e.preventDefault();e.stopPropagation();toggle();});
+  document.addEventListener('click',e=>{if(open&&!menu.contains(e.target)&&!e.target.closest('#keyboard-user-presets-toggle'))setOpen(false);});
+  window.addEventListener('resize',()=>{if(open)anchorMenu();});window.addEventListener('scroll',()=>{if(open)anchorMenu();},{passive:true});
+  render();
+})();
 </script>
 
 </body>
