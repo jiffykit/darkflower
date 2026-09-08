@@ -731,6 +731,10 @@
     .gear-adsr-svg { pointer-events:all; touch-action:none; }
     .gear-adsr-hitline { pointer-events:stroke !important; }
     .gear-adsr-line { pointer-events:stroke !important; }
+    .gear-adsr-svg.mod-width .gear-adsr-line { stroke:#62f08a !important; filter:drop-shadow(0 0 2px rgba(98,240,138,.55)); }
+    .gear-adsr-svg.mod-width .gear-adsr-fill { fill:rgba(98,240,138,.10); }
+    .gear-adsr-svg.mod-width .gear-adsr-value { fill:#62f08a; }
+    .gear-adsr-svg.mod-width .gear-adsr-handle { stroke:#2b7f42; }
 
     .adsr-preset-row { display:flex; gap:4px; margin-top:3px; }
     .adsr-preset-row button { flex:1; min-height:23px; padding:2px 4px; font-size:.56rem; }
@@ -1691,7 +1695,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <label>Out <select id="palette-midi-output"><option value="">No MIDI output</option></select></label>
             <label>Note <select id="palette-midi-note"></select></label>
           </div>
-          <input id="slider-palette-tooth-width" type="range" min="0" max="0.98" step="0.01" value="0.50" title="Shape Width / Noise Band Shape" aria-label="Shape Width / Noise Band Shape">
+          <input id="slider-palette-tooth-width" type="range" min="0" max="0.98" step="0.0001" value="0.5000" title="Shape Width / Noise Band Shape" aria-label="Shape Width / Noise Band Shape">
           <div id="palette-shape-params" style="margin-top:4px;"></div>
           <div id="palette-shape-description" aria-hidden="true" style="display:none;"></div>
           <div style="margin-top:6px;">
@@ -2161,12 +2165,17 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         this.hrtfZAdsr = false;
         this.hrtfZAngleDeg = 0;
         this.hrtfZRate = 1;
-        this.hrtfZAdsr = false;
         this.shape = 'circular';
         this.toothWaveform = isMain ? state.waveform : state.waveform;
-        this.toothWidth = 0.50; // 0..1 shape width; 0.50 = neutral/default
+        this.toothWidth = 0.5000; // 0..1 shape width; 0.5000 = neutral/default
         this.sourceMode = this.toothWaveform === 'clockwork' ? 'clockwork' : this.toothWaveform;
         this.adsr = { ...state.adsr };
+        // MOD WIDTH is an alternate use for this gear's ADSR graph. When enabled,
+        // the selected gear's graph edits drive width morphing instead of volume.
+        // Store the graph values separately so switching back to normal ADSR restores
+        // the gear's original volume envelope unchanged.
+        this.widthModEnabled = false;
+        this.widthMod = { ...this.adsr };
         // Per-stage ADSR linkage. New gears are fully linked by default. When a
         // stage is unlocked it can diverge; re-linking preserves its current
         // offset so later linked edits move every member by the same delta.
@@ -2407,6 +2416,16 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     }
 
     /* AUDIO DRIVER ENGINE */
+    function stopGearOscillatorPair(gear) {
+      if (!gear) return;
+      for (const key of ['osc','oscSine']) {
+        if (gear[key]) { try { gear[key].stop(); } catch(e) {} try { gear[key].disconnect(); } catch(e) {} gear[key]=null; }
+      }
+      for (const key of ['oscShapeGain','oscSineGain']) {
+        if (gear[key]) { try { gear[key].disconnect(); } catch(e) {} gear[key]=null; }
+      }
+    }
+
     function stopAudioDriverSources() {
       state.audioDriver.sources.forEach(source => { try { source.stop(); } catch(e) {} try { source.disconnect(); } catch(e) {} });
       state.audioDriver.sources.clear();
@@ -2433,11 +2452,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 
     function stopAllSynthOscillators() {
       state.gears.forEach(gear => {
-        if (gear.osc) {
-          try { gear.osc.stop(); } catch(e) {}
-          try { gear.osc.disconnect(); } catch(e) {}
-          gear.osc = null;
-        }
+        stopGearOscillatorPair(gear);
         if (gear.delayNode) gear.delayNode.delayTime.value = 0;
       });
     }
@@ -2616,13 +2631,14 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       } else if (!polyMode) {
         state.gears.forEach(g => {
           if (g.ratio === 0) return;
-          const osc = state.audioCtx.createOscillator();
-          if (getGearToothWaveform(g) === 'clockwork') osc.setPeriodicWave(getClockworkWave(state.audioCtx, g));
-          else osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, getGearToothWaveform(g), getGearToothWidth(g)));
-          osc.frequency.setValueAtTime(Math.max(0.001, g.freq), startAt);
-          osc.connect(g.delayNode);
-          osc.start(startAt);
-          g.osc = osc;
+          const type=getGearToothWaveform(g), width=getGearToothWidth(g), morph=normalizeWidthModLevel(getGearWidthModLevel(g,startAt));
+          const osc=state.audioCtx.createOscillator(), sine=state.audioCtx.createOscillator();
+          const shapeGain=state.audioCtx.createGain(), sineGain=state.audioCtx.createGain();
+          if(type==='clockwork') { osc.setPeriodicWave(getClockworkWave(state.audioCtx,g)); shapeGain.gain.setValueAtTime(1,startAt); sineGain.gain.setValueAtTime(0,startAt); }
+          else { osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx,type,width,1)); shapeGain.gain.setValueAtTime(morph,startAt); sineGain.gain.setValueAtTime(1-morph,startAt); }
+          const f=Math.max(0.001,g.freq); osc.frequency.setValueAtTime(f,startAt); sine.frequency.setValueAtTime(f,startAt);
+          osc.connect(shapeGain); shapeGain.connect(g.delayNode); sine.connect(sineGain); sineGain.connect(g.delayNode); osc.start(startAt); sine.start(startAt);
+          g.osc=osc; g.oscSine=sine; g.oscShapeGain=shapeGain; g.oscSineGain=sineGain;
         });
       }
     }
@@ -2722,7 +2738,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 
     /* PER-GEAR TOOTH OSCILLATORS */
     const toothWaveCache = new Map();
-    function normalizeToothWidth(v) { return Math.max(0, Math.min(0.98, Number.isFinite(Number(v)) ? Number(v) : 0.50)); }
+    function normalizeToothWidth(v) { return Math.max(0, Math.min(0.98, Number.isFinite(Number(v)) ? Number(v) : 0.5000)); }
+    function normalizeWidthModLevel(v) { return Math.max(0, Math.min(1, Number.isFinite(Number(v)) ? Number(v) : 0)); }
 
     function toothWaveSample(type, phase, width) {
       const t = ((phase % 1) + 1) % 1;
@@ -2771,10 +2788,15 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       return Math.tanh(sine * k) / Math.tanh(k);
     }
 
-    function getToothPeriodicWave(ctx, waveform = 'sawtooth', width = 0.50) {
+    function getToothPeriodicWave(ctx, waveform = 'sawtooth', width = 0.5000, morph = 1) {
       const type = ['sine','triangle','sawtooth','square'].includes(waveform) ? waveform : 'sawtooth';
       const w = normalizeToothWidth(width);
-      const key = `${type}:${w.toFixed(4)}`;
+      const m = normalizeWidthModLevel(morph);
+      // Width is retained at 4-decimal precision. Dynamic WIDTH MOD is intentionally
+      // quantized only to 0.5% steps so a long envelope does not allocate thousands
+      // of heavyweight PeriodicWave objects while still sounding continuous.
+      const mq = Math.round(m * 200) / 200;
+      const key = `${type}:${w.toFixed(4)}:m${mq.toFixed(3)}`;
       if (toothWaveCache.has(key)) return toothWaveCache.get(key);
       const bins = 128;
       const real = new Float32Array(bins);
@@ -2784,7 +2806,9 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         let re = 0, im = 0;
         for (let n = 0; n < samples; n++) {
           const ph = n / samples;
-          const y = toothWaveSample(type, ph, w);
+          const sine = Math.sin(TAU * ph);
+          const shaped = toothWaveSample(type, ph, w);
+          const y = sine * (1 - mq) + shaped * mq;
           const a = TAU * h * ph;
           re += y * Math.cos(a);
           im += y * Math.sin(a);
@@ -2824,9 +2848,13 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       return buffer;
     }
 
-    function configureNoiseFilters(gear) {
+    function configureNoiseFilters(gear, widthModLevel = null, now = state.audioCtx?.currentTime || 0) {
       if (!gear.noiseHPF || !gear.noiseLPF || !state.audioCtx) return;
-      const w = getGearToothWidth(gear);
+      const baseWidth = getGearToothWidth(gear);
+      const mod = widthModLevel === null ? getGearWidthModLevel(gear, now) : normalizeWidthModLevel(widthModLevel);
+      // WIDTH MOD collapses the noise band toward a narrow center when the envelope
+      // is at zero and restores the gear's configured band width at one.
+      const w = normalizeToothWidth(0.02 + (baseWidth - 0.02) * mod);
       const hpf = 40 * Math.pow(120, 1 - w);
       const lpf = 500 + 11500 * w;
       const q = 0.8 + 16 * Math.abs(w - 0.5) * 2;
@@ -3080,7 +3108,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function optimizedPolyEligible(){
-      return !state.spatialEnabled && state.gears.length>0 && state.gears.every(g=>!g.muted && ['sine','triangle','sawtooth','square'].includes(getGearToothWaveform(g)) && g.sourceMode!=='audio' && g.sourceMode!=='noise' && g.sourceMode!=='midi' && g.sourceMode!=='clockwork');
+      return !state.spatialEnabled && state.gears.length>0 && state.gears.every(g=>!g.muted && ['sine','triangle','sawtooth','square'].includes(getGearToothWaveform(g)) && g.sourceMode!=='audio' && g.sourceMode!=='noise' && g.sourceMode!=='midi' && g.sourceMode!=='clockwork' );
     }
 
     async function initOptimizedPolyPool(){
@@ -3305,6 +3333,48 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       gain.gain.linearRampToValueAtTime(held, now + fade);
     }
 
+    function updateDynamicGearWidthModulation(now=state.audioCtx?.currentTime||0){
+      if(!state.audioCtx || !state.audioRunning) return;
+      state.gears.forEach(gear=>{
+        const level=normalizeWidthModLevel(getGearWidthModLevel(gear,now));
+        if(gear.sourceMode==='noise'){
+          configureNoiseFilters(gear,level,now);
+          return;
+        }
+        if(!gear.osc || !gear.oscSine || !gear.oscShapeGain || !gear.oscSineGain) return;
+        // Both oscillators are phase-locked. Only their gain balance changes here,
+        // so WIDTH MOD never swaps a PeriodicWave at an arbitrary oscillator phase.
+        gear.oscShapeGain.gain.setTargetAtTime(level,now,0.018);
+        gear.oscSineGain.gain.setTargetAtTime(1-level,now,0.018);
+      });
+    }
+
+    function updateDynamicPolyWidthModulation(now=state.audioCtx?.currentTime||0){
+      if(!state.audioCtx || !state.audioRunning) return;
+      const voices=[...state.polyVoices.values(), ...(state.polyReleaseTails ? [...state.polyReleaseTails] : [])];
+      voices.forEach(voice=>{
+        if(!voice || voice.optimized) return;
+        voice.gears?.forEach(pg=>{
+          const gear=pg?.gear; if(!gear) return;
+          const level=getVoiceWidthModLevel(voice,gear,now);
+          if(pg.isNoise && pg.noiseHPF && pg.noiseLPF){
+            const baseWidth=getGearToothWidth(gear);
+            const w=normalizeToothWidth(0.02+(baseWidth-0.02)*level);
+            const hpf=Math.min(16000,40*Math.pow(120,1-w));
+            const lpf=Math.max(hpf+50,Math.min(18000,500+11500*w));
+            const q=.8+16*Math.abs(w-.5)*2;
+            pg.noiseHPF.frequency.setTargetAtTime(hpf,now,.01);
+            pg.noiseLPF.frequency.setTargetAtTime(lpf,now,.01);
+            pg.noiseHPF.Q.setTargetAtTime(q,now,.01);
+            pg.noiseLPF.Q.setTargetAtTime(q,now,.01);
+          }else if(pg.osc && pg.oscSine && pg.oscShapeGain && pg.oscSineGain){
+            pg.oscShapeGain.gain.setTargetAtTime(level,now,0.018);
+            pg.oscSineGain.gain.setTargetAtTime(1-level,now,0.018);
+          }
+        });
+      });
+    }
+
     function updateAudioNodes() {
       if (!state.audioCtx || !state.audioRunning) return;
 
@@ -3337,20 +3407,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         }
 
         if (driverMode) {
-          if (gear.osc) { try { gear.osc.stop(); } catch(e) {} try { gear.osc.disconnect(); } catch(e) {} gear.osc = null; }
+          stopGearOscillatorPair(gear);
           if (gear.ratio !== 0) createDriverSourceForGear(gear);
         } else if (gear.sourceMode === 'audio') {
           stopGearNoiseOnly(gear);
-          if (gear.osc) { try { gear.osc.stop(); } catch(e) {} try { gear.osc.disconnect(); } catch(e) {} gear.osc = null; }
+          stopGearOscillatorPair(gear);
           if (gear.audioBuffer && !gear.audioSource && gear.ratio !== 0) createGearAudioLoopSource(gear);
         } else if (gear.sourceMode === 'noise') {
           stopGearAudioOnly(gear);
-          if (gear.osc) { try { gear.osc.stop(); } catch(e) {} try { gear.osc.disconnect(); } catch(e) {} gear.osc = null; }
+          stopGearOscillatorPair(gear);
           if (!gear.noiseSource && gear.ratio !== 0) createGearNoiseSource(gear);
         } else if (gear.sourceMode === 'midi') {
           stopGearAudioOnly(gear);
           stopGearNoiseOnly(gear);
-          if (gear.osc) { try { gear.osc.stop(); } catch(e) {} try { gear.osc.disconnect(); } catch(e) {} gear.osc = null; }
+          stopGearOscillatorPair(gear);
           // MIDI is event-driven; do not clear the note-off timer every audio update.
         } else {
           // Switching away from external sources must tear down the previous
@@ -3363,24 +3433,37 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             gear.midiOffTimer = null;
           }
           if (!gear.osc) {
-            gear.osc = state.audioCtx.createOscillator();
             const waveType = getGearToothWaveform(gear);
             const waveWidth = getGearToothWidth(gear);
-            const waveKey = waveType === 'clockwork' ? `clockwork:${gear.id}:${gear.teeth}:${Math.abs(gear.ratio).toFixed(6)}:${(Number(state.clockworkTickWidthMs)||4).toFixed(1)}` : `${waveType}:${waveWidth.toFixed(4)}`;
-            if (waveType === 'clockwork') gear.osc.setPeriodicWave(getClockworkWave(state.audioCtx, gear));
-            else gear.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, waveType, waveWidth));
-            gear._audioWaveKey = waveKey;
-            gear.osc.frequency.setValueAtTime(Math.max(0.001, gear.freq), now);
-            gear.osc.connect(gear.delayNode);
-            gear.osc.start();
+            gear.osc = state.audioCtx.createOscillator();
+            gear.oscSine = state.audioCtx.createOscillator();
+            gear.oscShapeGain = state.audioCtx.createGain();
+            gear.oscSineGain = state.audioCtx.createGain();
+            const morph=normalizeWidthModLevel(getGearWidthModLevel(gear,now));
+            if (waveType === 'clockwork') {
+              gear.osc.setPeriodicWave(getClockworkWave(state.audioCtx, gear));
+              gear.oscShapeGain.gain.setValueAtTime(1,now);
+              gear.oscSineGain.gain.setValueAtTime(0,now);
+            } else {
+              gear.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, waveType, waveWidth, 1));
+              gear.oscShapeGain.gain.setValueAtTime(morph,now);
+              gear.oscSineGain.gain.setValueAtTime(1-morph,now);
+            }
+            const f=Math.max(0.001, gear.freq);
+            gear.osc.frequency.setValueAtTime(f,now);
+            gear.oscSine.frequency.setValueAtTime(f,now);
+            gear.osc.connect(gear.oscShapeGain); gear.oscShapeGain.connect(gear.delayNode);
+            gear.oscSine.connect(gear.oscSineGain); gear.oscSineGain.connect(gear.delayNode);
+            gear._audioWaveKey=`${waveType}:${waveWidth.toFixed(4)}`;
+            gear.osc.start(); gear.oscSine.start();
           }
 
           const waveType = getGearToothWaveform(gear);
           const waveWidth = getGearToothWidth(gear);
-          const waveKey = waveType === 'clockwork' ? `clockwork:${gear.id}:${gear.teeth}:${Math.abs(gear.ratio).toFixed(6)}:${(Number(state.clockworkTickWidthMs)||4).toFixed(1)}` : `${waveType}:${waveWidth.toFixed(4)}`;
+          const waveKey = `${waveType}:${waveWidth.toFixed(4)}`;
           if (gear._audioWaveKey !== waveKey) {
             if (waveType === 'clockwork') gear.osc.setPeriodicWave(getClockworkWave(state.audioCtx, gear));
-            else gear.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, waveType, waveWidth));
+            else gear.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, waveType, waveWidth, 1));
             gear._audioWaveKey = waveKey;
           }
         }
@@ -3397,9 +3480,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
           if (!state.spatialEnabled || !mainGear) {
             if (gear.pannerNode.positionX) {
-              gear.pannerNode.positionX.setTargetAtTime(0, now, 0.03);
-              gear.pannerNode.positionY.setTargetAtTime(0, now, 0.03);
-              gear.pannerNode.positionZ.setTargetAtTime(0, now, 0.03);
+              gear.pannerNode.positionX.setTargetAtTime(0, now, 0.06);
+              gear.pannerNode.positionY.setTargetAtTime(0, now, 0.06);
+              gear.pannerNode.positionZ.setTargetAtTime(0, now, 0.06);
             } else if (gear.pannerNode.setPosition) {
               gear.pannerNode.setPosition(0, 0, 0);
             }
@@ -3409,9 +3492,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             const pannerY = gear.isMain ? 0 : getGearHrtfHeight(gear, now);
 
             if (gear.pannerNode.positionX) {
-              gear.pannerNode.positionX.setTargetAtTime(pannerX, now, 0.03);
-              gear.pannerNode.positionY.setTargetAtTime(pannerY, now, 0.03);
-              gear.pannerNode.positionZ.setTargetAtTime(pannerZ, now, 0.03);
+              gear.pannerNode.positionX.setTargetAtTime(pannerX, now, 0.06);
+              gear.pannerNode.positionY.setTargetAtTime(pannerY, now, 0.06);
+              gear.pannerNode.positionZ.setTargetAtTime(pannerZ, now, 0.06);
             } else if (gear.pannerNode.setPosition) {
               gear.pannerNode.setPosition(pannerX, pannerY, pannerZ);
             }
@@ -3421,20 +3504,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (!driverMode && gear.osc && !['audio','noise','midi'].includes(gear.sourceMode)) {
           const targetFreq = Math.max(0.001, gear.freq * (gear._shapeRate || 1));
           if (state.isSlidingFreq) {
-            gear.osc.frequency.value = targetFreq;
+            gear.osc.frequency.value = targetFreq; if (gear.oscSine) gear.oscSine.frequency.value = targetFreq;
             gear.delayNode.delayTime.value = 0.0001;
           } else if (state.legato) {
             // Porta ON: deliberately glide pitch. This is the only pitch smoothing
             // used for keyboard note changes.
             const glideTc = Math.max(0.005, state.glissTime / 3);
-            gear.osc.frequency.setTargetAtTime(targetFreq, now, glideTc);
+            gear.osc.frequency.setTargetAtTime(targetFreq, now, glideTc); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(targetFreq, now, glideTc);
             const targetDelay = getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
             gear.delayNode.delayTime.setTargetAtTime(targetDelay, now, glideTc);
           } else {
             // Porta OFF: pitch must jump immediately. Direct AudioParam values are
             // used rather than setValueAtTime so repeated note changes cannot flood
             // the browser's automation timeline.
-            gear.osc.frequency.value = targetFreq;
+            gear.osc.frequency.value = targetFreq; if (gear.oscSine) gear.oscSine.frequency.value = targetFreq;
             const targetDelay = getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
             gear.delayNode.delayTime.value = targetDelay;
           }
@@ -3968,7 +4051,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if (!state.audioRunning) return;
       const now = state.audioCtx.currentTime;
       if (gear.osc && !state.audioDriver.playing && !state.polyMode) {
-        gear.osc.frequency.setTargetAtTime(Math.max(0.001, gear.freq * motion.rate), now, 0.006);
+        gear.osc.frequency.setTargetAtTime(Math.max(0.001, gear.freq * motion.rate), now, 0.006); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(Math.max(0.001, gear.freq * motion.rate), now, 0.006);
       }
       if (state.audioDriver.playing) {
         const source = state.audioDriver.sources.get(gear.id);
@@ -4235,7 +4318,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     // Neon geometry mirrors the same waveform-width and shape functions used by
     // the actual synth. The low-frequency mechanical tooth count is reduced for
     // legibility, but the ratio/phase relationship is preserved.
-    function neonProfile(gear,phase){
+    function neonProfile(gear,phase,visual={}){
       const wf=String(gear?.toothWaveform||gear?.sourceMode||state.waveform||'sine').toLowerCase();
       return toothWaveSample(['sine','triangle','sawtooth','square'].includes(wf)?wf:'sine', ((phase%TAU)+TAU)%TAU/TAU, normalizeToothWidth(gear?.toothWidth));
     }
@@ -4250,7 +4333,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return shapeRadius(shape,theta,baseRadius,gear?.shapeParams||{});
     }
 
-    function neonGearPoint(gear,theta,toothCount){
+    function neonGearPoint(gear,theta,toothCount,visual={}){
       const pitch=Math.max(12,Number(gear?.pitchRadius)||40);
       const contour=Math.max(8,neonShapeRadius(gear,theta,pitch));
       const toothAngle=TAU/Math.max(3,toothCount);
@@ -4260,7 +4343,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
       // Evaluate the SAME waveform that drives the tooth oscillator. Width therefore
       // changes the visible tooth duty/rounding in exactly the same direction as audio.
-      let profile=neonProfile(gear,toothPhase*TAU);
+      let profile=neonProfile(gear,toothPhase*TAU,visual);
 
       // Neon is intentionally much deeper than the mechanical gear. The waveform's
       // zero crossing sits well outside the axle, while its negative half is compressed
@@ -4289,6 +4372,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         // The audio saw becomes progressively rounded at larger width values.
         const rounded=width>.5 ? (width-.5)*2 : 0;
         if(rounded>0) profile = profile*(1-rounded) + Math.sin(Math.PI*(toothPhase*2-.5))*rounded;
+      }
+      const widthMorph=visual.widthMorph==null?1:normalizeWidthModLevel(visual.widthMorph);
+      if(wf!=='sine') {
+        const pureSine=Math.sin(TAU*toothPhase);
+        profile=pureSine*(1-widthMorph)+profile*widthMorph;
       }
 
       // Use asymmetric amplitude: positive waveform excursions go outward strongly;
@@ -4322,6 +4410,49 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       else if(d>0 && t<a+d) level=1+(sus-1)*adsrCurveValue((t-a)/d,dc);
       else level=sus;
       return Math.max(0,Math.min(1,level));
+    }
+
+    function widthModEnvelopeValue(env, now){ return neonEnvelopeValue(env, now); }
+
+    // MOD WIDTH reuses the selected gear's ADSR graph. 0 = pure sine, 1 = the
+    // gear's configured tooth shape/width. When MOD WIDTH is off, the configured
+    // shape passes through unchanged and no width envelope is scheduled.
+    function getGearWidthModLevel(gear, now=state.audioCtx?.currentTime||0){
+      if(!gear || !gear.widthModEnabled) return 1;
+      if(!gear._widthModEnvelope) return 1;
+      return widthModEnvelopeValue(gear._widthModEnvelope, now);
+    }
+
+    function getVoiceWidthModLevel(voice, gear, now=state.audioCtx?.currentTime||0){
+      if(!gear || !gear.widthModEnabled) return 1;
+      const pg=voice?.gears?.get(gear.id);
+      if(!pg?._widthModEnvelope) return 1;
+      return widthModEnvelopeValue(pg._widthModEnvelope, now);
+    }
+
+    function scheduleWidthModEnvelope(target, open, gear, now){
+      if(!target || !gear) return;
+      if(!gear.widthModEnabled){
+        target._widthModEnvelope=null;
+        return;
+      }
+      const mod=gear.widthMod||gear.adsr||{};
+      if(open){
+        target._widthModEnvelope={
+          forceFull:false, start:now,
+          attack:Math.max(0,Math.min(2,Number(mod.attack)||0)),
+          decay:Math.max(0,Math.min(2,Number(mod.decay)||0)),
+          sustain:Math.max(0,Math.min(1,Number(mod.sustain ?? 0.8))),
+          release:Math.max(0,Math.min(10,Number(mod.release)||0)),
+          attackCurve:Number(mod.attackCurve)||0,
+          decayCurve:Number(mod.decayCurve)||0,
+          releaseCurve:Number(mod.releaseCurve)||0
+        };
+      }else{
+        const prev=target._widthModEnvelope;
+        const from=widthModEnvelopeValue(prev,now);
+        target._widthModEnvelope={...(prev||{}),forceFull:false,releaseStart:now,releaseFrom:from,release:Math.max(0,Math.min(10,Number(mod.release)||0)),releaseCurve:Number(mod.releaseCurve)||0};
+      }
     }
 
     function neonScheduleEnvelope(target, open, gear, now){
@@ -4430,8 +4561,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const intensity=Math.max(0,Math.min(1,rawIntensity*1.75));
       if(intensity<=0.0005)return;
       const pitch=Math.max(12,Number(gear.pitchRadius)||40),rotation=Number.isFinite(Number(visual.rotation))?Number(visual.rotation):Number(gear.angle)||0,scale=Math.max(.25,Number(visual.scale)||1);
+      const widthMorph=visual.widthMorph==null?getGearWidthModLevel(gear,now):visual.widthMorph;
       const samples=Math.min(960,Math.max(180,toothCount*24)),points=[];
-      for(let i=0;i<=samples;i++){const a=TAU*i/samples,q=neonGearPoint(gear,a,toothCount),c=Math.cos(rotation),ss=Math.sin(rotation);points.push({x:q.x*c-q.y*ss,y:q.x*ss+q.y*c});}
+      for(let i=0;i<=samples;i++){const a=TAU*i/samples,q=neonGearPoint(gear,a,toothCount,{widthMorph}),c=Math.cos(rotation),ss=Math.sin(rotation);points.push({x:q.x*c-q.y*ss,y:q.x*ss+q.y*c});}
       const trace=(lineWidth,alpha,blur,rotAdd=0)=>{ctx.save();if(rotAdd){const c=Math.cos(rotAdd),ss=Math.sin(rotAdd);ctx.transform(c,ss,-ss,c,0,0);}ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.max(0,alpha);ctx.strokeStyle=color;ctx.shadowColor=color;ctx.shadowBlur=blur;ctx.lineWidth=lineWidth;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();points.forEach((pt,i)=>i?ctx.lineTo(pt.x,pt.y):ctx.moveTo(pt.x,pt.y));ctx.stroke();ctx.restore();};
       ctx.save();ctx.translate(gear.x,gear.y);ctx.scale(scale,scale);
       const bloomT=Math.max(0,(intensity-.18)/.82);
@@ -4462,7 +4594,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           // Optimized POLY uses a worklet rather than per-gear AudioNodes; its
           // visual targets are still stored in voice.gears so the same ADSR timing
           // and release tails drive the glow.
-          drawNeonGear(gear,i,toothCounts,{color,intensity,rotation,scale:trainScale});
+          drawNeonGear(gear,i,toothCounts,{color,intensity,rotation,scale:trainScale,voice,widthMorph:getVoiceWidthModLevel(voice,gear,now)});
         });
       });
       return true;
@@ -4714,13 +4846,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             const px0 = Number(gear._lastPannerX);
             const pz0 = Number(gear._lastPannerZ);
             if (!Number.isFinite(px0) || Math.abs(px-px0)>1e-4) {
-              if (state.spatialEnabled) gear.pannerNode.positionX.setTargetAtTime(px, nowAudio, 0.02);
+              if (state.spatialEnabled) gear.pannerNode.positionX.setTargetAtTime(px, nowAudio, 0.06);
               else gear.pannerNode.positionX.value = px;
               gear._lastPannerX = px;
             }
-            if (gear.pannerNode.positionY) gear.pannerNode.positionY.value = py;
+            if (gear.pannerNode.positionY) {
+              const py0 = Number(gear._lastPannerY);
+              if (!Number.isFinite(py0) || Math.abs(py-py0)>1e-4) {
+                if (state.spatialEnabled) gear.pannerNode.positionY.setTargetAtTime(py, nowAudio, 0.06);
+                else gear.pannerNode.positionY.value = py;
+                gear._lastPannerY = py;
+              }
+            }
             if (!Number.isFinite(pz0) || Math.abs(pz-pz0)>1e-4) {
-              if (state.spatialEnabled) gear.pannerNode.positionZ.setTargetAtTime(pz, nowAudio, 0.02);
+              if (state.spatialEnabled) gear.pannerNode.positionZ.setTargetAtTime(pz, nowAudio, 0.06);
               else gear.pannerNode.positionZ.value = pz;
               gear._lastPannerZ = pz;
             }
@@ -4796,9 +4935,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           }
 
           if (pg.pannerNode?.positionX) {
-            pg.pannerNode.positionX.setTargetAtTime(px, nowAudio, 0.02);
-            pg.pannerNode.positionY.setTargetAtTime(py, nowAudio, 0.02);
-            pg.pannerNode.positionZ.setTargetAtTime(pz, nowAudio, 0.02);
+            pg.pannerNode.positionX.setTargetAtTime(px, nowAudio, 0.06);
+            pg.pannerNode.positionY.setTargetAtTime(py, nowAudio, 0.06);
+            pg.pannerNode.positionZ.setTargetAtTime(pz, nowAudio, 0.06);
           } else if (pg.pannerNode?.setPosition) {
             pg.pannerNode.setPosition(px, py, pz);
           }
@@ -4904,6 +5043,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         state.fundamentalFreq += (state.targetFundamentalFreq - state.fundamentalFreq) * factor;
         updateKinematicNetwork();
       }
+
+      // MOD WIDTH is an audio-rate-visible shape morph driven by the selected gear's ADSR graph.
+      // Update it every render frame so the graph changes the tooth shape continuously.
+      if (!keyboardTransportIdle) updateDynamicGearWidthModulation(audioNow);
+      if (!keyboardTransportIdle) updateDynamicPolyWidthModulation(audioNow);
 
       // Keep POLY trains continuously driven by the current mechanical phase.
       // Shape rate modulation (ellipse, square, hexagon, cardioid, heart, Möbius)
@@ -5795,7 +5939,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (gear.osc && !driverMode && gear.sourceMode !== 'audio' && gear.sourceMode !== 'noise' && gear.sourceMode !== 'midi') {
           const targetFreq = Math.max(0.001, gear.freq * (gear._shapeRate || 1));
           if (state.legato) {
-            gear.osc.frequency.setTargetAtTime(targetFreq, now, Math.max(0.005, state.glissTime / 3));
+            gear.osc.frequency.setTargetAtTime(targetFreq, now, Math.max(0.005, state.glissTime / 3)); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(targetFreq, now, Math.max(0.005, state.glissTime / 3));
             gear.delayNode?.delayTime.setTargetAtTime(gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq), now, Math.max(0.005, state.glissTime / 3));
           } else {
             // Direct assignment is immediate and does not append an AudioParam automation event.
@@ -5886,7 +6030,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
     }
 
-    function adsrCurveValue(t, curve) { t=Math.max(0,Math.min(1,Number(t)||0)); const c=Math.max(-1,Math.min(1,Number(curve)||0)); if(Math.abs(c)<.001)return t; const k=1+6*Math.abs(c); return c>0?1-Math.pow(1-t,k):Math.pow(t,k); }
+    function adsrCurveValue(t, curve) { t=Math.max(0,Math.min(1,Number(t)||0)); const c=Math.max(-1,Math.min(1,Number(curve)||0)); let shaped; if(Math.abs(c)<.001) shaped=t; else { const k=1+6*Math.abs(c); shaped=c>0?1-Math.pow(1-t,k):Math.pow(t,k); } const u=Math.max(0,Math.min(1,shaped)); return u*u*u*(u*(u*6-15)+10); }
     // Live ADSR automation uses cancellable linear segments instead of
     // AudioParam curve automation. Chrome can reject a new curve when it overlaps an
     // already-running curve by a fraction of a sample. Under rapid mono/poly
@@ -5900,12 +6044,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const sus=Math.max(0,Math.min(1,Number(adsr?.sustain ?? .8)));
       const r=Math.max(0,Math.min(10,Number(adsr?.release)||0));
       const t=Math.max(0,Number(now)||0);
-      const SEG=16;
+      const SEG=64;
       const curveAt=(u,curve)=>adsrCurveValue(u,curve);
       const scheduleSegmented=(from,to,duration,curve,start)=>{
         if(duration<=0){param.setValueAtTime(to,start);return;}
         param.setValueAtTime(from,start);
-        const n=Math.max(2,Math.min(SEG,Math.ceil(duration*12)+1));
+        const n=Math.max(4,Math.min(SEG,Math.ceil(duration*64)+1));
         for(let i=1;i<n;i++){
           const u=i/(n-1),v=from+(to-from)*curveAt(u,curve);
           param.linearRampToValueAtTime(v,start+duration*u);
@@ -6098,7 +6242,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function disconnectPolyGear(pg) {
       if (!pg) return;
       if (pg.source) { try { pg.source.stop(); } catch(e) {} try { pg.source.disconnect(); } catch(e) {} }
-      if (pg.osc) { try { pg.osc.stop(); } catch(e) {} try { pg.osc.disconnect(); } catch(e) {} }
+      for (const key of ['osc','oscSine']) { if (pg[key]) { try { pg[key].stop(); } catch(e) {} try { pg[key].disconnect(); } catch(e) {} } }
+      for (const key of ['oscShapeGain','oscSineGain']) { if (pg[key]) { try { pg[key].disconnect(); } catch(e) {} } }
       if (pg.noiseHPF) { try { pg.noiseHPF.disconnect(); } catch(e) {} }
       if (pg.noiseLPF) { try { pg.noiseLPF.disconnect(); } catch(e) {} }
       try { pg.delayNode.disconnect(); } catch(e) {}
@@ -6287,17 +6432,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function renderAdsrGraph(svg, adsr, id) {
       if(!svg || !adsr) return;
+      svg.classList.toggle('mod-width', svg.dataset.mode === 'mod-width');
       const l=8,r=192,t=8,b=61,w=r-l,h=b-t;
       const A=Math.max(0,Math.min(2,Number(adsr.attack)||0)),D=Math.max(0,Math.min(2,Number(adsr.decay)||0)),S=Math.max(0,Math.min(1,Number(adsr.sustain ?? 0.8))),R=Math.max(0,Math.min(10,Number(adsr.release)||0));
       const ax=l+47*adsrTimeToUnit(A,2), dx=55+45*adsrTimeToUnit(D,2), sx=125, rx=sx+67*adsrTimeToUnit(R,10), yp=t+2, ys=b-S*h;
-      const bend=(x1,y1,x2,y2,c)=>`${((x1+x2)/2).toFixed(2)} ${((y1+y2)/2-c*12).toFixed(2)}`;
-      const d=`M ${l} ${b} Q ${bend(l,b,ax,yp,adsr.attackCurve)} ${ax} ${yp} Q ${bend(ax,yp,dx,ys,adsr.decayCurve)} ${dx} ${ys} L ${sx} ${ys} Q ${bend(sx,ys,rx,b,adsr.releaseCurve)} ${rx} ${b}`;
+      const stage=(x0,y0,x1,y1,duration,curve)=>{
+        const n=32, out=[];
+        for(let i=0;i<=n;i++){const u=i/n; const v=adsrCurveValue(u,curve); out.push([x0+(x1-x0)*u,y0+(y1-y0)*v]);}
+        return out;
+      };
+      const curvePts=[...stage(l,b,ax,yp,A,adsr.attackCurve),...stage(ax,yp,dx,ys,D,adsr.decayCurve).slice(1),[sx,ys],...stage(sx,ys,rx,b,R,adsr.releaseCurve).slice(1)];
+      const d=`M ${curvePts.map((p,i)=>((i?'L ':'')+p[0].toFixed(2)+' '+p[1].toFixed(2))).join(' ')}`;
       svg.querySelector(`#${id}-line`)?.setAttribute('d',d);svg.querySelector(`#${id}-hitline`)?.setAttribute('d',d);svg.querySelector(`#${id}-fill`)?.setAttribute('d',d+' Z');
-      const pts={attack:[ax,yp],decay:[dx,ys],sustain:[sx,ys],release:[rx,b]};
-      for(const [k,[x,y]] of Object.entries(pts)){svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cy',y);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cy',y);}
+      const handlePts={attack:[ax,yp],decay:[dx,ys],sustain:[sx,ys],release:[rx,b]};
+      for(const [k,[x,y]] of Object.entries(handlePts)){svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-h-${k}`)?.setAttribute('cy',y);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cx',x);svg.querySelector(`#${id}-hit-${k}`)?.setAttribute('cy',y);}
       const val=svg.querySelector(`#${id}-values`); if(val)val.textContent=`A ${formatAdsrTime(A)}   D ${formatAdsrTime(D)}   S ${Math.round(S*100)}%   R ${formatAdsrTime(R)}`;
     }
-    function bindAdsrGraph(svg, getAdsr, setAdsr, id, getGear=null) {
+    function bindAdsrGraph(svg, getAdsr, setAdsr, id, getGear=null, linkEnabled=true, lockTiming=false) {
       if (!svg || svg.dataset.bound === '1') return;
       svg.dataset.bound = '1';
       svg.style.touchAction = 'none';
@@ -6364,7 +6515,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           if(!drag || drag.id!==e.pointerId || drag.moved || !drag.holding) return;
           holdTriggered=true;
           drag.holding=false;
-          const group=adsrLinkGroupForKey(drag.k);
+          const allowLinks = typeof linkEnabled==='function' ? !!linkEnabled() : !!linkEnabled;
+          const group=allowLinks ? adsrLinkGroupForKey(drag.k) : null;
           if(group){
             toggleAdsrLink(gear,group);
             renderAdsrGraph(svg,getAdsr(),id);
@@ -6382,13 +6534,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if(holdTriggered) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation?.(); return; }
         const a = { ...(getAdsr() || {}) }, q = getPts();
         if (drag.k === 'attack') {
-          a.attack = adsrTimeFromUnit(clamp((p.x - 8) / 47, 0, 1), 2);
+          if(!lockTiming) a.attack = adsrTimeFromUnit(clamp((p.x - 8) / 47, 0, 1), 2);
         } else if (drag.k === 'decay') {
-          a.decay = adsrTimeFromUnit(clamp((p.x - 55) / 45, 0, 1), 2);
+          if(!lockTiming) a.decay = adsrTimeFromUnit(clamp((p.x - 55) / 45, 0, 1), 2);
         } else if (drag.k === 'sustain') {
           a.sustain = clamp((61 - p.y) / 53, 0, 1);
         } else if (drag.k === 'release') {
-          a.release = adsrTimeFromUnit(clamp((p.x - 125) / 67, 0, 1), 10);
+          if(!lockTiming) a.release = adsrTimeFromUnit(clamp((p.x - 125) / 67, 0, 1), 10);
         } else {
           const kind = drag.k.slice(0, -5);
           const mids = {
@@ -6448,6 +6600,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const base=gear?.adsr||state.adsr;
       const target=visualTarget||gear;
       neonScheduleEnvelope(target,open,gear,now);
+      scheduleWidthModEnvelope(target,open,gear,now);
       if(!open){
         // Bloom is an attack-only control. Release remains the gear's own ADSR.
         schedulePerGearAdsr(false,gear,param,now);
@@ -6579,7 +6732,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           noiseHPF.type = 'highpass';
           noiseLPF.type = 'lowpass';
 
-          const w = normalizeToothWidth(getGearToothWidth(gear));
+          const level = getVoiceWidthModLevel(voice, gear, now);
+          const baseWidth = getGearToothWidth(gear);
+          const w = normalizeToothWidth(0.02 + (baseWidth - 0.02) * level);
           const hpf = Math.min(16000, 40 * Math.pow(120, 1 - w));
           const lpf = Math.max(hpf + 50, Math.min(18000, 500 + 11500 * w));
           const q = 0.8 + 16 * Math.abs(w - 0.5) * 2;
@@ -6601,13 +6756,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           // Audio mode without a loaded buffer is likewise silent until a buffer exists.
           voice.gears.set(gear.id, { delayNode, gainNode, adsrGainNode, pannerNode, gear, isExternalNoLocalAudio: true });
         } else {
-          const osc = state.audioCtx.createOscillator();
-          if (getGearToothWaveform(gear) === 'clockwork') osc.setPeriodicWave(getClockworkWave(state.audioCtx, gear));
-          else osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx, getGearToothWaveform(gear), getGearToothWidth(gear)));
-          osc.frequency.setValueAtTime(gearFreq, now);
-          osc.connect(delayNode);
-          osc.start(now);
-          voice.gears.set(gear.id, { osc, delayNode, gainNode, adsrGainNode, pannerNode, gear });
+          const type=getGearToothWaveform(gear), width=getGearToothWidth(gear), morph=normalizeWidthModLevel(getVoiceWidthModLevel(voice,gear,now));
+          const osc=state.audioCtx.createOscillator(), sine=state.audioCtx.createOscillator();
+          const shapeGain=state.audioCtx.createGain(), sineGain=state.audioCtx.createGain();
+          if(type==='clockwork') { osc.setPeriodicWave(getClockworkWave(state.audioCtx,gear)); shapeGain.gain.setValueAtTime(1,now); sineGain.gain.setValueAtTime(0,now); }
+          else { osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx,type,width,1)); shapeGain.gain.setValueAtTime(morph,now); sineGain.gain.setValueAtTime(1-morph,now); }
+          osc.frequency.setValueAtTime(gearFreq,now); sine.frequency.setValueAtTime(gearFreq,now);
+          osc.connect(shapeGain); shapeGain.connect(delayNode); sine.connect(sineGain); sineGain.connect(delayNode); osc.start(now); sine.start(now);
+          voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear});
         }
       }); } catch (constructionError) {
         console.error('POLY voice construction failed; rolling back all partial nodes',constructionError);
@@ -6748,14 +6904,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             pg.noiseLPF.Q.setTargetAtTime(q, now, 0.01);
           } else if (!driverMode && pg.osc) {
             if (state.legato) {
-              pg.osc.frequency.setTargetAtTime(
-                gearFreq,
-                now,
-                Math.max(0.005, state.glissTime / 3)
-              );
+              pg.osc.frequency.setTargetAtTime(gearFreq,now,Math.max(0.005,state.glissTime/3)); if (pg.oscSine) pg.oscSine.frequency.setTargetAtTime(gearFreq,now,Math.max(0.005,state.glissTime/3));
             } else {
               // POLY + Porta OFF: every pressed note gets its exact frequency immediately.
-              pg.osc.frequency.setValueAtTime(gearFreq, now);
+              pg.osc.frequency.setValueAtTime(gearFreq, now); if (pg.oscSine) pg.oscSine.frequency.setValueAtTime(gearFreq, now);
             }
           }
         });
@@ -7493,6 +7645,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const fb = relY < -5 ? 'FRONT' : relY > 5 ? 'BEHIND' : '';
         quadrantText = `${fb} ${lr}`.trim() || 'CENTER';
       }
+      const orbitRadiusForInspector = Math.max(mainGear.pitchRadius + gear.pitchRadius + 2, gear.orbitRadius || Math.hypot(relX,relY));
+      const hrtfOrbitPos = gear.orbitEnabled && !gear.hrtfZAdsr && !gear.isMain
+        ? getGearHrtfOrbitPosition(gear, gear.orbitAngle + gear.orbitPhase, orbitRadiusForInspector)
+        : {x:relX, y:getGearHrtfHeight(gear), z:relY};
+      const hrtfX = Number(hrtfOrbitPos.x||0) * state.spatialScale;
+      const hrtfY = Number(hrtfOrbitPos.y||0);
+      const hrtfZ = Number(hrtfOrbitPos.z||0) * state.spatialScale;
 
       content.innerHTML = `
         <div><strong>Role:</strong> ${gear.isMain ? 'Main Drive Hub (Listener Center)' : 'Secondary Harmonic Gear'}</div>
@@ -7511,8 +7670,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           </div>
           <div style="display:flex;align-items:center;gap:5px;margin-top:4px;">
             <input id="inspector-tooth-waveform" type="hidden" value="${getGearToothWaveform(gear)}">
-            <input id="slider-inspector-tooth-width" type="range" min="0" max="0.98" step="0.01" value="${getGearToothWidth(gear)}" style="flex:1;min-width:70px;">
-            <span id="val-inspector-tooth-width" style="min-width:34px;text-align:right;color:var(--accent-cyan);">${getGearToothWidth(gear).toFixed(2)}</span>
+            <input id="slider-inspector-tooth-width" type="range" min="0" max="0.98" step="0.0001" value="${getGearToothWidth(gear).toFixed(4)}" style="flex:1;min-width:70px;">
+            <span id="val-inspector-tooth-width" style="min-width:34px;text-align:right;color:var(--accent-cyan);">${getGearToothWidth(gear).toFixed(4)}</span>
           </div>
           <div class="palette-source-config" id="inspector-noise-config" hidden><span>Noise band</span><small style="opacity:.8">slider: HPF → LPF / Q</small></div>
           <div class="palette-source-config" id="inspector-audio-config" hidden>
@@ -7549,6 +7708,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <text class="gear-adsr-label" x="12" y="11">A</text><text class="gear-adsr-label" x="68" y="11">D</text><text class="gear-adsr-label" x="114" y="11">S</text><text class="gear-adsr-label" x="164" y="11">R</text><text id="inspector-adsr-values" class="gear-adsr-value" x="100" y="71" text-anchor="middle"></text>
           </svg></div>
         </div>
+        <div class="gear-adsr-section width-mod-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;font-size:.7rem;">
+            <span style="font-weight:700;color:#62f08a;">MOD WIDTH</span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="gear-adsr-caption">USE ADSR GRAPH</span><input id="chk-inspector-mod-width" type="checkbox" ${gear.widthModEnabled?'checked':''}></span>
+          </label>
+          <div style="font-size:.64rem;color:var(--text-muted);line-height:1.3;margin-top:3px;">Off: ADSR graph controls volume. On: this gear uses the same graph as its MOD WIDTH envelope; the curve is green.</div>
+        </div>
         <div style="margin-top:6px;">
           <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Ratio Target</span><span id="val-inspector-ratio" style="color:var(--accent-cyan)">${gear.isMain ? '1:1' : floatToFraction(gear.ratio)}</span></label>
           <input type="range" id="slider-inspector-ratio" min="0.0625" max="16" step="0.0001" value="${Math.min(16, Math.max(0.0625, Math.abs(gear.ratio || 1)))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
@@ -7556,7 +7722,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         <div><strong>Absolute Ratio:</strong> ${floatToFraction(gear.ratio)} (${gear.ratio.toFixed(6)})</div>
         <div><strong>Calculated Freq:</strong> ${gear.freq.toFixed(3)} Hz</div>
         <div><strong>Acoustic Delay:</strong> ${delayMs >= 0 ? '+' : ''}${delayMs.toFixed(3)} ms</div>
-        <div><strong>3D Spatial Location:</strong> <span style="color:var(--accent-green); font-weight:bold;">${quadrantText}</span> (${distMeters}m @ ${azimuthDeg.toFixed(0)}°)</div>
+        <div><strong>3D Spatial Location:</strong> <span style="color:var(--accent-green); font-weight:bold;">${quadrantText}</span> (${distMeters}m @ ${azimuthDeg.toFixed(0)}°) · HRTF X ${hrtfX.toFixed(4)} Y ${hrtfY.toFixed(4)} Z ${hrtfZ.toFixed(4)}</div>
         <div><strong>Rotation Dir:</strong> ${gear.ratio >= 0 ? 'Clockwise (+)' : 'Counter-Clockwise (-)'}</div>
         <div><strong>Meshed With:</strong> ${parents.map(p => p.teeth + 'T').join(', ') || 'None (Unpowered)'}</div>
 
@@ -7596,8 +7762,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <label style="display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;"><input type="checkbox" id="chk-orbit-preserve-phase" ${gear.isMain ? 'disabled' : ''} ${gear.orbitPreservePhase !== false ? 'checked' : ''}><span>Preserve Phase</span></label>
           </div>
           <div style="margin-top:6px;">
-            <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>HRTF Height / Z <span style="color:var(--text-muted);">below ↔ above</span></span><span id="val-hrtf-z" style="color:var(--accent-cyan)">${Math.round((Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))+1)*50)}%</span></label>
-            <input type="range" id="slider-hrtf-z" min="-1" max="1" step="0.01" value="${Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
+            <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>HRTF Height / Z <span style="color:var(--text-muted);">below ↔ above</span></span><span id="val-hrtf-z" style="color:var(--accent-cyan)">${(Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))).toFixed(3)}</span></label>
+            <input type="range" id="slider-hrtf-z" min="-1" max="1" step="0.001" value="${Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
             <label style="display:flex; align-items:center; gap:5px; cursor:pointer; margin-top:3px; font-size:.68rem;"><input type="checkbox" id="chk-hrtf-z-adsr" ${gear.isMain ? 'disabled' : ''} ${gear.hrtfZAdsr ? 'checked' : ''}><span>Follow ADSR height</span></label>
           </div>
           <div id="hrtf-z-dynamics" style="margin-top:5px; opacity:${gear.hrtfZAdsr ? '.45' : '1'};">
@@ -7658,7 +7824,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         });
         if (inspectorToothSelect) inspectorToothSelect.value = type;
         if (inspectorToothWidth) inspectorToothWidth.value = width;
-        if (inspectorToothWidthVal) inspectorToothWidthVal.textContent = width.toFixed(2);
+        if (inspectorToothWidthVal) inspectorToothWidthVal.textContent = width.toFixed(4);
         if (inspectorToothPreview) inspectorToothPreview.innerHTML = `<svg viewBox="0 0 220 32" preserveAspectRatio="none" aria-hidden="true">${drawToothWaveGlyph(type, width, 4, 8, 212, 16)}</svg>`;
       };
       inspectorToothSelect?.addEventListener('change', e => {
@@ -7678,20 +7844,56 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       document.getElementById('inspector-midi-note')?.addEventListener('change',e=>{gear.midiNote=Number(e.target.value)||60;});
       syncInspectorSourceConfigs();
       const inspectorAdsrGraph = document.getElementById('inspector-adsr-graph');
-      if (inspectorAdsrGraph) {
-        // The inspector DOM is rebuilt on every selection. Bind and paint both
-        // immediately and on the next frame so layout/visibility cannot leave
-        // a freshly-created SVG blank.
-        bindAdsrGraph(inspectorAdsrGraph,()=>gear.adsr,(a,k)=>{applyLinkedAdsrChange(gear,a,k);},'inspector-adsr',()=>gear);
-        renderAdsrGraph(inspectorAdsrGraph, gear.adsr || state.adsr, 'inspector-adsr'); renderAdsrLinkVisuals(inspectorAdsrGraph, gear.adsr || state.adsr, 'inspector-adsr', gear);
+      const inspectorModWidth = document.getElementById('chk-inspector-mod-width');
+      const getInspectorAdsr = () => gear.widthModEnabled ? (gear.widthMod || gear.adsr || state.adsr) : (gear.adsr || state.adsr);
+      const renderInspectorAdsrMode = () => {
+        const mod=!!gear.widthModEnabled;
+        if(inspectorAdsrGraph){
+          inspectorAdsrGraph.dataset.mode=mod?'mod-width':'adsr';
+          renderAdsrGraph(inspectorAdsrGraph,getInspectorAdsr(),'inspector-adsr');
+          inspectorAdsrGraph.querySelectorAll('[id^="inspector-adsr-ind-"]').forEach(el=>el.style.display=mod?'none':'');
+          if(!mod) renderAdsrLinkVisuals(inspectorAdsrGraph,getInspectorAdsr(),'inspector-adsr',gear);
+        }
+        if(inspectorModWidth) inspectorModWidth.checked=mod;
+        const title=inspectorAdsrGraph?.parentElement?.previousElementSibling?.querySelector('strong');
+        if(title) title.textContent=mod?'MOD WIDTH ADSR':'Independent Gear ADSR';
+      };
+      if(inspectorAdsrGraph){
+        bindAdsrGraph(inspectorAdsrGraph, getInspectorAdsr, (a,k)=>{
+          if(gear.widthModEnabled){
+            gear.widthMod={...(gear.widthMod||gear.adsr||{}),...a};
+            gear._widthModEnvelope=null;
+            updateAudioNodes();
+          } else {
+            applyLinkedAdsrChange(gear,a,k);
+          }
+        }, 'inspector-adsr', ()=>gear, ()=>!gear.widthModEnabled);
+        renderInspectorAdsrMode();
         const paintInspectorAdsr=()=>{
           const g=document.getElementById('inspector-adsr-graph');
           const selected=state.gearMap.get(state.selectedGearId);
-          if(g&&selected){ renderAdsrGraph(g, selected.adsr||state.adsr, 'inspector-adsr'); renderAdsrLinkVisuals(g, selected.adsr||state.adsr, 'inspector-adsr', selected); }
+          if(g&&selected){
+            g.dataset.mode=selected.widthModEnabled?'mod-width':'adsr';
+            const current=selected.widthModEnabled?(selected.widthMod||selected.adsr||state.adsr):(selected.adsr||state.adsr);
+            renderAdsrGraph(g,current,'inspector-adsr');
+            g.querySelectorAll('[id^="inspector-adsr-ind-"]').forEach(el=>el.style.display=selected.widthModEnabled?'none':'');
+            if(!selected.widthModEnabled) renderAdsrLinkVisuals(g,current,'inspector-adsr',selected);
+            const cb=document.getElementById('chk-inspector-mod-width'); if(cb)cb.checked=!!selected.widthModEnabled;
+            const title=g.parentElement?.previousElementSibling?.querySelector('strong'); if(title)title.textContent=selected.widthModEnabled?'MOD WIDTH ADSR':'Independent Gear ADSR';
+          }
         };
         requestAnimationFrame(()=>requestAnimationFrame(paintInspectorAdsr));
         setTimeout(paintInspectorAdsr,0);
       }
+      inspectorModWidth?.addEventListener('change',e=>{
+        const enabled=!!e.target.checked;
+        gear.widthModEnabled=enabled;
+        if(enabled) gear.widthMod={...(gear.adsr||state.adsr)};
+        gear._widthModEnvelope=null;
+        renderInspectorAdsrMode();
+        updateAudioNodes();
+        renderGearList();
+      });
       refreshInspectorTooth();
       updateAudioNodes();
       renderGearList();
@@ -7845,7 +8047,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       };
       hrtfZSlider?.addEventListener('input', e => {
         gear.hrtfZ = Math.max(-1, Math.min(1, Number(e.target.value) || 0));
-        if (hrtfZValue) hrtfZValue.textContent = `${Math.round((gear.hrtfZ + 1) * 50)}%`;
+        if (hrtfZValue) hrtfZValue.textContent = `${gear.hrtfZ.toFixed(3)}`;
         updateAudioNodes();
       });
       hrtfZAdsrChk?.addEventListener('change', e => {
@@ -9405,7 +9607,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
       volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
       orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
-      shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:g.toothWidth,sourceMode:g.sourceMode,adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
+      shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:safeNumber(g.toothWidth,.5),widthModEnabled:!!g.widthModEnabled,widthMod:g.widthMod?cloneJSON(g.widthMod):null,sourceMode:g.sourceMode,adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
       audioFileName:g.audioFileName||'',audioLoopStart:g.audioLoopStart||0,audioLoopEnd:g.audioLoopEnd||0,midiNote:g.midiNote||60,magneticMesh:g.magneticMesh!==false,
       shapeParams:g.shapeParams?cloneJSON(g.shapeParams):{},neighbors:Array.from(g.neighbors||[]),audioWav:audio
     };
@@ -9473,6 +9675,9 @@ body.neon-visual-mode #desktop-focus-toggle{
     for(const sg of snapshots){
       const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
       Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      g.widthModEnabled=!!sg.widthModEnabled;
+      if(sg.widthMod) g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
+      else g.widthMod={...g.adsr};
       state.gears.push(g);state.gearMap.set(g.id,g);
     }
     const byId=new Map(state.gears.map(g=>[g.id,g]));
