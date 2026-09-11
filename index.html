@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v62</title>
+  <title>JI Gear Synth v63</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -750,9 +750,9 @@
     /* KEYBOARD BLOOM CONTROL */
     .keyboard-panel-box{position:relative;}
     #keyboard-user-presets-toggle{position:absolute;top:6px;right:6px;z-index:4;padding:4px 8px;font-size:.58rem;}
-    .keyboard-panel-title{padding-right:76px;}
+    .keyboard-panel-title{padding-right:76px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0;box-sizing:border-box;overflow:visible;}
     .keyboard-panel-spacer{flex:0 0 1px;}
-    .keyboard-bloom-wrap{flex:1 1 auto;min-width:145px;max-width:270px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+    .keyboard-bloom-wrap{flex:1 1 145px;min-width:132px;max-width:270px;display:flex;flex-direction:column;justify-content:center;gap:2px}
     .keyboard-bloom-label{display:flex;align-items:center;justify-content:space-between;font:700 8px Georgia,serif;color:#d9c49a;letter-spacing:.5px}
     .keyboard-bloom-label strong{color:#f1d184}
     #slider-keyboard-bloom{width:100%;height:20px;accent-color:#d5a24b;touch-action:none}
@@ -760,6 +760,7 @@
     .keyboard-bloom-options label{margin:0;display:flex;align-items:center;gap:3px;font-size:7px!important}
     .keyboard-bloom-options input{margin:0}
     @media (max-width:900px) and (orientation:portrait){.keyboard-bloom-wrap{min-width:132px;max-width:210px}#slider-keyboard-bloom{height:18px}}
+    @media (max-width:520px){.keyboard-panel-title{padding-right:6px;}.keyboard-panel-title .keyboard-bloom-wrap{flex:1 1 100%;max-width:100%;min-width:0;}.keyboard-panel-title #keyboard-user-presets-toggle{position:relative;top:auto;right:auto;margin-left:auto;order:3;}.keyboard-panel-title .keyboard-panel-spacer{display:none!important;}}
     /* MAIN CANVAS AREA */
     #canvas-container {
       flex: 1;
@@ -1565,8 +1566,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 <body>
 
   <div id="fundamental-topbar" aria-label="Fundamental Frequency">
-    <div class="fundamental-topbar-label"><span id="fundamental-label">Fundamental Frequency</span><span id="val-fundamental">0.0 Hz</span></div>
-    <input type="range" id="slider-fundamental" min="-1" max="4.38" step="0.005" value="-1" aria-label="Fundamental Frequency">
+    <div class="fundamental-topbar-label"><span id="fundamental-label">Fundamental Frequency</span><span id="val-fundamental">440.0 Hz</span></div>
+    <input type="range" id="slider-fundamental" min="-1" max="4.38" step="0.005" value="2.643452676" aria-label="Fundamental Frequency">
     <div class="fundamental-topbar-presets">
       <button class="btn-freq-preset" data-freq="0.5">0.5</button>
       <button class="btn-freq-preset" data-freq="1.0">1</button>
@@ -1575,7 +1576,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       <button class="btn-freq-preset" data-freq="432.0">432</button>
       <button class="btn-freq-preset" data-freq="440.0">440</button>
     </div>
-    <div class="fundamental-topbar-number"><input type="number" id="input-fundamental" min="0" max="24000" step="0.1" value="0.0"><span id="fundamental-unit">Hz</span></div>
+    <div class="fundamental-topbar-number"><input type="number" id="input-fundamental" min="0" max="24000" step="0.1" value="440.0"><span id="fundamental-unit">Hz</span></div>
   </div>
 
   <div id="app-container">
@@ -2064,9 +2065,9 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       spatialEnabled: true,       // 3D Binaural HRTF Enabled
       spatialMode: 'HRTF',        // 'HRTF' or 'equalpower'
       spatialScale: 0.01,       // Scaling factor from canvas pixels to 3D audio meters
-      fundamentalFreq: 1.0,
-      targetFundamentalFreq: 1.0, // Target fundamental frequency for legato glissando
-      baseFundamentalFreq: 1.0,   // Base fundamental frequency f
+      fundamentalFreq: 440.0,
+      targetFundamentalFreq: 440.0, // Target fundamental frequency for legato glissando
+      baseFundamentalFreq: 440.0,   // Base fundamental frequency f; keyboard reference is A4=440 Hz
       octaveShift: 0,            // Octave shift (-3 to +3)
       pressedKeys: new Set(),    // Active playing piano keys
       activeSemitone: null,      // Active playing semitone
@@ -2310,7 +2311,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       tool.pivotY = main.y;
 
       if (!tool.enabled) {
-        tool.savedFrequency = Number.isFinite(state.fundamentalFreq) ? state.fundamentalFreq : 1.0;
+        tool.savedFrequency = Number.isFinite(state.fundamentalFreq) ? state.fundamentalFreq : 440.0;
         tool.savedDriverRPM = Number.isFinite(state.audioDriver.driverRPM) ? state.audioDriver.driverRPM : 33.3;
       }
 
@@ -3332,7 +3333,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       // leave the generator at 0 Hz until the user actually turns the handle.
       if (state.crankTool.enabled && !manualCrankStart && state.fundamentalFreq <= 0) {
         const autoFreq = Number.isFinite(state.crankTool.savedFrequency) && state.crankTool.savedFrequency > 0
-          ? state.crankTool.savedFrequency : 1.0;
+          ? state.crankTool.savedFrequency : 440.0;
         setFundamentalFrequency(autoFreq, false, true);
       }
 
@@ -3344,12 +3345,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       initOptimizedPolyPool().catch(()=>{});
       document.getElementById('btn-toggle-audio').textContent = '⏸ PAUSE AUDIO';
       document.getElementById('btn-toggle-audio').style.background = '#10b981';
-      // Continuous-mode startup drone belongs only to the monophonic engine.
+      // Continuous-mode startup A4 drone belongs only to the monophonic engine.
       // POLY must never inherit a synthetic 'startup-c' voice because it has no
       // corresponding physical key-up and can therefore look like a stuck note.
       if (!state.releaseOnKeyup && !manualCrankStart && !state.polyMode) {
         state.keyboardAudioActive = true;
-        playSemitone(0, 'startup-c');
+        playSemitone(0, 'startup-a');
         state.lastNoteDownPerf = 0;
       } else {
         state.gears.forEach(g=>{g._neonEnvelope=null;});
@@ -6312,20 +6313,22 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     /* 12TET QWERTY KEYBOARD NOTE SYNTHESIS ENGINE */
     const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B', 'C (Octave)'];
 
+    // QWERTY keyboard is referenced to A, so H = A4 = 440 Hz at octave shift 0.
+    // Values are signed semitone offsets from that A reference.
     const KEY_TO_SEMITONE = {
-      'KeyA': 0,  // C (f)
-      'KeyW': 1,  // C#
-      'KeyS': 2,  // D
-      'KeyE': 3,  // D#
-      'KeyD': 4,  // E
-      'KeyF': 5,  // F
-      'KeyT': 6,  // F#
-      'KeyG': 7,  // G
-      'KeyY': 8,  // G#
-      'KeyH': 9,  // A
-      'KeyU': 10, // A#
-      'KeyJ': 11, // B
-      'KeyK': 12  // C (2f)
+      'KeyA': -9, // C
+      'KeyW': -8, // C#
+      'KeyS': -7, // D
+      'KeyE': -6, // D#
+      'KeyD': -5, // E
+      'KeyF': -4, // F
+      'KeyT': -3, // F#
+      'KeyG': -2, // G
+      'KeyY': -1, // G#
+      'KeyH':  0, // A = fundamental
+      'KeyU':  1, // A#
+      'KeyJ':  2, // B
+      'KeyK':  3  // C (next pitch)
     };
 
     function applyKeyboardDriverPitch() {
@@ -7900,9 +7903,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function midiNoteToVoice(note) {
-      // MIDI note 60 (C4) is the machine's 1:1 reference. Keep the full
+      // MIDI note 69 (A4) is the machine's 1:1 reference at 440 Hz. Keep the full
       // signed semitone distance so the complete MIDI range is preserved.
-      const semitone = Number(note) - 60;
+      const semitone = Number(note) - 69;
       return { note, semitone, octave: 0 };
     }
 
@@ -8999,7 +9002,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('btn-driver-clear').addEventListener('click', () => {
       if(state.audioDriver.recorder) stopDriverRecording();
       state.audioDriver.playing=false; stopAudioDriverSources(); state.audioDriver.buffer=null; state.audioDriver.rawBuffer=null; state.audioDriver.fileName=''; state.audioDriver.elapsed=0; state.audioDriver.loopStart=0; state.audioDriver.loopEnd=0;
-      document.getElementById('input-audio-driver').value=''; document.getElementById('driver-wave-wrap').style.display='none'; document.getElementById('audio-driver-status').textContent='No audio file loaded'; document.getElementById('btn-driver-play').textContent='▶ DRIVE'; restoreFrequencyControls(); setFundamentalFrequency(state.baseFundamentalFreq || 1.0, false); updateAudioNodes();
+      document.getElementById('input-audio-driver').value=''; document.getElementById('driver-wave-wrap').style.display='none'; document.getElementById('audio-driver-status').textContent='No audio file loaded'; document.getElementById('btn-driver-play').textContent='▶ DRIVE'; restoreFrequencyControls(); setFundamentalFrequency(state.baseFundamentalFreq || 440.0, false); updateAudioNodes();
     });
 
     // 3D Binaural Spatializer Control Listeners
@@ -9705,13 +9708,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     // INITIALIZATION
     function initApp() {
       // Start as a physical machine: the crank is attached and the generator is stopped.
-      // Preserve 1 Hz as the pre-crank setting so deleting the crank restores normal generation.
+      // Preserve A4=440 Hz as the pre-crank setting so deleting the crank restores the A=440 reference.
       addGear(120, 0, 0, true);
       state.selectedGearId = null;
       state.activePaletteGearId = state.gears.find(g => g.isMain)?.id || null;
 
-      setFundamentalFrequency(1.0);
       placeCrankTool(true);
+      // The app always opens at the A=440 reference, even though the crank is attached.
+      // This keeps the visible FUNDAMENTAL slider at 440 instead of leaving it at the crank-stop value of 0.
+      setFundamentalFrequency(440.0);
       fitMachineToView(true);
       document.getElementById('startup-tooltip')?.remove();
       initVirtualKeyboardEvents();
@@ -10084,6 +10089,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     inspectorNext:nodes.inspector?.nextSibling||null,
     keyboardTitle:q('.keyboard-panel-title',keyboardPanel),
     keyboardContainer:q('#virtual-keyboard',keyboardPanel),
+    keyboardBloom:q('.keyboard-bloom-wrap',keyboardPanel),
     keyboardChildren:Array.from(keyboardPanel.children),
     movable:new Map()
   };
@@ -10091,12 +10097,15 @@ body.neon-visual-mode #desktop-focus-toggle{
     original.movable.set(node,{parent:node.parentNode,next:node.nextSibling,display:node.style.display});
   });
   let inMode=false,drawerOpen=false,drawer=null,dock=null,drawerScroll=null,keyboardOptions=null,bloomDrawer=null;
+  let restoreDrawerOpen=false;
+  let shellGeneration=0;
 
   function makeSectionTitle(text){
     const h=document.createElement('div');h.className='mobile-one-section-title';h.textContent=text;return h;
   }
   function createShell(){
     if(drawer)return;
+    shellGeneration++;
     dock=document.createElement('div');dock.id='mobile-keyboard-dock';
     const kb=q('#virtual-keyboard');
     const presetBtn=document.createElement('button');presetBtn.id='mobile-user-presets-toggle';presetBtn.type='button';presetBtn.textContent='PRESETS';presetBtn.title='User presets';presetBtn.setAttribute('aria-label','User presets');
@@ -10155,6 +10164,9 @@ body.neon-visual-mode #desktop-focus-toggle{
     // Keep Performance and Bloom at the bottom of the one-page controls, directly above the keyboard.
     drawerScroll.appendChild(keyboardOptions);
     drawerScroll.appendChild(bloomDrawer);
+    // Defensive re-homing: orientation/viewport changes must never leave a control
+    // inside a detached drawer or hidden desktop panel.
+    if(bloom && bloom.parentNode!==bloomDrawer) bloomDrawer.appendChild(bloom);
 
     // Keep the existing network/open-ratio panels out of the one-screen layout.
     if(nodes.openRatio)nodes.openRatio.style.display='none';
@@ -10204,18 +10216,39 @@ body.neon-visual-mode #desktop-focus-toggle{
     // Performance and Bloom remain the final controls in the one-page drawer, directly above the keyboard.
     if(keyboardOptions)drawerScroll.appendChild(keyboardOptions);
     if(bloomDrawer)drawerScroll.appendChild(bloomDrawer);
-    setDrawer(false);
+    // Restore the user's controls-panel state after every orientation/viewport transition.
+    const reopen=restoreDrawerOpen;
+    setDrawer(reopen);
   }
 
   function leave(){
     if(!inMode)return;
+    restoreDrawerOpen=drawerOpen;
     setDrawer(false);
     app.classList.remove('mobile-one-screen-mode','mobile-controls-open');
     // Put inspector internals back where the original inspector system expects them.
     if(nodes.inspector&&original.inspectorParent) original.inspectorParent.appendChild(nodes.inspector);
-    // Rebuild the keyboard card's original direct-child order.
+    // Rebuild the keyboard card's original direct-child order. Nested controls such
+    // as BLOOM must also be restored to their original parent, because moving them
+    // into the mobile drawer otherwise leaves them stranded when returning to desktop.
     if(keyboardPanel){
       original.keyboardChildren.forEach(ch=>{if(ch&&ch.parentNode!==keyboardPanel)keyboardPanel.appendChild(ch);});
+      const bloom=original.keyboardBloom;
+      if(bloom){
+        const parent=bloom.parentNode;
+        if(parent !== keyboardPanel){
+          const title=original.keyboardTitle;
+          if(title && bloom.parentNode!==title){
+            const spacer=title.querySelector('.keyboard-panel-spacer');
+            if(spacer) title.insertBefore(bloom,spacer);
+            else title.appendChild(bloom);
+          }
+        } else if(original.keyboardTitle && !original.keyboardTitle.contains(bloom)){
+          const spacer=original.keyboardTitle.querySelector('.keyboard-panel-spacer');
+          if(spacer) original.keyboardTitle.insertBefore(bloom,spacer);
+          else original.keyboardTitle.appendChild(bloom);
+        }
+      }
     }
     // Restore every panel we temporarily move into the one-screen drawer.
     original.movable.forEach((pos,node)=>{
@@ -10231,10 +10264,21 @@ body.neon-visual-mode #desktop-focus-toggle{
   }
 
   function sync(){
-    if(mq.matches)enter(); else leave();
+    if(mq.matches){
+      if(!inMode) enter();
+      else {
+        // Ensure all mobile controls are attached to the live drawer after any
+        // browser reflow/orientation event.
+        const bloom=q('.keyboard-bloom-wrap');
+        if(bloomDrawer && bloom && bloom.parentNode!==bloomDrawer) bloomDrawer.appendChild(bloom);
+        if(keyboardOptions && keyboardOptions.parentNode!==drawerScroll) drawerScroll.appendChild(keyboardOptions);
+        if(bloomDrawer && bloomDrawer.parentNode!==drawerScroll) drawerScroll.appendChild(bloomDrawer);
+      }
+    } else if(inMode) leave();
   }
   mq.addEventListener?.('change',sync);
-  window.addEventListener('resize',()=>{if(mq.matches&&!inMode)enter();});
+  window.addEventListener('orientationchange',()=>requestAnimationFrame(sync));
+  window.addEventListener('resize',()=>requestAnimationFrame(sync));
   sync();
 })();
 
