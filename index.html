@@ -1415,6 +1415,8 @@
     .main-drive-row { display:flex; align-items:center; gap:7px; }
     .main-drive-row > label { flex:0 0 auto; margin:0; }
     .main-drive-teeth-row input { width:5ch; min-width:5ch; max-width:5ch; }
+    /* Selected Gear Detail: declutter CURRENT GEAR info while keeping functional DOM hooks alive. */
+    .inspector-current-gear-hidden { display:none !important; }
     .main-drive-teeth-row select { flex:1; min-width:0; }
     .main-drive-shape-row { align-items:flex-start; flex-wrap:wrap; }
     .main-drive-shape-row > select { flex:1 1 180px; min-width:0; }
@@ -8286,8 +8288,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const hrtfZ = Number(hrtfOrbitPos.z||0) * state.spatialScale;
 
       content.innerHTML = `
-        <div><strong>Role:</strong> ${gear.isMain ? 'Main Drive Hub (Listener Center)' : 'Secondary Harmonic Gear'}</div>
-        <div><strong>Current Shape:</strong> <span style="color:var(--accent-cyan);">${gear.shape || 'circular'}</span></div>
+        <div class="inspector-current-gear-hidden">
+          <div><strong>Role:</strong> ${gear.isMain ? 'Main Drive Hub (Listener Center)' : 'Secondary Harmonic Gear'}</div>
+          <div><strong>Current Shape:</strong> <span style="color:var(--accent-cyan);">${gear.shape || 'circular'}</span></div>
+        </div>
+        <div class="inspector-current-gear-hidden">
         <div style="margin-top:6px; border-top:1px solid var(--border-color); padding-top:5px;">
           <strong style="color:var(--accent-cyan);">Sound Source</strong>
           <div class="inspector-source-buttons palette-source-buttons" id="inspector-source-buttons" aria-label="Selected gear sound source">
@@ -8318,6 +8323,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <label>Note <select id="inspector-midi-note"></select></label>
           </div>
         </div>
+        </div>
         <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin:4px 0 2px;">
           <strong>Teeth Count:</strong>
           <div style="display:flex; align-items:center; gap:4px;">
@@ -8326,9 +8332,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <button id="btn-inspector-teeth-up" type="button" style="padding:3px 9px; font-size:0.9rem; line-height:1;">+</button>
           </div>
         </div>
-        <div style="margin-top:6px;">
-          <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Gear Volume</span><span id="val-inspector-volume" style="color:var(--accent-cyan)">${Math.round(Math.max(0,Math.min(1,gear.volume))*100)}%</span></label>
-          <input type="range" id="slider-inspector-volume" min="0" max="1" step="0.01" value="${Math.max(0,Math.min(1,gear.volume))}" style="width:100%;">
+        <div class="inspector-current-gear-hidden">
+          <div style="margin-top:6px;">
+            <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Gear Volume</span><span id="val-inspector-volume" style="color:var(--accent-cyan)">${Math.round(Math.max(0,Math.min(1,gear.volume))*100)}%</span></label>
+            <input type="range" id="slider-inspector-volume" min="0" max="1" step="0.01" value="${Math.max(0,Math.min(1,gear.volume))}" style="width:100%;">
+          </div>
         </div>
         <div class="gear-adsr-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
           <div style="display:flex;justify-content:space-between;align-items:center;"><strong style="color:var(--accent-cyan);">Independent Gear ADSR</strong><span class="gear-adsr-caption">A≤2s · D≤2s · R≤10s</span></div>
@@ -8347,16 +8355,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           </label>
 
         </div>
-        <div style="margin-top:6px;">
-          <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Ratio Target</span><span id="val-inspector-ratio" style="color:var(--accent-cyan)">${gear.isMain ? '1:1' : floatToFraction(gear.ratio)}</span></label>
-          <input type="range" id="slider-inspector-ratio" min="0.0625" max="16" step="0.0001" value="${Math.min(16, Math.max(0.0625, Math.abs(gear.ratio || 1)))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
+        <div class="inspector-current-gear-hidden">
+          <div style="margin-top:6px;">
+            <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Ratio Target</span><span id="val-inspector-ratio" style="color:var(--accent-cyan)">${gear.isMain ? '1:1' : floatToFraction(gear.ratio)}</span></label>
+            <input type="range" id="slider-inspector-ratio" min="0.0625" max="16" step="0.0001" value="${Math.min(16, Math.max(0.0625, Math.abs(gear.ratio || 1)))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
+          </div>
         </div>
-        <div><strong>Absolute Ratio:</strong> ${floatToFraction(gear.ratio)} (${gear.ratio.toFixed(6)})</div>
-        <div><strong>Calculated Freq:</strong> ${gear.freq.toFixed(3)} Hz</div>
-        <div><strong>Acoustic Delay:</strong> ${delayMs >= 0 ? '+' : ''}${delayMs.toFixed(3)} ms</div>
-        <div><strong>3D Spatial Location:</strong> <span style="color:var(--accent-green); font-weight:bold;">${quadrantText}</span> (${distMeters}m @ ${azimuthDeg.toFixed(0)}°) · HRTF X ${hrtfX.toFixed(4)} Y ${hrtfY.toFixed(4)} Z ${hrtfZ.toFixed(4)}</div>
-        <div><strong>Rotation Dir:</strong> ${gear.ratio >= 0 ? 'Clockwise (+)' : 'Counter-Clockwise (-)'}</div>
-        <div><strong>Meshed With:</strong> ${parents.map(p => p.teeth + 'T').join(', ') || 'None (Unpowered)'}</div>
+        <div class="inspector-current-gear-hidden">
+          <div><strong>Absolute Ratio:</strong> ${floatToFraction(gear.ratio)} (${gear.ratio.toFixed(6)})</div>
+          <div><strong>Calculated Freq:</strong> ${gear.freq.toFixed(3)} Hz</div>
+          <div><strong>Acoustic Delay:</strong> ${delayMs >= 0 ? '+' : ''}${delayMs.toFixed(3)} ms</div>
+          <div><strong>3D Spatial Location:</strong> <span style="color:var(--accent-green); font-weight:bold;">${quadrantText}</span> (${distMeters}m @ ${azimuthDeg.toFixed(0)}°) · HRTF X ${hrtfX.toFixed(4)} Y ${hrtfY.toFixed(4)} Z ${hrtfZ.toFixed(4)}</div>
+          <div><strong>Rotation Dir:</strong> ${gear.ratio >= 0 ? 'Clockwise (+)' : 'Counter-Clockwise (-)'}</div>
+          <div><strong>Meshed With:</strong> ${parents.map(p => p.teeth + 'T').join(', ') || 'None (Unpowered)'}</div>
+        </div>
 
         <div style="margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 6px;">
           <strong style="color: var(--accent-cyan);" title="Ratio Lock preserves this gear’s ratio when the main gear changes. Teeth Lock preserves its tooth count when other gear sizes change.">Gear Locks</strong>
