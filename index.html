@@ -1510,13 +1510,8 @@ body.neon-visual-mode .palette-mod-width-toggle{color:#62f08a;text-shadow:0 0 5p
   #mobile-current-gear-editor #inspector-gear-shape + #inspector-shape-params{display:none!important;}
   #mobile-current-gear-editor .gear-adsr-section{display:none!important;}
   #mobile-current-gear-editor #inspector-source-buttons,
-  #mobile-current-gear-editor #inspector-noise-config,
-  #mobile-current-gear-editor #inspector-audio-config,
-  #mobile-current-gear-editor #inspector-midi-config,
   #mobile-current-gear-editor #slider-inspector-tooth-width,
-  #mobile-current-gear-editor #val-inspector-tooth-width,
-  #mobile-current-gear-editor #slider-inspector-volume,
-  #mobile-current-gear-editor #val-inspector-volume{display:none!important;}
+  #mobile-current-gear-editor #val-inspector-tooth-width{display:flex!important;visibility:visible!important;opacity:1!important;}
   #mobile-current-gear-editor .inspector-duplicate-source-section{display:none!important;}
 }
 </style>
@@ -6330,7 +6325,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       'KeyH':  0, // A = fundamental
       'KeyU':  1, // A#
       'KeyJ':  2, // B
-      'KeyK':  3  // C (next pitch)
+      'KeyK':  3, // C
+      'KeyL':  5, // D
+      'Semicolon':  7, // E
+      'Quote':  8  // F
     };
 
     function applyKeyboardDriverPitch() {
@@ -7609,11 +7607,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function updateKeyboardUI(activeSemitone, ratio = 1.0) {
       const keys = document.querySelectorAll('#virtual-keyboard .key');
       keys.forEach(k => {
-        const noteIdx = parseInt(k.getAttribute('data-note'));
-        const activePitchClass = activeSemitone === null || activeSemitone === undefined
-          ? null
-          : ((activeSemitone % 12) + 12) % 12;
-        if (activePitchClass !== null && noteIdx === activePitchClass) {
+        const mappedCode = k.getAttribute('data-key');
+        const mappedSemitone = Object.prototype.hasOwnProperty.call(KEY_TO_SEMITONE, mappedCode)
+          ? KEY_TO_SEMITONE[mappedCode]
+          : null;
+        if (activeSemitone !== null && activeSemitone !== undefined && mappedSemitone === activeSemitone) {
           k.classList.add('active');
         } else {
           k.classList.remove('active');
@@ -8292,7 +8290,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           <div><strong>Role:</strong> ${gear.isMain ? 'Main Drive Hub (Listener Center)' : 'Secondary Harmonic Gear'}</div>
           <div><strong>Current Shape:</strong> <span style="color:var(--accent-cyan);">${gear.shape || 'circular'}</span></div>
         </div>
-        <div class="inspector-current-gear-hidden">
+        <div>
         <div style="margin-top:6px; border-top:1px solid var(--border-color); padding-top:5px;">
           <strong style="color:var(--accent-cyan);">Sound Source</strong>
           <div class="inspector-source-buttons palette-source-buttons" id="inspector-source-buttons" aria-label="Selected gear sound source">
@@ -10208,7 +10206,7 @@ body.neon-visual-mode #desktop-focus-toggle{
         document.getElementById('mobile-current-gear-editor')?.querySelector('#inspector-adsr-graph')?.closest('.gear-adsr-section')?.setAttribute('hidden','hidden');
         const mobileShape=document.getElementById('mobile-current-gear-editor')?.querySelector('#inspector-gear-shape');
         if(mobileShape){mobileShape.closest('div[style*="border-top"]')?.setAttribute('hidden','hidden');}
-        ['#inspector-source-buttons','#inspector-noise-config','#inspector-audio-config','#inspector-midi-config','#slider-inspector-tooth-width','#val-inspector-tooth-width','#slider-inspector-volume','#val-inspector-volume'].forEach(sel=>{const n=document.getElementById('mobile-current-gear-editor')?.querySelector(sel);if(n)n.setAttribute('hidden','hidden');});
+        // Keep the selected gear's Sound Source buttons and tooth-width control available in mobile.
       }catch(_){ }
       requestAnimationFrame(()=>drawerScroll?.scrollTo({top:0,behavior:'auto'}));
     } else if(inMode) {
