@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v63</title>
+  <title>JI Gear Synth v74</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -951,7 +951,7 @@
       position: relative;
       cursor: pointer;
       user-select: none;
-      transition: background 0.05s ease, transform 0.05s ease;
+      transition: transform 0.05s ease;
     }
 
     .white-key {
@@ -1003,6 +1003,23 @@
       transform: translateY(2px);
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
     }
+    /* KEYBOARD COLOUR MAP: inactive keys are inverted; played notes use the existing ROYGBIV note colours. */
+    .white-key {
+      background: #000000 !important;
+      color: #f8fafc !important;
+    }
+    .black-key {
+      background: #f8fafc !important;
+      color: #0f172a !important;
+    }
+    .white-key.active, .white-key:active,
+    .black-key.active, .black-key:active {
+      background: var(--note-active-color, var(--accent-cyan)) !important;
+      color: #000000 !important;
+      transform: translateY(2px);
+      box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+    }
+
 
     @keyframes pulse {
       0%, 100% { opacity: 1; }
@@ -1466,7 +1483,7 @@
       .harmonic-main-teeth span{display:none;}
     }
 
-    #ratio-palette-modal .floating-title::after{content:" · EDITS ACTIVE GEAR";font-size:.58rem;color:#8fc7a0;letter-spacing:.4px;}
+    #ratio-palette-modal .floating-title::after{content:"";}
 </style>
 <style id="user-presets-css">
 #user-presets-toggle{font:700 10px/1 Arial,sans-serif;letter-spacing:.6px;padding:4px 8px;min-width:58px;}
@@ -1493,7 +1510,7 @@ body.neon-visual-mode #user-preset-menu .preset-head strong,body.neon-visual-mod
 #keyboard-user-presets-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:27px;padding:3px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;margin-left:auto;}
 @media(max-width:900px) and (orientation:portrait){#keyboard-user-presets-toggle{display:none!important;}}
 #mobile-user-presets-toggle{z-index:12550;box-sizing:border-box;min-width:62px;padding:5px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;}
-.palette-mod-width-toggle{display:none;align-items:center;gap:4px;color:#62f08a;font-size:.62rem;font-weight:800;cursor:pointer;white-space:nowrap;}
+.palette-mod-width-toggle{display:inline-flex;align-items:center;gap:4px;color:#62f08a;font-size:.62rem;font-weight:800;cursor:pointer;white-space:nowrap;}
 .palette-mod-width-toggle input{margin:0;accent-color:#62f08a;}
 body.neon-visual-mode .palette-mod-width-toggle{color:#62f08a;text-shadow:0 0 5px rgba(98,240,138,.25);}
 
@@ -1558,6 +1575,53 @@ body.neon-visual-mode .desktop-visual-mode{color:var(--neon-green)!important;fon
 #app-container.neon-visual-mode #mobile-one-screen-drawer{background:rgba(0,5,2,.97)!important;border-color:var(--neon-border)!important;box-shadow:0 0 22px rgba(65,255,133,.17),0 -10px 30px rgba(0,0,0,.9)!important;}
 #app-container.neon-visual-mode #mobile-keyboard-dock{background:rgba(0,3,2,.96)!important;border-top-color:var(--neon-border)!important;box-shadow:0 -4px 24px rgba(61,255,128,.20)!important;}#app-container.neon-visual-mode #mobile-keyboard-settings-button{background:rgba(8,26,15,.96)!important;color:var(--neon-green)!important;border-color:var(--neon-green)!important;box-shadow:0 0 12px rgba(61,255,128,.36)!important;}
 body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important;border-color:rgba(68,255,137,.35)!important;}body.neon-visual-mode .rational-gear-thumb:hover,body.neon-visual-mode .rational-gear-thumb.active{border-color:var(--neon-green)!important;box-shadow:0 0 12px rgba(68,255,137,.30)!important;}
+</style>
+
+<style id="v75-keyboard-layout-fixes">
+  /* Keep the keyboard header safely above the keys. */
+  @media (min-width:901px){
+    #sidebar .keyboard-panel-title{height:46px!important;min-height:46px!important;padding-right:90px!important;align-items:flex-start!important;gap:7px!important;}
+    #sidebar .keyboard-title-label{padding-top:5px!important;white-space:nowrap!important;}
+    #sidebar .keyboard-bloom-wrap{min-width:180px!important;display:flex!important;flex-direction:column!important;gap:1px!important;align-self:stretch!important;}
+    #sidebar .keyboard-bloom-label{height:11px!important;line-height:11px!important;flex:0 0 11px!important;}
+    #sidebar .keyboard-bloom-slider-row{display:flex!important;align-items:center!important;gap:7px!important;min-width:0!important;height:22px!important;flex:0 0 22px!important;}
+    #sidebar #slider-keyboard-bloom{flex:1 1 auto!important;width:auto!important;min-width:0!important;height:18px!important;}
+    #sidebar .keyboard-bloom-placement{display:flex!important;align-items:center!important;gap:3px!important;margin:0!important;white-space:nowrap!important;font-size:7px!important;color:#ad956f!important;}
+    #sidebar .keyboard-bloom-placement input{margin:0!important;}
+    #sidebar .keyboard-bloom-options{height:9px!important;line-height:9px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:5px!important;font-size:7px!important;}
+    #sidebar .keyboard-container{margin-top:2px!important;height:60px!important;min-height:60px!important;}
+  }
+
+  @media (min-width:901px) and (max-width:1180px){
+    #sidebar .keyboard-panel-title{height:44px!important;min-height:44px!important;}
+    #sidebar .keyboard-bloom-wrap{min-width:135px!important;}
+    #sidebar .keyboard-bloom-placement{font-size:6.5px!important;}
+  }
+
+  /* Phones show the three-octave C3-C6 range: C3 through C6 inclusive. */
+  @media (max-width:900px) and (orientation:portrait){
+    #mobile-keyboard-dock .keyboard-panel-title{height:48px!important;min-height:48px!important;padding-left:34px!important;padding-right:72px!important;align-items:flex-start!important;gap:5px!important;}
+    #mobile-keyboard-dock .keyboard-title-label{padding-top:5px!important;white-space:nowrap!important;}
+    #mobile-keyboard-dock .keyboard-bloom-wrap{min-width:0!important;max-width:none!important;display:flex!important;flex-direction:column!important;gap:1px!important;align-self:stretch!important;}
+    #mobile-keyboard-dock .keyboard-bloom-label{height:11px!important;line-height:11px!important;flex:0 0 11px!important;}
+    #mobile-keyboard-dock .keyboard-bloom-slider-row{display:flex!important;align-items:center!important;gap:6px!important;min-width:0!important;height:20px!important;flex:0 0 20px!important;}
+    #mobile-keyboard-dock #slider-keyboard-bloom{flex:1 1 auto!important;width:auto!important;min-width:0!important;height:18px!important;}
+    #mobile-keyboard-dock .keyboard-bloom-placement{display:flex!important;align-items:center!important;gap:3px!important;margin:0!important;white-space:nowrap!important;font-size:6.5px!important;color:#ad956f!important;}
+    #mobile-keyboard-dock .keyboard-bloom-placement input{margin:0!important;}
+    #mobile-keyboard-dock .keyboard-bloom-options{height:9px!important;line-height:9px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:4px!important;font-size:6.5px!important;}
+    #mobile-keyboard-dock .keyboard-container{margin-top:2px!important;height:60px!important;min-height:60px!important;}
+    #mobile-keyboard-dock .keyboard-octave[data-octave="1"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="2"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="6"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="7"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="8"]{display:none!important;}
+    #mobile-keyboard-dock .keyboard-octave[data-octave="3"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="4"],
+    #mobile-keyboard-dock .keyboard-octave[data-octave="5"]{display:flex!important;flex:12 1 0!important;min-width:0!important;}
+    #mobile-keyboard-dock .keyboard-octave[data-octave="6"]{display:flex!important;flex:1 1 0!important;min-width:0!important;}
+    #mobile-keyboard-dock .keyboard-octave[data-octave="6"] .key:not(:first-child){display:none!important;}
+    #mobile-keyboard-dock .keyboard-octave[data-octave="6"] .key:first-child{position:relative!important;flex:1 1 0!important;width:auto!important;min-width:0!important;height:100%!important;}
+  }
 </style>
 </head>
 <body>
@@ -1651,10 +1715,10 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
   </div>
 
     <!-- FLOATING RATIO / HARMONIC PALETTE -->
-    <section id="ratio-palette-modal" aria-label="Ratio and Harmonic Palette">
+    <section id="ratio-palette-modal" aria-label="Current Gear">
       <div id="ratio-palette-scale-handle" title="Scale harmonic presets" aria-label="Scale harmonic presets" role="button" tabindex="0"></div>
       <div class="floating-header" id="ratio-palette-header">
-        <div class="floating-title">HARMONIC PRESETS <span id="rational-palette-count" style="font-weight:400; color:var(--text-muted); font-size:0.62rem;"></span></div>
+        <div class="floating-title">CURRENT GEAR <span id="rational-palette-count" style="font-weight:400; color:var(--text-muted); font-size:0.62rem;"></span></div>
         <div class="floating-actions">
           <label class="harmonic-main-teeth" title="Main gear tooth count"><span>MAIN</span><input id="palette-main-teeth" type="number" min="1" max="99999" value="120" aria-label="Main Gear Teeth"><select id="palette-main-teeth-preset" aria-label="Main Gear Teeth Preset"><option value="">Preset</option><option value="60">60</option><option value="120">120</option><option value="154">154</option><option value="210">210</option><option value="420">420</option><option value="504">504</option><option value="720">720</option><option value="1001">1001</option><option value="2310">2310</option><option value="30030">30030</option></select></label>
           <button id="btn-ratio-scroll-left" class="ratio-carousel-nav" title="Scroll harmonic presets left" aria-label="Scroll harmonic presets left">‹</button>
@@ -1665,7 +1729,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       <div class="floating-body">
         <div class="shape-generator">
           <div class="palette-shape-row">
-            <span class="panel-title palette-gear-shape-label">Gear Shape</span>
+            <span class="panel-title palette-gear-shape-label">Gear Shape &amp; Contour</span>
             <select id="select-palette-gear-shape" title="Mechanical contour used by the gear">
               <option value="circular">Circular - Standard Gear</option>
               <option value="ellipse">Elliptical - Smooth acceleration / deceleration</option>
@@ -1679,6 +1743,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             </select>
           </div>
           <div id="palette-active-gear-title" class="palette-active-gear">ACTIVE: 1:1 MAIN · 120T</div>
+          <div style="margin-top:5px;font-size:.65rem;font-weight:700;color:var(--accent-cyan);">Tooth Shape / Sound Source</div>
           <div class="palette-source-buttons" id="palette-source-buttons" aria-label="Gear sound source">
             <button type="button" class="palette-source-btn" data-source="sine" aria-label="Sine"></button>
             <button type="button" class="palette-source-btn" data-source="square" aria-label="Square"></button>
@@ -1717,7 +1782,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               <strong style="color:var(--accent-cyan);font-size:.68rem;">GEAR ADSR</strong>
               <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end;">
                 <span class="gear-adsr-caption">A≤2s · D≤2s · R≤10s</span>
-                <label id="palette-mod-width-wrap" class="palette-mod-width-toggle" title="Use this gear's ADSR graph as its shape-width envelope"><input id="chk-palette-mod-width" type="checkbox"><span>MOD WIDTH</span></label>
+                <label id="palette-mod-width-wrap" class="palette-mod-width-toggle" title="Use this gear's ADSR graph as its shape-width envelope"><input id="chk-palette-mod-width" type="checkbox"><span>MOD WIDTH ADSR</span></label>
               </span>
             </div>
             <div class="gear-adsr-editor" id="palette-adsr-editor">
@@ -1733,6 +1798,68 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
                 <text class="gear-adsr-label" x="12" y="11">A</text><text class="gear-adsr-label" x="68" y="11">D</text><text class="gear-adsr-label" x="114" y="11">S</text><text class="gear-adsr-label" x="164" y="11">R</text>
                 <text id="palette-adsr-values" class="gear-adsr-value" x="98" y="71" text-anchor="middle"></text>
               </svg>
+            </div>
+          </div>
+
+          <!-- Current Gear controls formerly available only in Selected Gear Detail.
+               Existing Shape / Tooth Shape / Volume / ADSR controls above remain the
+               single source of truth. These are the remaining unique per-gear controls. -->
+          <div id="palette-current-gear-extras" style="margin-top:8px;border-top:1px solid var(--border-color);padding-top:6px;display:flex;flex-direction:column;gap:7px;">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <strong style="color:var(--accent-cyan);">Teeth Count</strong>
+                <div style="display:flex;align-items:center;gap:4px;">
+                  <button id="btn-palette-teeth-down" type="button" style="padding:3px 9px;font-size:.9rem;line-height:1;">−</button>
+                  <span id="palette-teeth-value" style="min-width:42px;text-align:center;font-weight:700;color:var(--accent-cyan);">120</span>
+                  <button id="btn-palette-teeth-up" type="button" style="padding:3px 9px;font-size:.9rem;line-height:1;">+</button>
+                </div>
+              </div>
+            </div>
+
+            <div style="border-top:1px solid var(--border-color);padding-top:6px;">
+              <strong style="color:var(--accent-cyan);" title="Orbit this gear around the main gear/listener. Z controls move the source above/below the head plane.">3D Orbit Around Head</strong>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:5px;font-size:.7rem;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="chk-palette-orbit"><span>Orbit</span></label>
+                <input type="range" id="slider-palette-orbit-time" min="0.25" max="60" step="0.05" value="8" style="flex:1;min-width:90px;">
+                <span id="val-palette-orbit-time" style="min-width:58px;text-align:right;color:var(--accent-cyan);">8.00s</span>
+                <button id="btn-palette-orbit-direction" type="button" title="Reverse orbit direction" style="padding:3px 7px;">↻</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:5px;font-size:.7rem;">
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="chk-palette-orbit-preserve-phase"><span>Preserve Phase</span></label>
+              </div>
+              <div style="margin-top:6px;">
+                <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>HRTF Height / Z <span style="color:var(--text-muted);">below ↔ above</span></span><span id="val-palette-hrtf-z" style="color:var(--accent-cyan);">0.000</span></label>
+                <input type="range" id="slider-palette-hrtf-z" min="-1" max="1" step="0.001" value="0" style="width:100%;">
+                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:3px;font-size:.68rem;"><input type="checkbox" id="chk-palette-hrtf-z-adsr"><span>Follow ADSR height</span></label>
+              </div>
+              <div id="palette-hrtf-z-dynamics" style="margin-top:5px;">
+                <label style="font-size:.68rem;display:flex;justify-content:space-between"><span title="Tilts the orbit plane vertically when ADSR height follow is off.">Z Angle <span style="color:var(--text-muted);">tilt orbital plane</span></span><span id="val-palette-hrtf-z-angle" style="color:var(--accent-cyan);">0°</span></label>
+                <input type="range" id="slider-palette-hrtf-z-angle" min="0" max="360" step="1" value="0" style="width:100%;">
+                <label style="font-size:.68rem;display:flex;justify-content:space-between"><span title="Multiplies the number of vertical sweep cycles per orbit.">Z Motion Rate <span style="color:var(--text-muted);">vertical cycles / orbit</span></span><span id="val-palette-hrtf-z-rate" style="color:var(--accent-cyan);">1.00×</span></label>
+                <input type="range" id="slider-palette-hrtf-z-rate" min="0.1" max="8" step="0.05" value="1" style="width:100%;">
+              </div>
+            </div>
+
+            <div style="border-top:1px solid var(--border-color);padding-top:6px;">
+              <strong style="color:var(--accent-cyan);" title="Sets phase timing relative to the 12 o’clock vertical sync point.">Phase &amp; Time Alignment</strong>
+              <div class="phase-control-grid" style="margin-top:5px;">
+                <div>
+                  <label style="font-size:.7rem;">Offset (°): <span class="val" id="val-palette-phase-deg">0.0°</span></label>
+                  <input type="range" id="input-palette-phase-deg-slider" min="-360" max="360" step="1" value="0">
+                </div>
+                <div>
+                  <label style="font-size:.7rem;">Offset (Teeth):</label>
+                  <input type="number" id="input-palette-phase-teeth-num" min="-360" max="360" step="0.1" value="0.00">
+                </div>
+              </div>
+              <div class="phase-btn-group" style="margin-top:5px;">
+                <button class="btn-palette-phase-quick" data-deg="0">0° (Sync)</button>
+                <button class="btn-palette-phase-quick" data-teeth="-1">-1 Tooth</button>
+                <button class="btn-palette-phase-quick" data-teeth="1">+1 Tooth</button>
+                <button class="btn-palette-phase-quick" data-deg="-90">-90°</button>
+                <button class="btn-palette-phase-quick" data-deg="90">+90°</button>
+                <button class="btn-palette-phase-quick" data-deg="180">180° (Invert)</button>
+              </div>
             </div>
           </div>
         </div>
@@ -1820,24 +1947,126 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <span class="keyboard-panel-spacer" aria-hidden="true"></span>
             <div class="keyboard-bloom-wrap" aria-label="Global harmonic bloom">
               <div class="keyboard-bloom-label"><strong>BLOOM</strong><span id="keyboard-bloom-value">0.00s · normal</span></div>
-              <input id="slider-keyboard-bloom" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Global harmonic bloom time and order" title="Bloom: left = high harmonics first; right = fundamental first">
-              <div class="keyboard-bloom-options"><span>HIGH ←</span><span>0</span><span>→ LOW</span><label><input id="chk-bloom-placement-order" type="checkbox">Placement order</label></div>
+              <div class="keyboard-bloom-slider-row">
+                <input id="slider-keyboard-bloom" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Global harmonic bloom time and order" title="Bloom: left = high harmonics first; right = fundamental first">
+                <label class="keyboard-bloom-placement"><input id="chk-bloom-placement-order" type="checkbox"><span>Placement order</span></label>
+              </div>
+              <div class="keyboard-bloom-options"><span>HIGH ←</span><span>0</span><span>→ LOW</span></div>
             </div>
           </div>
-          <div class="keyboard-container" id="virtual-keyboard">
-            <div class="key white-key" data-note="0" data-key="KeyA"><span></span></div>
-            <div class="key black-key" data-note="1" data-key="KeyW" style="left: 8.5%;"><span></span></div>
-            <div class="key white-key" data-note="2" data-key="KeyS"><span></span></div>
-            <div class="key black-key" data-note="3" data-key="KeyE" style="left: 21%;"><span></span></div>
-            <div class="key white-key" data-note="4" data-key="KeyD"><span></span></div>
-            <div class="key white-key" data-note="5" data-key="KeyF"><span></span></div>
-            <div class="key black-key" data-note="6" data-key="KeyT" style="left: 46%;"><span></span></div>
-            <div class="key white-key" data-note="7" data-key="KeyG"><span></span></div>
-            <div class="key black-key" data-note="8" data-key="KeyY" style="left: 58.5%;"><span></span></div>
-            <div class="key white-key" data-note="9" data-key="KeyH"><span></span></div>
-            <div class="key black-key" data-note="10" data-key="KeyU" style="left: 71%;"><span></span></div>
-            <div class="key white-key" data-note="11" data-key="KeyJ"><span></span></div>
-            <div class="key white-key" data-note="12" data-key="KeyK"><span></span></div>
+          <div class="keyboard-container" id="virtual-keyboard" aria-label="8 octave piano keyboard">
+            <div class="keyboard-octave" data-octave="1" aria-label="Octave 1">
+              <div class="key white-key" data-note="-45" data-key="KeyA"><span></span></div>
+              <div class="key black-key" data-note="-44" data-key="KeyW" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="-43" data-key="KeyS"><span></span></div>
+              <div class="key black-key" data-note="-42" data-key="KeyE" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="-41" data-key="KeyD"><span></span></div>
+              <div class="key white-key" data-note="-40" data-key="KeyF"><span></span></div>
+              <div class="key black-key" data-note="-39" data-key="KeyT" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="-38" data-key="KeyG"><span></span></div>
+              <div class="key black-key" data-note="-37" data-key="KeyY" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="-36" data-key="KeyH"><span></span></div>
+              <div class="key black-key" data-note="-35" data-key="KeyU" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="-34" data-key="KeyJ"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="2" aria-label="Octave 2">
+              <div class="key white-key" data-note="-33" data-key="KeyK"><span></span></div>
+              <div class="key black-key" data-note="-32" data-key="Visual-4" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="-31" data-key="KeyL"><span></span></div>
+              <div class="key black-key" data-note="-30" data-key="Visual-6" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="-29" data-key="Semicolon"><span></span></div>
+              <div class="key white-key" data-note="-28" data-key="Quote"><span></span></div>
+              <div class="key black-key" data-note="-27" data-key="Visual-9" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="-26" data-key="Visual-10"><span></span></div>
+              <div class="key black-key" data-note="-25" data-key="Visual-11" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="-24" data-key="Visual-12"><span></span></div>
+              <div class="key black-key" data-note="-23" data-key="Visual-13" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="-22" data-key="Visual-14"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="3" aria-label="Octave 3">
+              <div class="key white-key" data-note="-21" data-key="Visual-15"><span></span></div>
+              <div class="key black-key" data-note="-20" data-key="Visual-16" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="-19" data-key="Visual-17"><span></span></div>
+              <div class="key black-key" data-note="-18" data-key="Visual-18" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="-17" data-key="Visual-19"><span></span></div>
+              <div class="key white-key" data-note="-16" data-key="Visual-20"><span></span></div>
+              <div class="key black-key" data-note="-15" data-key="Visual-21" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="-14" data-key="Visual-22"><span></span></div>
+              <div class="key black-key" data-note="-13" data-key="Visual-23" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="-12" data-key="Visual-24"><span></span></div>
+              <div class="key black-key" data-note="-11" data-key="Visual-25" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="-10" data-key="Visual-26"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="4" aria-label="Octave 4">
+              <div class="key white-key" data-note="-9" data-key="Visual-27"><span></span></div>
+              <div class="key black-key" data-note="-8" data-key="Visual-28" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="-7" data-key="Visual-29"><span></span></div>
+              <div class="key black-key" data-note="-6" data-key="Visual-30" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="-5" data-key="Visual-31"><span></span></div>
+              <div class="key white-key" data-note="-4" data-key="Visual-32"><span></span></div>
+              <div class="key black-key" data-note="-3" data-key="Visual-33" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="-2" data-key="Visual-34"><span></span></div>
+              <div class="key black-key" data-note="-1" data-key="Visual-35" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="0" data-key="Visual-36"><span></span></div>
+              <div class="key black-key" data-note="1" data-key="Visual-37" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="2" data-key="Visual-38"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="5" aria-label="Octave 5">
+              <div class="key white-key" data-note="3" data-key="Visual-39"><span></span></div>
+              <div class="key black-key" data-note="4" data-key="Visual-40" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="5" data-key="Visual-41"><span></span></div>
+              <div class="key black-key" data-note="6" data-key="Visual-42" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="7" data-key="Visual-43"><span></span></div>
+              <div class="key white-key" data-note="8" data-key="Visual-44"><span></span></div>
+              <div class="key black-key" data-note="9" data-key="Visual-45" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="10" data-key="Visual-46"><span></span></div>
+              <div class="key black-key" data-note="11" data-key="Visual-47" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="12" data-key="Visual-48"><span></span></div>
+              <div class="key black-key" data-note="13" data-key="Visual-49" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="14" data-key="Visual-50"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="6" aria-label="Octave 6">
+              <div class="key white-key" data-note="15" data-key="Visual-51"><span></span></div>
+              <div class="key black-key" data-note="16" data-key="Visual-52" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="17" data-key="Visual-53"><span></span></div>
+              <div class="key black-key" data-note="18" data-key="Visual-54" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="19" data-key="Visual-55"><span></span></div>
+              <div class="key white-key" data-note="20" data-key="Visual-56"><span></span></div>
+              <div class="key black-key" data-note="21" data-key="Visual-57" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="22" data-key="Visual-58"><span></span></div>
+              <div class="key black-key" data-note="23" data-key="Visual-59" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="24" data-key="Visual-60"><span></span></div>
+              <div class="key black-key" data-note="25" data-key="Visual-61" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="26" data-key="Visual-62"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="7" aria-label="Octave 7">
+              <div class="key white-key" data-note="27" data-key="Visual-63"><span></span></div>
+              <div class="key black-key" data-note="28" data-key="Visual-64" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="29" data-key="Visual-65"><span></span></div>
+              <div class="key black-key" data-note="30" data-key="Visual-66" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="31" data-key="Visual-67"><span></span></div>
+              <div class="key white-key" data-note="32" data-key="Visual-68"><span></span></div>
+              <div class="key black-key" data-note="33" data-key="Visual-69" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="34" data-key="Visual-70"><span></span></div>
+              <div class="key black-key" data-note="35" data-key="Visual-71" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="36" data-key="Visual-72"><span></span></div>
+              <div class="key black-key" data-note="37" data-key="Visual-73" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="38" data-key="Visual-74"><span></span></div>
+            </div>
+            <div class="keyboard-octave" data-octave="8" aria-label="Octave 8">
+              <div class="key white-key" data-note="39" data-key="Visual-75"><span></span></div>
+              <div class="key black-key" data-note="40" data-key="Visual-76" style="left:9.79%;"><span></span></div>
+              <div class="key white-key" data-note="41" data-key="Visual-77"><span></span></div>
+              <div class="key black-key" data-note="42" data-key="Visual-78" style="left:24.07%;"><span></span></div>
+              <div class="key white-key" data-note="43" data-key="Visual-79"><span></span></div>
+              <div class="key white-key" data-note="44" data-key="Visual-80"><span></span></div>
+              <div class="key black-key" data-note="45" data-key="Visual-81" style="left:52.64%;"><span></span></div>
+              <div class="key white-key" data-note="46" data-key="Visual-82"><span></span></div>
+              <div class="key black-key" data-note="47" data-key="Visual-83" style="left:66.93%;"><span></span></div>
+              <div class="key white-key" data-note="48" data-key="Visual-84"><span></span></div>
+              <div class="key black-key" data-note="49" data-key="Visual-85" style="left:81.21%;"><span></span></div>
+              <div class="key white-key" data-note="50" data-key="Visual-86"><span></span></div>
+            </div>
           </div>
           <div style="display: flex; gap: 6px; margin-top: 8px; align-items: center; justify-content: space-between;">
             <div style="display: flex; align-items: center; gap: 4px;">
@@ -3980,6 +4209,27 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       PALETTE_SHAPE_PARAMS && Object.assign(PALETTE_SHAPE_PARAMS,normalizedShapeParams(gear.shapeParams));
       if(document.getElementById('palette-main-teeth')) document.getElementById('palette-main-teeth').value=(state.gears.find(g=>g.isMain)?.teeth||120);
     }
+    function syncPaletteCurrentGearExtras(gear){
+      if(!gear) return;
+      const teethVal=document.getElementById('palette-teeth-value'); if(teethVal) teethVal.textContent=String(Math.round(gear.teeth||0));
+      const orbitChk=document.getElementById('chk-palette-orbit'); if(orbitChk){orbitChk.checked=!!gear.orbitEnabled;orbitChk.disabled=!!gear.isMain;}
+      const orbitTime=document.getElementById('slider-palette-orbit-time'); const orbitTimeVal=document.getElementById('val-palette-orbit-time');
+      if(orbitTime){orbitTime.value=Math.min(60,Math.max(.25,Number(gear.orbitPeriodSec)||8));orbitTime.disabled=!!gear.isMain;}
+      if(orbitTimeVal) orbitTimeVal.textContent=`${(Number(gear.orbitPeriodSec)||8).toFixed(2)}s`;
+      const orbitDir=document.getElementById('btn-palette-orbit-direction'); if(orbitDir){orbitDir.textContent=(gear.orbitDirection||1)<0?'↺':'↻';orbitDir.disabled=!!gear.isMain;}
+      const preserve=document.getElementById('chk-palette-orbit-preserve-phase'); if(preserve){preserve.checked=gear.orbitPreservePhase!==false;preserve.disabled=!!gear.isMain;}
+      const z=Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0)); const zSlider=document.getElementById('slider-palette-hrtf-z'); const zVal=document.getElementById('val-palette-hrtf-z');
+      if(zSlider){zSlider.value=z;zSlider.disabled=!!gear.isMain;} if(zVal) zVal.textContent=z.toFixed(3);
+      const zAdsr=document.getElementById('chk-palette-hrtf-z-adsr'); if(zAdsr){zAdsr.checked=!!gear.hrtfZAdsr;zAdsr.disabled=!!gear.isMain;}
+      const dynamicsDisabled=!!gear.hrtfZAdsr||!!gear.isMain; const dyn=document.getElementById('palette-hrtf-z-dynamics'); if(dyn)dyn.style.opacity=dynamicsDisabled?'.45':'1';
+      const zAngle=document.getElementById('slider-palette-hrtf-z-angle'); const zAngleVal=document.getElementById('val-palette-hrtf-z-angle'); const angle=Math.max(0,Math.min(360,Number(gear.hrtfZAngleDeg)||0));
+      if(zAngle){zAngle.value=angle;zAngle.disabled=dynamicsDisabled;} if(zAngleVal)zAngleVal.textContent=`${Math.round(angle)}°`;
+      const zRate=document.getElementById('slider-palette-hrtf-z-rate'); const zRateVal=document.getElementById('val-palette-hrtf-z-rate'); const rate=Math.max(.1,Math.min(8,Number(gear.hrtfZRate)||1));
+      if(zRate){zRate.value=rate;zRate.disabled=dynamicsDisabled;} if(zRateVal)zRateVal.textContent=`${rate.toFixed(2)}×`;
+      const deg=document.getElementById('input-palette-phase-deg-slider'); const degVal=document.getElementById('val-palette-phase-deg'); const teeth=document.getElementById('input-palette-phase-teeth-num');
+      const offsetDeg=Number(gear.phaseOffsetDeg)||0, offsetTeeth=Number(gear.phaseOffsetTeeth)||0;
+      if(deg)deg.value=offsetDeg; if(degVal)degVal.textContent=`${offsetDeg.toFixed(1)}°`; if(teeth)teeth.value=offsetTeeth.toFixed(2);
+    }
     function syncPaletteGearEditor(){
       const gear=getActivePaletteGear(); if(!gear) return;
       copyPaletteEditorFromGear(gear);
@@ -4004,6 +4254,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       const modWidth=document.getElementById('chk-palette-mod-width');
       if(modWidth) modWidth.checked=!!gear.widthModEnabled;
+      syncPaletteCurrentGearExtras(gear);
     }
 
     function renderRationalGearPalette() {
@@ -7606,21 +7857,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function updateKeyboardUI(activeSemitone, ratio = 1.0) {
       const keys = document.querySelectorAll('#virtual-keyboard .key');
+      const hasActive = activeSemitone !== null && activeSemitone !== undefined;
+      const effectiveSemitone = hasActive ? Number(activeSemitone) + (Number(state.octaveShift) || 0) * 12 : null;
       keys.forEach(k => {
-        const mappedCode = k.getAttribute('data-key');
-        const mappedSemitone = Object.prototype.hasOwnProperty.call(KEY_TO_SEMITONE, mappedCode)
-          ? KEY_TO_SEMITONE[mappedCode]
-          : null;
-        if (activeSemitone !== null && activeSemitone !== undefined && mappedSemitone === activeSemitone) {
-          k.classList.add('active');
+        const keySemitone = Number(k.getAttribute('data-note'));
+        const isActive = hasActive && Number.isFinite(keySemitone) && keySemitone === effectiveSemitone;
+        k.classList.toggle('active', isActive);
+        if (isActive) {
+          const absoluteSemitone = 69 + effectiveSemitone;
+          k.style.setProperty('background-color', k.dataset.noteActiveColor || neonColorForPitch(absoluteSemitone), 'important');
         } else {
-          k.classList.remove('active');
+          k.style.removeProperty('background-color');
         }
       });
 
       const noteHud = document.getElementById('hud-current-note');
-      if (activeSemitone !== null && activeSemitone !== undefined) {
-        const pitchClass = ((activeSemitone % 12) + 12) % 12;
+      if (hasActive) {
+        const pitchClass = ((Number(activeSemitone) % 12) + 12) % 12;
         const noteName = NOTE_NAMES[pitchClass] || 'C';
         if(noteHud) noteHud.textContent = `${noteName} (${ratio.toFixed(2)}x)`;
       }
@@ -7635,6 +7888,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       keys.forEach(key => {
         key.style.touchAction = 'none';
         const semitone = parseInt(key.getAttribute('data-note'));
+        if (Number.isFinite(semitone)) key.dataset.noteActiveColor = neonColorForPitch(69 + semitone);
         const keyId = key.getAttribute('data-key');
 
         const releasePointer = (pid, event = null) => {
@@ -9378,6 +9632,94 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const g=getActivePaletteGear(); if(g){g.volume=PALETTE_GEAR_VOLUME;updateAudioNodes();renderGearList();}
       if (paletteVolumeValue) paletteVolumeValue.textContent = `${Math.round(PALETTE_GEAR_VOLUME * 100)}%`;
     });
+    // Current Gear controls moved over from the retired Selected Gear Detail.
+    const paletteTeethChange = (delta) => {
+      const selected = getActivePaletteGear();
+      if (!selected) return;
+      const newTeeth = Math.min(15015, Math.max(1, Math.round(selected.teeth + delta)));
+      if (newTeeth === selected.teeth) return;
+      if (selected.isMain) {
+        const oldMainTeeth = selected.teeth;
+        const oldRatios = new Map(state.gears.map(g => [g.id, Math.abs(g.ratio)]));
+        selected.teeth = newTeeth;
+        state.gears.forEach(g => {
+          if (g.isMain) return;
+          if (g.ratioLock) {
+            const targetRatio = oldRatios.get(g.id) || 1;
+            g.teeth = Math.min(15015, Math.max(1, Math.round(newTeeth / Math.max(1e-9, targetRatio))));
+          } else if (!g.teethLock) {
+            const scale = oldMainTeeth > 0 ? newTeeth / oldMainTeeth : 1;
+            g.teeth = Math.min(15015, Math.max(1, Math.round(g.teeth * scale)));
+          }
+        });
+        state.mainTeeth = newTeeth;
+      } else {
+        selected.teeth = newTeeth;
+      }
+      updateKinematicNetwork();
+      renderRationalGearPalette();
+      syncPaletteGearEditor();
+      renderGearList();
+    };
+    document.getElementById('btn-palette-teeth-down')?.addEventListener('click',()=>paletteTeethChange(-1));
+    document.getElementById('btn-palette-teeth-up')?.addEventListener('click',()=>paletteTeethChange(1));
+
+    document.getElementById('chk-palette-orbit')?.addEventListener('change',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return;
+      gear.orbitEnabled=!!e.target.checked;
+      const main=state.gears.find(g=>g.isMain)||state.gears[0];
+      if(gear.orbitEnabled&&main&&!gear.isMain){
+        const dx=gear.x-main.x,dy=gear.y-main.y;
+        gear.orbitRadius=Math.max(main.pitchRadius+gear.pitchRadius+2,Math.hypot(dx,dy));
+        gear.orbitAngle=Math.atan2(dy,dx); gear.orbitPhase=0;
+      }
+      syncPaletteGearEditor(); renderGearList();
+    });
+    document.getElementById('slider-palette-orbit-time')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return;
+      gear.orbitPeriodSec=Math.max(.25,Math.min(60,Number(e.target.value)||8));
+      const v=document.getElementById('val-palette-orbit-time'); if(v)v.textContent=`${gear.orbitPeriodSec.toFixed(2)}s`;
+    });
+    document.getElementById('btn-palette-orbit-direction')?.addEventListener('click',()=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.orbitDirection=(gear.orbitDirection||1)*-1; syncPaletteGearEditor();
+    });
+    document.getElementById('chk-palette-orbit-preserve-phase')?.addEventListener('change',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.orbitPreservePhase=!!e.target.checked;
+      if(gear.orbitPreservePhase&&gear.orbitEnabled){
+        gear.angle=-Math.PI/2+gear.ratio*state.masterPhase+gear.phaseOffsetRad;
+        if(gear.delayNode&&state.audioCtx){const sourceFreq=Math.max(.1,gear.freq||state.fundamentalFreq||1);const targetDelay=gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad,sourceFreq);gear.delayNode.delayTime.setTargetAtTime(targetDelay,state.audioCtx.currentTime,.008);}
+      }
+      updateAudioNodes(); renderGearList();
+    });
+    document.getElementById('slider-palette-hrtf-z')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.hrtfZ=Math.max(-1,Math.min(1,Number(e.target.value)||0));
+      applyGearHrtfPannerPosition(gear,state.audioCtx?.currentTime||0); syncPaletteCurrentGearExtras(gear);
+    });
+    document.getElementById('chk-palette-hrtf-z-adsr')?.addEventListener('change',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.hrtfZAdsr=!!e.target.checked; syncPaletteCurrentGearExtras(gear); applyGearHrtfPannerPosition(gear,state.audioCtx?.currentTime||0);
+    });
+    document.getElementById('slider-palette-hrtf-z-angle')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.hrtfZAngleDeg=Math.max(0,Math.min(360,Number(e.target.value)||0)); applyGearHrtfPannerPosition(gear,state.audioCtx?.currentTime||0); syncPaletteCurrentGearExtras(gear);
+    });
+    document.getElementById('slider-palette-hrtf-z-rate')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear.hrtfZRate=Math.max(.1,Math.min(8,Number(e.target.value)||1)); applyGearHrtfPannerPosition(gear,state.audioCtx?.currentTime||0); syncPaletteCurrentGearExtras(gear);
+    });
+    const palettePhaseDeg=document.getElementById('input-palette-phase-deg-slider');
+    const palettePhaseDegValue=document.getElementById('val-palette-phase-deg');
+    const palettePhaseTeeth=document.getElementById('input-palette-phase-teeth-num');
+    palettePhaseDeg?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; const val=parseFloat(e.target.value); if(!Number.isFinite(val))return;
+      gear.setPhaseOffsetDeg(val); if(palettePhaseDegValue)palettePhaseDegValue.textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`; if(palettePhaseTeeth)palettePhaseTeeth.value=gear.phaseOffsetTeeth.toFixed(2); updateAudioNodes(); renderGearList();
+    });
+    palettePhaseTeeth?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; const val=parseFloat(e.target.value); if(!Number.isFinite(val))return;
+      gear.setPhaseOffsetTeeth(val); if(palettePhaseDeg)palettePhaseDeg.value=gear.phaseOffsetDeg; if(palettePhaseDegValue)palettePhaseDegValue.textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`; updateAudioNodes(); renderGearList();
+    });
+    document.querySelectorAll('.btn-palette-phase-quick').forEach(btn=>btn.addEventListener('click',()=>{
+      const gear=getActivePaletteGear(); if(!gear)return;
+      if(btn.hasAttribute('data-deg')) gear.setPhaseOffsetDeg(parseFloat(btn.getAttribute('data-deg'))); else if(btn.hasAttribute('data-teeth')) gear.setPhaseOffsetTeeth(parseFloat(btn.getAttribute('data-teeth')));
+      syncPaletteCurrentGearExtras(gear); updateAudioNodes(); renderGearList();
+    }));
     const paletteAdsrGraph = document.getElementById('palette-adsr-graph');
     if (paletteAdsrGraph) bindAdsrGraph(paletteAdsrGraph,()=>{const g=state.gearMap.get(state.selectedGearId)||getActivePaletteGear();return g?.widthModEnabled?(g.widthMod||g.adsr||state.adsr):(g?.adsr||state.adsr);},(a,k)=>{const g=state.gearMap.get(state.selectedGearId)||getActivePaletteGear();if(g){if(g.widthModEnabled){g.widthMod={...(g.widthMod||g.adsr||state.adsr),...a};g._widthModEnvelope=null;}else{applyLinkedAdsrChange(g,a,k);}}else state.adsr={...state.adsr,...a};updateAudioNodes();syncAllAdsrEditors(g);},'palette-adsr',()=>state.gearMap.get(state.selectedGearId)||getActivePaletteGear(),true,false);
     document.getElementById('chk-palette-mod-width')?.addEventListener('change',e=>{
@@ -9861,6 +10203,8 @@ body.neon-visual-mode #desktop-focus-toggle{
 .desktop-visual-mode input{margin:0;width:auto!important;min-width:0!important;accent-color:#00eaff;}
 @media (max-width:900px){.desktop-visual-mode{display:none!important;}}
 </style>
+<style id="selected-gear-retired-ui">#selected-gear-detail{display:none!important;}
+</style>
 <style id="selected-gear-adsr-visibility-fix">
 #selected-gear-detail { overflow: hidden !important; }
 #selected-gear-detail #inspector-panel { display:block !important; min-height:0; overflow-y:auto !important; }
@@ -10108,6 +10452,8 @@ body.neon-visual-mode #desktop-focus-toggle{
     keyboardContainer:q('#virtual-keyboard',keyboardPanel),
     keyboardBloom:q('.keyboard-bloom-wrap',keyboardPanel),
     keyboardChildren:Array.from(keyboardPanel.children),
+    keyboardPanelParent:keyboardPanel.parentNode||null,
+    keyboardPanelNext:keyboardPanel.nextSibling||null,
     movable:new Map()
   };
   [nodes.master,nodes.midi,nodes.spatial,nodes.gearNetwork,nodes.ratioModal,nodes.openRatio,nodes.detail].filter(Boolean).forEach(node=>{
@@ -10123,13 +10469,13 @@ body.neon-visual-mode #desktop-focus-toggle{
   function createShell(){
     if(drawer)return;
     shellGeneration++;
+
+    // The complete keyboard card is the permanent footer on portrait phones too.
+    // Do not split BLOOM / octave / PERFORMANCE out into a separate drawer.
     dock=document.createElement('div');dock.id='mobile-keyboard-dock';
-    const kb=q('#virtual-keyboard');
-    const presetBtn=document.createElement('button');presetBtn.id='mobile-user-presets-toggle';presetBtn.type='button';presetBtn.textContent='PRESETS';presetBtn.title='User presets';presetBtn.setAttribute('aria-label','User presets');
-    presetBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();window.__toggleUserPresetMenu?.();});
     const settingsBtn=document.createElement('button');settingsBtn.id='mobile-keyboard-settings-button';settingsBtn.type='button';settingsBtn.textContent='⚙';settingsBtn.title='Open controls';settingsBtn.setAttribute('aria-label','Open controls');
     settingsBtn.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();setDrawer(!drawerOpen);});
-    dock.append(presetBtn,settingsBtn,kb);
+    dock.append(settingsBtn,keyboardPanel);
     app.appendChild(dock);
 
     drawer=document.createElement('section');drawer.id='mobile-one-screen-drawer';drawer.setAttribute('aria-label','Synth controls');
@@ -10146,46 +10492,19 @@ body.neon-visual-mode #desktop-focus-toggle{
 
     drawerScroll=document.createElement('div');drawerScroll.id='mobile-one-screen-scroll';drawerScroll.appendChild(visualRow);drawer.appendChild(drawerScroll);app.appendChild(drawer);
 
-    // Pull only the octave/performance controls out of the keyboard card. The keyboard itself stays docked.
-    const kbChildren=Array.from(keyboardPanel.children);
-    keyboardOptions=document.createElement('div');keyboardOptions.id='mobile-keyboard-options';keyboardOptions.appendChild(makeSectionTitle('PERFORMANCE'));
-    const title=q('.keyboard-panel-title',keyboardPanel);
-    const bloom=q('.keyboard-bloom-wrap',keyboardPanel);
-    const keyboardEl=q('#virtual-keyboard',keyboardPanel);
-    const presetButton=q('#keyboard-user-presets-toggle',keyboardPanel);
-    // Do not rely on child indexes here. The PRESETS button and other UI additions
-    // changed the keyboard panel's direct-child order, which caused the mobile
-    // carousel to move the octave row instead of PERFORMANCE.
-    const perfBlock=q('#chk-poly',keyboardPanel)?.closest('div[style*="border-top"]')||null;
-    const octaveRow=kbChildren.find(el=>el!==title && el!==keyboardEl && el!==presetButton && el!==perfBlock && el.querySelector?.('#btn-reset-pitch'))||null;
-    if(perfBlock)keyboardOptions.appendChild(perfBlock);
-    if(octaveRow)keyboardOptions.appendChild(octaveRow);
-    keyboardOptions.style.display='block';
-    bloomDrawer=document.createElement('div');bloomDrawer.id='keyboard-bloom-drawer';bloomDrawer.appendChild(makeSectionTitle('BLOOM'));if(bloom)bloomDrawer.appendChild(bloom);
-
     // Master, MIDI, spatial and legacy driver controls.
     [nodes.master,nodes.midi,nodes.spatial].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
 
-    // Harmonic preset picker + ratio creation, followed by the current gear inspector.
+    // Harmonic presets + complete Current Gear editor remain in the controls drawer on portrait phones.
     if(nodes.ratioModal){
       nodes.ratioModal.classList.remove('is-hidden');
+      nodes.ratioModal.style.display='flex';
       drawerScroll.appendChild(nodes.ratioModal);
     }
     if(nodes.gearNetwork){
       const wrap=document.createElement('div');wrap.id='gear-network-mobile';wrap.appendChild(makeSectionTitle('CURRENT GEAR / NETWORK'));wrap.appendChild(nodes.gearNetwork);drawerScroll.appendChild(wrap);
     }
-    if(nodes.inspector){
-      const wrap=document.createElement('div');wrap.id='mobile-current-gear-editor';wrap.appendChild(makeSectionTitle('CURRENT GEAR'));wrap.appendChild(nodes.inspector);drawerScroll.appendChild(wrap);
-    }
 
-    // Keep Performance and Bloom at the bottom of the one-page controls, directly above the keyboard.
-    drawerScroll.appendChild(keyboardOptions);
-    drawerScroll.appendChild(bloomDrawer);
-    // Defensive re-homing: orientation/viewport changes must never leave a control
-    // inside a detached drawer or hidden desktop panel.
-    if(bloom && bloom.parentNode!==bloomDrawer) bloomDrawer.appendChild(bloom);
-
-    // Keep the existing network/open-ratio panels out of the one-screen layout.
     if(nodes.openRatio)nodes.openRatio.style.display='none';
     if(nodes.detail)nodes.detail.style.display='none';
     if(nodes.master)nodes.master.style.display='block';
@@ -10229,10 +10548,6 @@ body.neon-visual-mode #desktop-focus-toggle{
     [nodes.master,nodes.midi,nodes.spatial].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
     if(nodes.ratioModal){nodes.ratioModal.classList.remove('is-hidden');nodes.ratioModal.style.display='flex';drawerScroll.appendChild(nodes.ratioModal);}
     if(nodes.gearNetwork){const wrap=q('#gear-network-mobile');if(wrap&&!wrap.contains(nodes.gearNetwork))wrap.appendChild(nodes.gearNetwork);}
-    if(nodes.inspector){const wrap=q('#mobile-current-gear-editor');if(wrap&&!wrap.contains(nodes.inspector))wrap.appendChild(nodes.inspector);}
-    // Performance and Bloom remain the final controls in the one-page drawer, directly above the keyboard.
-    if(keyboardOptions)drawerScroll.appendChild(keyboardOptions);
-    if(bloomDrawer)drawerScroll.appendChild(bloomDrawer);
     // Restore the user's controls-panel state after every orientation/viewport transition.
     const reopen=restoreDrawerOpen;
     setDrawer(reopen);
@@ -10245,27 +10560,10 @@ body.neon-visual-mode #desktop-focus-toggle{
     app.classList.remove('mobile-one-screen-mode','mobile-controls-open');
     // Put inspector internals back where the original inspector system expects them.
     if(nodes.inspector&&original.inspectorParent) original.inspectorParent.appendChild(nodes.inspector);
-    // Rebuild the keyboard card's original direct-child order. Nested controls such
-    // as BLOOM must also be restored to their original parent, because moving them
-    // into the mobile drawer otherwise leaves them stranded when returning to desktop.
-    if(keyboardPanel){
-      original.keyboardChildren.forEach(ch=>{if(ch&&ch.parentNode!==keyboardPanel)keyboardPanel.appendChild(ch);});
-      const bloom=original.keyboardBloom;
-      if(bloom){
-        const parent=bloom.parentNode;
-        if(parent !== keyboardPanel){
-          const title=original.keyboardTitle;
-          if(title && bloom.parentNode!==title){
-            const spacer=title.querySelector('.keyboard-panel-spacer');
-            if(spacer) title.insertBefore(bloom,spacer);
-            else title.appendChild(bloom);
-          }
-        } else if(original.keyboardTitle && !original.keyboardTitle.contains(bloom)){
-          const spacer=original.keyboardTitle.querySelector('.keyboard-panel-spacer');
-          if(spacer) original.keyboardTitle.insertBefore(bloom,spacer);
-          else original.keyboardTitle.appendChild(bloom);
-        }
-      }
+    // Restore the entire keyboard panel to its original sidebar position.
+    if(keyboardPanel && original.keyboardPanelParent){
+      if(original.keyboardPanelNext && original.keyboardPanelNext.parentNode===original.keyboardPanelParent) original.keyboardPanelParent.insertBefore(keyboardPanel,original.keyboardPanelNext);
+      else original.keyboardPanelParent.appendChild(keyboardPanel);
     }
     // Restore every panel we temporarily move into the one-screen drawer.
     original.movable.forEach((pos,node)=>{
@@ -10284,12 +10582,9 @@ body.neon-visual-mode #desktop-focus-toggle{
     if(mq.matches){
       if(!inMode) enter();
       else {
-        // Ensure all mobile controls are attached to the live drawer after any
+        // Keep the complete keyboard panel in the live footer after every
         // browser reflow/orientation event.
-        const bloom=q('.keyboard-bloom-wrap');
-        if(bloomDrawer && bloom && bloom.parentNode!==bloomDrawer) bloomDrawer.appendChild(bloom);
-        if(keyboardOptions && keyboardOptions.parentNode!==drawerScroll) drawerScroll.appendChild(keyboardOptions);
-        if(bloomDrawer && bloomDrawer.parentNode!==drawerScroll) drawerScroll.appendChild(bloomDrawer);
+        if(dock && keyboardPanel && keyboardPanel.parentNode!==dock) dock.appendChild(keyboardPanel);
       }
     } else if(inMode) leave();
   }
@@ -10445,5 +10740,223 @@ body.neon-visual-mode #desktop-focus-toggle{
     };
 </script>
 
+
+<style id="permanent-frame-layout-v73">
+:root{
+  --frame-top:80px;
+  --frame-left:clamp(260px,23vw,360px);
+  --frame-right:clamp(320px,27vw,390px);
+  --frame-footer:190px;
+}
+
+/* Desktop/tablet frame. No audio/engine properties are changed here. */
+@media (min-width:901px){
+  html,body{width:100%;height:100%;overflow:hidden!important;}
+  body{position:relative!important;}
+  #app-container{
+    position:fixed!important;
+    left:0!important;right:0!important;top:var(--frame-top)!important;bottom:0!important;
+    width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;
+    display:block!important;overflow:hidden!important;
+    box-sizing:border-box!important;
+  }
+  #sidebar{
+    position:absolute!important;left:0!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:var(--frame-left)!important;min-width:var(--frame-left)!important;max-width:var(--frame-left)!important;
+    height:auto!important;display:flex!important;flex-direction:column!important;
+    overflow:hidden!important;border-right:1px solid #614624!important;border-top:0!important;border-radius:0!important;
+    box-shadow:4px 0 18px rgba(0,0,0,.38)!important;z-index:1500!important;
+  }
+  #sidebar .sidebar-scroll{min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding-bottom:18px!important;}
+
+  #canvas-container{
+    position:absolute!important;left:var(--frame-left)!important;right:var(--frame-right)!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:auto!important;height:auto!important;min-height:0!important;flex:none!important;
+    border:0!important;border-radius:0!important;z-index:1!important;
+    box-shadow:inset 1px 0 0 rgba(214,164,76,.18),inset -1px 0 0 rgba(214,164,76,.18)!important;
+  }
+  #canvas-container canvas{width:100%!important;height:100%!important;border-radius:0!important;}
+
+  /* The v72 Current Gear/Harmonic Presets editor becomes the permanent right frame rail. */
+  #ratio-palette-modal{
+    position:absolute!important;left:auto!important;right:0!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:var(--frame-right)!important;max-width:none!important;height:auto!important;max-height:none!important;
+    min-height:0!important;margin:0!important;border-radius:0!important;transform:none!important;--ratio-modal-scale:1!important;
+    display:flex!important;flex-direction:column!important;overflow:hidden!important;z-index:1600!important;
+    box-shadow:-5px 0 18px rgba(0,0,0,.42),inset 1px 0 0 rgba(214,164,76,.12)!important;
+  }
+  #ratio-palette-modal.is-hidden{display:flex!important;}
+  #ratio-palette-scale-handle,#btn-close-ratio-palette{display:none!important;}
+  #ratio-palette-modal .floating-header{position:sticky!important;top:0!important;z-index:10!important;flex:0 0 auto!important;cursor:default!important;}
+  #ratio-palette-modal .floating-body{flex:1 1 auto!important;min-height:0!important;overflow-x:hidden!important;overflow-y:auto!important;padding:8px!important;}
+  #ratio-palette-modal .rational-palette{max-height:270px!important;overflow-y:auto!important;}
+  #ratio-palette-modal .shape-generator{flex:0 0 auto!important;}
+
+  /* Full keyboard card as the bottom frame/footer. */
+  #sidebar .keyboard-panel-box{
+    position:fixed!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;
+    height:var(--frame-footer)!important;min-height:var(--frame-footer)!important;max-height:var(--frame-footer)!important;
+    margin:0!important;padding:5px 8px 6px!important;border-radius:10px 10px 0 0!important;
+    z-index:12000!important;overflow:hidden!important;display:block!important;
+    background:linear-gradient(180deg,rgba(31,21,12,.99),rgba(11,8,5,.99))!important;
+    border:1px solid #765326!important;box-shadow:0 -8px 24px rgba(0,0,0,.68)!important;
+  }
+  #sidebar .keyboard-panel-title{
+    min-height:24px!important;height:24px!important;padding-right:90px!important;margin:0!important;
+    display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important;
+  }
+  #sidebar .keyboard-bloom-wrap{min-width:170px!important;max-width:none!important;flex:1 1 auto!important;}
+  #sidebar #keyboard-user-presets-toggle{top:4px!important;right:6px!important;}
+  #sidebar .keyboard-container{
+    width:100%!important;height:65px!important;min-height:65px!important;margin:3px 0 0!important;padding:2px!important;
+    border-radius:5px!important;overflow:hidden!important;display:flex!important;background:#0f172a!important;
+  }
+  #sidebar .keyboard-container .keyboard-octave{position:relative!important;display:flex!important;flex:1 1 0!important;min-width:0!important;height:100%!important;border-right:1px solid rgba(255,255,255,.12)!important;}
+  #sidebar .keyboard-container .keyboard-octave:last-child{border-right:0!important;}
+  #sidebar .keyboard-container .white-key{position:relative!important;flex:1 1 0!important;min-width:0!important;height:100%!important;}
+  #sidebar .keyboard-container .black-key{position:absolute!important;width:9%!important;height:60%!important;top:0!important;z-index:2!important;}
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{height:22px!important;min-height:22px!important;margin-top:3px!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{margin-top:3px!important;padding-top:3px!important;display:flex!important;gap:4px!important;min-height:27px!important;overflow:hidden!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"] > div:first-child{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:6px!important;flex:1 1 auto!important;}
+  #sidebar #gliss-control-group{min-width:130px!important;max-width:260px!important;display:flex!important;}
+  #sidebar .keyboard-panel-box .key span{display:none!important;}
+
+  /* The old floating inspector remains retired. */
+  #selected-gear-detail{display:none!important;}
+}
+
+/* Narrow desktop / landscape tablet: keep the frame intact while shrinking its rails. */
+@media (min-width:901px) and (max-width:1180px){
+  :root{--frame-left:270px;--frame-right:330px;--frame-footer:168px;}
+  #sidebar .keyboard-bloom-wrap{min-width:130px!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{font-size:.62rem!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"] label{font-size:.62rem!important;}
+}
+@media (min-width:901px) and (max-height:760px){
+  :root{--frame-footer:190px;}
+  #sidebar .keyboard-container{height:62px!important;min-height:62px!important;}
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{height:20px!important;min-height:20px!important;}
+}
+
+/* Portrait phones keep the existing controls drawer, but the FULL keyboard panel is still a real footer. */
+@media (max-width:900px) and (orientation:portrait){
+  html,body{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;}
+  #app-container.mobile-one-screen-mode{top:44px!important;bottom:0!important;height:auto!important;padding:0!important;overflow:hidden!important;}
+  #app-container.mobile-one-screen-mode #canvas-container{inset:0 0 190px 0!important;display:block!important;}
+  #mobile-keyboard-dock{
+    left:0!important;right:0!important;bottom:0!important;height:190px!important;min-height:190px!important;
+    padding:4px 4px 3px!important;align-items:stretch!important;background:linear-gradient(180deg,rgba(31,21,12,.99),rgba(11,8,5,.99))!important;
+  }
+  #mobile-keyboard-dock .keyboard-panel-box{
+    position:relative!important;left:auto!important;right:auto!important;bottom:auto!important;
+    width:100%!important;height:100%!important;min-height:0!important;max-height:none!important;margin:0!important;padding:4px 5px 3px!important;
+    border-radius:7px!important;overflow:hidden!important;display:block!important;
+    background:linear-gradient(180deg,rgba(35,24,13,.96),rgba(13,9,6,.98))!important;
+    border:1px solid #765326!important;box-shadow:none!important;
+  }
+  #mobile-keyboard-dock .keyboard-panel-title{display:flex!important;height:25px!important;min-height:25px!important;padding-left:34px!important;padding-right:72px!important;margin:0!important;gap:4px!important;overflow:visible!important;}
+  #mobile-keyboard-dock .keyboard-bloom-wrap{display:flex!important;min-width:0!important;max-width:none!important;flex:1 1 auto!important;}
+  #mobile-keyboard-dock #keyboard-user-presets-toggle{top:3px!important;right:4px!important;}
+  #mobile-keyboard-dock #mobile-keyboard-settings-button{
+    position:absolute!important;left:4px!important;right:auto!important;top:2px!important;width:26px!important;height:26px!important;min-width:26px!important;min-height:26px!important;
+    z-index:20!important;font-size:14px!important;
+  }
+  #mobile-keyboard-dock .keyboard-container{width:100%!important;height:62px!important;min-height:62px!important;margin:3px 0 0!important;padding:2px!important;border-radius:4px!important;display:flex!important;overflow:hidden!important;}
+  #mobile-keyboard-dock .keyboard-octave{position:relative!important;display:flex!important;flex:1 1 0!important;min-width:0!important;height:100%!important;border-right:1px solid rgba(255,255,255,.10)!important;}
+  #mobile-keyboard-dock .keyboard-octave:last-child{border-right:0!important;}
+  #mobile-keyboard-dock .white-key{position:relative!important;flex:1 1 0!important;min-width:0!important;height:100%!important;}
+  #mobile-keyboard-dock .black-key{position:absolute!important;width:9%!important;height:60%!important;top:0!important;z-index:2!important;}
+  #mobile-keyboard-dock .keyboard-panel-box > div[style*="justify-content: space-between"]{height:21px!important;min-height:21px!important;margin-top:2px!important;}
+  #mobile-keyboard-dock .keyboard-panel-box > div[style*="border-top"]{margin-top:2px!important;padding-top:2px!important;display:flex!important;flex-direction:column!important;gap:2px!important;height:48px!important;min-height:48px!important;overflow:hidden!important;}
+  #mobile-keyboard-dock .keyboard-panel-box > div[style*="border-top"] > div:first-child{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:5px!important;flex:1 1 auto!important;}
+  #mobile-keyboard-dock #gliss-control-group{display:flex!important;min-height:18px!important;align-items:center!important;}
+  #mobile-keyboard-dock #gliss-control-group label{font-size:.62rem!important;}
+  #mobile-keyboard-dock #gliss-control-group input{min-width:0!important;}
+  #mobile-keyboard-dock #gliss-control-group span{font-size:.62rem!important;}
+  #mobile-keyboard-dock .key span{display:none!important;}
+
+  #mobile-keyboard-dock #virtual-keyboard{height:62px!important;min-height:62px!important;}
+  #mobile-keyboard-dock #keyboard-user-presets-toggle{display:inline-flex!important;position:absolute!important;top:3px!important;right:4px!important;}
+  #mobile-one-screen-drawer{bottom:190px!important;}
+}
+
+/* Landscape phones/tablets also use the same physical frame. This is layout-only. */
+@media (max-width:900px) and (orientation:landscape){
+  :root{--frame-top:80px;--frame-left:220px;--frame-right:300px;--frame-footer:150px;}
+  html,body{width:100%;height:100%;overflow:hidden!important;}
+  body{position:relative!important;}
+  #app-container{
+    position:fixed!important;left:0!important;right:0!important;top:var(--frame-top)!important;bottom:0!important;
+    width:auto!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;
+    display:block!important;overflow:hidden!important;box-sizing:border-box!important;
+  }
+  #sidebar{
+    position:absolute!important;left:0!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:var(--frame-left)!important;min-width:var(--frame-left)!important;max-width:var(--frame-left)!important;
+    height:auto!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;
+    border-right:1px solid #614624!important;border-top:0!important;border-radius:0!important;z-index:1500!important;
+  }
+  #sidebar .sidebar-scroll{min-height:0!important;overflow-y:auto!important;overflow-x:hidden!important;padding-bottom:18px!important;}
+  #canvas-container{
+    position:absolute!important;left:var(--frame-left)!important;right:var(--frame-right)!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:auto!important;height:auto!important;min-height:0!important;flex:none!important;border:0!important;border-radius:0!important;z-index:1!important;
+  }
+  #canvas-container canvas{width:100%!important;height:100%!important;border-radius:0!important;}
+  #ratio-palette-modal{
+    position:absolute!important;left:auto!important;right:0!important;top:0!important;bottom:var(--frame-footer)!important;
+    width:var(--frame-right)!important;max-width:none!important;height:auto!important;max-height:none!important;min-height:0!important;
+    margin:0!important;border-radius:0!important;transform:none!important;--ratio-modal-scale:1!important;
+    display:flex!important;flex-direction:column!important;overflow:hidden!important;z-index:1600!important;
+  }
+  #ratio-palette-modal.is-hidden{display:flex!important;}
+  #ratio-palette-scale-handle,#btn-close-ratio-palette{display:none!important;}
+  #ratio-palette-modal .floating-header{position:sticky!important;top:0!important;z-index:10!important;flex:0 0 auto!important;cursor:default!important;}
+  #ratio-palette-modal .floating-body{flex:1 1 auto!important;min-height:0!important;overflow-x:hidden!important;overflow-y:auto!important;padding:6px!important;}
+  #ratio-palette-modal .rational-palette{max-height:190px!important;overflow-y:auto!important;}
+  #sidebar .keyboard-panel-box{
+    position:fixed!important;left:0!important;right:0!important;bottom:0!important;width:100vw!important;
+    height:var(--frame-footer)!important;min-height:var(--frame-footer)!important;max-height:var(--frame-footer)!important;
+    margin:0!important;padding:4px 7px 4px!important;border-radius:9px 9px 0 0!important;
+    z-index:12000!important;overflow:hidden!important;display:block!important;
+    background:linear-gradient(180deg,rgba(31,21,12,.99),rgba(11,8,5,.99))!important;
+    border:1px solid #765326!important;box-shadow:0 -8px 24px rgba(0,0,0,.68)!important;
+  }
+  #sidebar .keyboard-panel-title{height:20px!important;min-height:20px!important;padding-right:86px!important;margin:0!important;display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:5px!important;}
+  #sidebar .keyboard-bloom-wrap{min-width:150px!important;max-width:none!important;flex:1 1 auto!important;}
+  #sidebar #keyboard-user-presets-toggle{top:3px!important;right:5px!important;}
+  #sidebar .keyboard-container{width:100%!important;height:45px!important;min-height:45px!important;margin:2px 0 0!important;padding:2px!important;border-radius:4px!important;overflow:hidden!important;display:flex!important;}
+  #sidebar .keyboard-container .keyboard-octave{position:relative!important;display:flex!important;flex:1 1 0!important;min-width:0!important;height:100%!important;border-right:1px solid rgba(255,255,255,.12)!important;}
+  #sidebar .keyboard-container .keyboard-octave:last-child{border-right:0!important;}
+  #sidebar .keyboard-container .white-key{position:relative!important;flex:1 1 0!important;min-width:0!important;height:100%!important;}
+  #sidebar .keyboard-container .black-key{position:absolute!important;width:9%!important;height:60%!important;top:0!important;z-index:2!important;}
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{height:18px!important;min-height:18px!important;margin-top:1px!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{margin-top:1px!important;padding-top:1px!important;display:flex!important;flex-direction:column!important;gap:1px!important;height:42px!important;min-height:42px!important;overflow:hidden!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"] > div:first-child{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:4px!important;flex:1 1 auto!important;min-height:23px!important;}
+  #sidebar #gliss-control-group{display:flex!important;min-width:0!important;min-height:16px!important;height:16px!important;}
+  #sidebar .key span{display:none!important;}
+}
+
+</style>
+
+<style id="v75-final-keyboard-overrides">
+@media (max-width:900px) and (orientation:portrait){
+  #mobile-keyboard-dock .keyboard-container{height:58px!important;min-height:58px!important;margin-top:2px!important;}
+}
+@media (max-width:900px) and (orientation:landscape){
+  :root{--frame-footer:175px!important;}
+  #sidebar .keyboard-panel-title{height:42px!important;min-height:42px!important;padding-right:62px!important;margin:0!important;display:flex!important;align-items:flex-start!important;flex-wrap:nowrap!important;gap:4px!important;overflow:visible!important;}
+  #sidebar .keyboard-title-label{padding-top:4px!important;font-size:.62rem!important;white-space:nowrap!important;flex:0 0 auto!important;}
+  #sidebar .keyboard-bloom-wrap{min-width:0!important;max-width:none!important;flex:1 1 auto!important;display:flex!important;flex-direction:column!important;gap:0!important;align-self:stretch!important;}
+  #sidebar .keyboard-bloom-label{height:10px!important;line-height:10px!important;flex:0 0 10px!important;font-size:6.5px!important;}
+  #sidebar .keyboard-bloom-slider-row{display:flex!important;align-items:center!important;gap:5px!important;height:19px!important;min-height:19px!important;flex:0 0 19px!important;}
+  #sidebar #slider-keyboard-bloom{flex:1 1 auto!important;width:auto!important;min-width:0!important;height:17px!important;}
+  #sidebar .keyboard-bloom-placement{display:flex!important;align-items:center!important;gap:2px!important;margin:0!important;white-space:nowrap!important;font-size:5.8px!important;}
+  #sidebar .keyboard-bloom-placement input{margin:0!important;}
+  #sidebar .keyboard-bloom-options{height:8px!important;line-height:8px!important;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:3px!important;font-size:5.8px!important;}
+  #sidebar .keyboard-container{height:48px!important;min-height:48px!important;margin:2px 0 0!important;}
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{height:18px!important;min-height:18px!important;margin-top:2px!important;}
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{height:39px!important;min-height:39px!important;margin-top:2px!important;padding-top:2px!important;}
+}
+</style>
 </body>
 </html>
