@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v82-fixed</title>
+  <title>JI Gear Synth v88</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -3307,16 +3307,17 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
   constructor(){
     super(); this.active=false; this.gateOpen=false; this.gears=[]; this.frame=0; this.releaseFrame=null; this.releaseEndFrame=null; this.releaseNotified=false;
     this.masterFreq=0; this.currentMasterFreq=0; this.targetMasterFreq=0; this.glideSeconds=0; this.pitchRatio=1;
-    this.port.onmessage=e=>this.onMessage(e.data||{});
+    this.generation=0; this.port.onmessage=e=>this.onMessage(e.data||{});
   }
   onMessage(m){
     if(m.type==='configure'){
+      this.generation=Number(m.generation)||0;
       this.gears=m.gears||[]; this.gears.forEach(g=>{
         g.phase=Number.isFinite(Number(g.phase))?Number(g.phase):0;
         g.accelerationSec=Math.max(0,Number(g.accelerationSec)||0);
         g.currentFreq=Math.max(.001,(Number(m.masterFreq)||1)*Math.abs(Number(g.ratio)||0));
         g.targetFreq=g.currentFreq;
-        g.glideStartFreq=g.currentFreq; g.glideStartFrame=this.frame; g.glideEndFrame=this.frame; g.noteStartFrame=this.frame; g.accelEligible=true;
+        g.glideStartFreq=g.currentFreq; g.glideStartFrame=this.frame; g.glideEndFrame=this.frame; g.noteStartFrame=this.frame; g.accelEligible=true; g.legatoStartFrame=null; g.legatoEndFrame=null; g.legatoStartEnv=0;
       }); this.masterFreq=Number(m.masterFreq)||1; this.currentMasterFreq=this.masterFreq; this.targetMasterFreq=this.masterFreq; this.pitchRatio=1;
       this.glideSeconds=Number(m.glideSeconds)||0; this.frame=0; this.releaseFrame=null; this.releaseEndFrame=null; this.releaseNotified=false; this.gateOpen=true; this.active=true;
     } else if(m.type==='retune'){
@@ -3339,7 +3340,14 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
       const startFrame=this.frame;
       const eligible=m.accelEligible||{};
       this.gears.forEach((g,i)=>{
+        // Capture the exact release-envelope level before reopening. The new note
+        // must be legato in amplitude as well as pitch. Starting a fresh ADSR at
+        // zero (or jumping straight to sustain) would make an acceleration-only
+        // discontinuity even though the oscillator phase is continuous.
+        const heldEnv=this.envelopeAt(g,this.frame);
         g.noteStartFrame=startFrame; g.releaseFrame=null; g.releaseStart=0; g.accelEligible=true;
+        g.legatoStartFrame=startFrame; g.legatoEndFrame=startFrame+Math.max(1,Math.ceil(0.012*sampleRate));
+        g.legatoStartEnv=Math.max(0,Math.min(1,Number(heldEnv)||0));
         const target=Math.max(.001,f*Math.abs(Number(g.ratio)||0));
         const allowed=eligible && typeof eligible==='object' ? eligible[g.id]!==false : true;
         const d=(g.accelerationSec>0 && allowed)?g.accelerationSec:0;
@@ -3365,7 +3373,7 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
         g.releaseStart=this.envelopeAt(g,this.frame);
         const ageFrames=Math.max(0,this.frame-(Number(g.noteStartFrame)||0));
         const decayWindowFrames=(Math.max(0,Math.min(10,Number(g.attack)||0))+Math.max(0,Math.min(2,Number(g.decay)||0)))*sampleRate;
-        g.accelEligible = ageFrames <= decayWindowFrames + 1;
+        g.accelEligible = Math.max(0,Number(g.accelerationSec)||0) > 0;
         g.releaseFrame=this.frame;
         const r=Math.max(0,Math.min(10,Number(g.release)||0))*sampleRate;
         if(r>maxReleaseSamples) maxReleaseSamples=r;
@@ -3406,6 +3414,15 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
       const t=Math.min(1,(f-g.releaseFrame)/r); const start=Math.max(0,Math.min(1,Number(g.releaseStart)||0));
       return start*(1-this.curve(t,g.releaseCurve));
     }
+    if(g.legatoStartFrame!==undefined && g.legatoStartFrame!==null && g.legatoEndFrame!==undefined && g.legatoEndFrame!==null && absoluteFrame < g.legatoEndFrame){
+      const dur=Math.max(1,Number(g.legatoEndFrame)-Number(g.legatoStartFrame));
+      const u=Math.max(0,Math.min(1,(absoluteFrame-Number(g.legatoStartFrame))/dur));
+      const e=u*u*(3-2*u);
+      const startEnv=Math.max(0,Math.min(1,Number(g.legatoStartEnv)||0));
+      const target=Math.max(0,Math.min(1,Number(g.sustain)||0));
+      return startEnv+(target-startEnv)*e;
+    }
+    if(g.legatoStartFrame!==undefined && g.legatoStartFrame!==null && g.legatoEndFrame!==undefined && absoluteFrame >= g.legatoEndFrame) return Math.max(0,Math.min(1,Number(g.sustain)||0));
     if(a<=0)return d<=0?sus:(f<d?sus+(1-sus)*(1-this.curve(f/d,g.decayCurve)):sus);
     if(f<a)return this.curve(f/a,g.attackCurve);
     const df=f-a; if(d<=0)return sus; if(df<d)return 1+(sus-1)*this.curve(df/d,g.decayCurve); return sus;
@@ -3426,7 +3443,7 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
         this.active=false;
         if(!this.releaseNotified){
           this.releaseNotified=true;
-          this.port.postMessage({type:'ended'});
+          this.port.postMessage({type:'ended',generation:this.generation});
         }
         for(let j=i+1;j<out.length;j++) out[j]=0;
         return true;
@@ -3459,7 +3476,7 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
       this.active=false;
       this.gateOpen=false;
       this.releaseNotified=true;
-      this.port.postMessage({type:'ended'});
+      this.port.postMessage({type:'ended',generation:this.generation});
     }
     return true;
   }
@@ -3498,8 +3515,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const voiceGain=state.audioCtx.createGain(); voiceGain.gain.setValueAtTime(1,state.audioCtx.currentTime);
           const panner=state.audioCtx.createPanner(); panner.panningModel=state.spatialEnabled?state.spatialMode:'equalpower';panner.distanceModel='inverse';panner.refDistance=1;panner.maxDistance=1000;panner.rolloffFactor=1;
           node.connect(voiceGain); voiceGain.connect(panner);panner.connect(state.masterGain);
-          const slot={node,voiceGain,panner,busy:false,voice:null};
-          node.port.onmessage=e=>{if(e.data?.type==='ended'&&slot.voice){const v=slot.voice;if(v._cleanupTimer)clearTimeout(v._cleanupTimer);try{slot.voiceGain.gain.cancelScheduledValues(state.audioCtx?.currentTime||0);slot.voiceGain.gain.setValueAtTime(0,state.audioCtx?.currentTime||0);}catch(_){};slot.busy=false;slot.voice=null;pool.free.push(slot);state.polyReleaseTails?.delete(v);state.polyVoiceRegistry?.delete(v);try{slot.node.port.postMessage({type:'stop'});}catch(_){};updateAudioNodes();}};
+          const slot={node,voiceGain,panner,busy:false,voice:null,generation:0};
+          node.port.onmessage=e=>{
+            if(e.data?.type!=='ended') return;
+            const v=slot.voice;
+            if(!v || !v.releasing || Number(e.data?.generation)!==Number(slot.generation)) return;
+            if(v._cleanupTimer)clearTimeout(v._cleanupTimer);
+            try{slot.voiceGain.gain.cancelScheduledValues(state.audioCtx?.currentTime||0);slot.voiceGain.gain.setValueAtTime(0,state.audioCtx?.currentTime||0);}catch(_){}
+            slot.busy=false;slot.voice=null;
+            if(!pool.free.includes(slot)) pool.free.push(slot);
+            state.polyReleaseTails?.delete(v);state.polyVoiceRegistry?.delete(v);
+            try{slot.node.port.postMessage({type:'stop'});}catch(_){}
+            updateAudioNodes();
+          };
           pool.slots.push(slot);pool.free.push(slot);
         }
         pool.ready=true; return pool;
@@ -3525,6 +3553,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       try{slot.voiceGain.gain.cancelScheduledValues(now);slot.voiceGain.gain.setValueAtTime(1,now);}catch(_){}
       const voice={keyId,semitone,_noteStartedAt:now,_releaseStartedAt:null,absoluteSemitone:semitone+state.octaveShift*12,masterFreq,voiceRatio:Math.max(.000001,masterFreq/Math.max(.001,state.baseFundamentalFreq||1)),driverMode:false,optimized:true,slot,gears:new Map(),masterGain:slot.voiceGain,workletNode:slot.node,keyHeld:true,releasing:false,releaseTime:configuredReleases.length?Math.max(...configuredReleases):0,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1))};
       slot.busy=true;slot.voice=voice;
+      slot.generation=(Number(slot.generation)||0)+1;
+      voice._workletGeneration=slot.generation;
       state.polyVoiceRegistry?.add(voice);
       markPolyVoiceOrder(voice);
       // Optimized POLY has one AudioWorklet voice, so create lightweight visual
@@ -3537,7 +3567,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
       const main=state.gears.find(g=>g.isMain)||state.gears[0];
       if(slot.panner.positionX){const x=(!state.spatialEnabled||!main||main===state.gears[0])?0:(main.x-(main.x))*state.spatialScale;slot.panner.positionX.setValueAtTime(0,now);slot.panner.positionY.setValueAtTime(0,now);slot.panner.positionZ.setValueAtTime(0,now);}else slot.panner.setPosition?.(0,0,0);
-      slot.node.port.postMessage({type:'configure',masterFreq,glideSeconds:state.legato?state.glissTime:0,gears:getOptimizedPolyConfig(masterFreq,voice.velocity)});
+      slot.node.port.postMessage({type:'configure',generation:slot.generation,masterFreq,glideSeconds:state.legato?state.glissTime:0,gears:getOptimizedPolyConfig(masterFreq,voice.velocity)});
       if(Math.abs(Number(state.midiPitchBendSemitones)||0)>1e-9){ try{slot.node.port.postMessage({type:'pitch-bend',ratio:midiPitchBendRatio()});}catch(_){} }
       return voice;
     }
@@ -3555,9 +3585,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice._accelEligibleByGear=new Map();
       voice.gears?.forEach(pg=>{
         const g=pg?.gear; if(!g)return;
-        const age=Math.max(0,now-Number(voice._noteStartedAt||now));
-        const window=Math.max(0,Number(g.adsr?.attack)||0)+Math.max(0,Number(g.adsr?.decay)||0);
-        voice._accelEligibleByGear.set(g.id,age<=window+0.001);
+        voice._accelEligibleByGear.set(g.id,clampGearAccelerationMs(g.accelerationMs)>0);
         neonScheduleEnvelope(pg,false,g,now);
       });
       voice.keyHeld=false;
@@ -4189,6 +4217,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     /* CANVAS PROCEDURAL GEAR RENDERER */
     const canvas = document.getElementById('synthCanvas');
     const ctx = canvas.getContext('2d');
+    // Canvas CSS geometry is needed only when the layout changes. Reading
+    // getBoundingClientRect() from the animation loop forces synchronous layout
+    // and can starve the main thread during dense POLY/release passages.
+    state._canvasClientSize = state._canvasClientSize || { width: 1, height: 1 };
+    state._canvasClientSizeDirty = true;
+
+    function refreshCanvasClientSize() {
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      state._canvasClientSize.width = Math.max(1, rect.width);
+      state._canvasClientSize.height = Math.max(1, rect.height);
+      state._canvasClientSizeDirty = false;
+    }
 
     function resizeCanvas() {
       if (!canvas || !canvas.parentElement) return;
@@ -4203,10 +4244,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         canvas.width = width;
         canvas.height = height;
       }
+      refreshCanvasClientSize();
     }
     window.addEventListener('resize', resizeCanvas);
     const canvasParentResizeObserver = new ResizeObserver(() => {
       resizeCanvas();
+      // Reposition the floating crank control once after layout settles instead
+      // of measuring the canvas on every animation frame.
+      requestAnimationFrame(() => {
+        try { positionCanvasCrankControl(); } catch (_) {}
+      });
     });
     canvasParentResizeObserver.observe(canvas.parentElement);
     resizeCanvas();
@@ -5910,8 +5957,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       ctx.restore();
       }
       }
-      positionCanvasCrankControl();
-
       requestAnimationFrame(renderLoop);
     }
     requestAnimationFrame(renderLoop);
@@ -6587,9 +6632,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       const geo = getCrankToolGeometry();
       if (!geo) { canvasCrankControl.classList.remove('is-visible'); return; }
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width / Math.max(1, canvas.width);
-      const scaleY = rect.height / Math.max(1, canvas.height);
+      if (state._canvasClientSizeDirty) refreshCanvasClientSize();
+      const rect = state._canvasClientSize || { width: canvas.clientWidth || canvas.width, height: canvas.clientHeight || canvas.height };
       const w = canvasCrankControl.offsetWidth || 122;
       const h = canvasCrankControl.offsetHeight || 64;
       let x = Number.isFinite(state.crankTool.controlX)
@@ -6912,7 +6956,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         }
         dl.connect(gn); gn.connect(master); items.push(item);
       });
-      const rel=Math.max(0,Math.min(10,Number(state.adsr.release)||0));scheduleKeyboardAdsrGate(false,master.gain,now);const cleanup=()=>{items.forEach(x=>{try{x.o?.disconnect()}catch(_){} try{x.source?.stop()}catch(_){} try{x.source?.disconnect()}catch(_){} try{x.noiseHPF?.disconnect()}catch(_){} try{x.noiseLPF?.disconnect()}catch(_){} try{x.gn.disconnect();x.dl.disconnect()}catch(_) {}});try{master.disconnect()}catch(_){} };if(rel<=0){try{master.gain.setValueAtTime(0,now);items.forEach(x=>x.o.stop(now+.01))}catch(_){}setTimeout(cleanup,30)}else setTimeout(cleanup,Math.ceil(rel*1000)+60);return master;
+      const rel=Math.max(0,Math.min(10,Number(state.adsr.release)||0));scheduleKeyboardAdsrGate(false,master.gain,now);
+      const cleanup=()=>{
+        items.forEach(x=>{
+          try{x.o?.disconnect()}catch(_){} try{x.o?.stop()}catch(_){}
+          try{x.source?.stop()}catch(_){} try{x.source?.disconnect()}catch(_){}
+          try{x.noiseHPF?.disconnect()}catch(_){} try{x.noiseLPF?.disconnect()}catch(_){}
+          try{x.gn?.disconnect()}catch(_){} try{x.dl?.disconnect()}catch(_){}
+          x.o=null; x.source=null; x.noiseHPF=null; x.noiseLPF=null; x.gn=null; x.dl=null;
+        });
+        try{master.disconnect()}catch(_){}
+        master._disposed=true;
+      };
+      if(rel<=0){try{master.gain.setValueAtTime(0,now);items.forEach(x=>x.o?.stop(now+.01))}catch(_){}setTimeout(cleanup,30)}else setTimeout(cleanup,Math.ceil(rel*1000)+60);return master;
     }
 
     function scheduleVisibleGearAdsr(open, now=state.audioCtx?.currentTime||0){
@@ -7034,24 +7090,42 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function disconnectPolyGear(pg) {
       if (!pg) return;
+      // POLY creates a complete node train per note/gear. Release tails are
+      // intentionally allowed to ring, but once their envelope is finished the
+      // entire train must be disconnected and its JS references severed. This
+      // prevents a finished note from retaining a large Web Audio subgraph.
       if (pg.source) { try { pg.source.stop(); } catch(e) {} try { pg.source.disconnect(); } catch(e) {} }
       for (const key of ['osc','oscSine']) { if (pg[key]) { try { pg[key].stop(); } catch(e) {} try { pg[key].disconnect(); } catch(e) {} } }
-      for (const key of ['oscShapeGain','oscSineGain']) { if (pg[key]) { try { pg[key].disconnect(); } catch(e) {} } }
-      if (pg.noiseHPF) { try { pg.noiseHPF.disconnect(); } catch(e) {} }
-      if (pg.noiseLPF) { try { pg.noiseLPF.disconnect(); } catch(e) {} }
-      try { pg.delayNode.disconnect(); } catch(e) {}
-      try { pg.gainNode.disconnect(); } catch(e) {}
-      try { pg.pannerNode.disconnect(); } catch(e) {}
+      for (const key of ['oscShapeGain','oscSineGain','noiseHPF','noiseLPF','delayNode','gainNode','adsrGainNode','pannerNode']) {
+        if (pg[key]) { try { pg[key].disconnect(); } catch(e) {} }
+      }
+      // Break the object graph after physical disconnection. This matters for
+      // long sessions with many short notes where thousands of old voice objects
+      // would otherwise remain reachable from diagnostics/timers/closures.
+      for (const key of ['source','osc','oscSine','oscShapeGain','oscSineGain','noiseHPF','noiseLPF','delayNode','gainNode','adsrGainNode','pannerNode']) {
+        try { pg[key] = null; } catch(_) {}
+      }
     }
 
-    // POLY voice budget: hard-cap the number of live note voices, including
-    // release tails. A long ADSR release must never turn into an unbounded
-    // accumulation of 8-gear trains while a player is hammering notes.
+    function disposePolyVoiceGraph(voice) {
+      if (!voice) return;
+      if (voice._cleanupTimer) { clearTimeout(voice._cleanupTimer); voice._cleanupTimer = null; }
+      try { voice.gears?.forEach(disconnectPolyGear); } catch (_) {}
+      try { voice.gears?.clear?.(); } catch (_) {}
+      try { voice.masterGain?.disconnect(); } catch (_) {}
+      voice.masterGain = null;
+      voice.workletNode = null;
+      voice.slot = voice.optimized ? voice.slot : null;
+    }
+
+    // POLY voice budget: hard-cap NOTES CURRENTLY HELD at 8. Release tails are
+    // independent and are cleaned up when their ADSR completes (with a separate
+    // bounded safety cap so pathological long-release sessions cannot grow forever).
     const POLY_MAX_VOICES = 8;
     const POLY_STEAL_FADE = 0.100;
     const POLY_SAME_NOTE_FADE = 0.100;
     const POLY_OLD_TAIL_FADE = 0.100;
-    const POLY_MAX_RELEASE_TAILS = 3;
+    const POLY_MAX_RELEASE_TAILS = 32;
 
     function polyLiveVoices() {
       return [
@@ -7104,8 +7178,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         } catch (_) {}
         if (voice._cleanupTimer) clearTimeout(voice._cleanupTimer);
         voice._cleanupTimer = setTimeout(() => {
-          voice.gears?.forEach(disconnectPolyGear);
-          try { voice.masterGain?.disconnect(); } catch (_) {}
+          disposePolyVoiceGraph(voice);
           if (state.polyVoices.get(voice.keyId) === voice) state.polyVoices.delete(voice.keyId);
           state.polyReleaseTails?.delete(voice);
           state.polyVoiceRegistry?.delete(voice);
@@ -7135,6 +7208,28 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
     }
 
+    const POLY_ACCEL_LEGATO_BLEND_SEC = 0.012;
+
+    function schedulePolyLegatoGain(param, from, to, now, durationSec=POLY_ACCEL_LEGATO_BLEND_SEC) {
+      if (!param) return;
+      const a=Math.max(0,Math.min(1,Number(from)||0));
+      const b=Math.max(0,Math.min(1,Number(to)||0));
+      const t=Math.max(0,Number(now)||0);
+      const d=Math.max(0.004,Number(durationSec)||POLY_ACCEL_LEGATO_BLEND_SEC);
+      try {
+        if(typeof param.cancelAndHoldAtTime==='function') param.cancelAndHoldAtTime(t);
+        else param.cancelScheduledValues(t);
+        param.setValueAtTime(a,t);
+        const n=Math.max(8,Math.min(32,Math.ceil(d*200)));
+        for(let i=1;i<=n;i++){
+          const u=i/n, e=u*u*(3-2*u);
+          param.linearRampToValueAtTime(a+(b-a)*e,t+d*u);
+        }
+      } catch (_) {
+        try { param.cancelScheduledValues(t); param.setValueAtTime(a,t); param.linearRampToValueAtTime(b,t+d); } catch(_2) {}
+      }
+    }
+
     function revivePolyReleaseTail(voice, semitone, keyId, velocity=1) {
       if (!voice || voice._forceStopped) return false;
       const now = state.audioCtx?.currentTime || 0;
@@ -7152,24 +7247,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice._forceStopped = false;
       voice._sameNoteInterrupted = false;
       voice.velocity=Math.max(.0001,Math.min(1,Number(velocity)||1));
-      // A release tail may be reused for portamento only when that original note
-      // was released before its ADSR decay window had elapsed. Once a note has
-      // reached sustain or an actual release-only tail, a new note starts at its
-      // own pitch instead of bending from the old one.
+      // Accelleration is a true note-to-note glide mode. Once enabled, a released
+      // voice remains available as the carrier for a later note regardless of how
+      // long the previous note was held or how long the pause lasted. Only the
+      // final note in the passage is allowed to complete its ADSR release.
       voice._accelEligibleByGear = new Map();
-      if (voice._releaseStartedAt != null && voice._noteStartedAt != null) {
-        const age=Math.max(0,now-Number(voice._noteStartedAt));
-        voice.gears?.forEach(pg=>{
-          const g=pg?.gear; if(!g)return;
-          const window=Math.max(0,Number(g.adsr?.attack)||0)+Math.max(0,Number(g.adsr?.decay)||0);
-          voice._accelEligibleByGear.set(g.id, age <= window + 0.001);
-        });
-      } else {
-        voice.gears?.forEach(pg=>voice._accelEligibleByGear.set(pg.gear.id,true));
-      }
-      // The reopened voice is now a new note. Preserve the OLD note's eligibility
-      // decisions above, then reset its start time so its next release is measured
-      // from this new note rather than from the obsolete source note.
+      voice.gears?.forEach(pg=>{
+        const g=pg?.gear; if(!g)return;
+        voice._accelEligibleByGear.set(g.id,clampGearAccelerationMs(g.accelerationMs)>0);
+      });
+      // The reopened voice is now a new note. Reset its start time so the next
+      // final note-off measures release from this note rather than its old source.
       voice._noteStartedAt=now;
       voice._releaseStartedAt=null;
       markPolyVoiceOrder(voice);
@@ -7177,13 +7265,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
       // Reopening an existing tail is the preferred retrigger path. It keeps the
       // already-allocated 8-gear train alive, avoiding a new burst of oscillators,
-      // delays, filters and panners during fast passages. The gain is restarted
-      // from zero with a tiny fade-in, so the old release cannot click into the
-      // new note.
+      // delays, filters and panners during fast passages. The old release may be
+      // part-way through its fade, so NEVER jump the bus back to zero here. That
+      // would create exactly the tiny discontinuity heard when Accelleration is on.
+      // Hold the instantaneous gain and smoothly bring it back to unity instead.
       try {
-        voice.masterGain.gain.cancelScheduledValues(now);
-        voice.masterGain.gain.setValueAtTime(0, now);
-        voice.masterGain.gain.linearRampToValueAtTime(1, now + 0.004);
+        const gainParam=voice.masterGain?.gain;
+        if(gainParam){
+          const heldGain=Math.max(0,Math.min(1,Number(gainParam.value)||0));
+          schedulePolyLegatoGain(gainParam,heldGain,1,now);
+        }
       } catch (_) {}
 
       if (voice.optimized) {
@@ -7193,14 +7284,28 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         voice.releaseTime = releaseValues.length ? Math.max(...releaseValues) : 0;
         voice.gears.forEach(pg=>{ if(pg?.gear) neonScheduleEnvelope(pg,true,pg.gear,now); });
         const accelEligible={}; voice._accelEligibleByGear?.forEach?.((v,k)=>{accelEligible[k]=v!==false;});
-        try { voice.slot?.node?.port.postMessage({type:'reopen',masterFreq,velocity:voice.velocity,accelEligible}); } catch (_) {}
+        try {
+          const slot=voice.slot;
+          if(slot){ slot.generation=(Number(slot.generation)||0)+1; voice._workletGeneration=slot.generation; }
+          voice.slot?.node?.port.postMessage({type:'reopen',generation:voice._workletGeneration,masterFreq,velocity:voice.velocity,accelEligible});
+        } catch (_) {}
       } else {
+        // Accellerated POLY is legato: a released voice is not allowed to jump from
+        // its current release amplitude to a fresh attack of 0 or 1. Preserve the
+        // instantaneous ADSR level and glide it very gently toward sustain, while
+        // the oscillator itself continues from its existing phase. A fresh attack
+        // here is the other major source of the tiny acceleration-only click.
         voice.gears?.forEach(pg=>{
-          const gear=pg?.gear; if(!gear || !pg.adsrGainNode?.gain)return;
+          const gear=pg?.gear; const param=pg?.adsrGainNode?.gain; if(!gear || !param)return;
           pg._accelTargetFreq=null;
+          pg._accelTargetDelay=null;
           pg._accelDurationSec=null;
           pg._accelAllowed=voice._accelEligibleByGear?.get?.(gear.id)!==false;
-          scheduleBloomedGearAdsr(true,gear,pg.adsrGainNode.gain,now,pg);
+          const held=Math.max(0,Math.min(1,Number(param.value)||0));
+          const sustain=Math.max(0,Math.min(1,Number(gear.adsr?.sustain ?? state.adsr?.sustain ?? .8)));
+          schedulePolyLegatoGain(param,held,sustain,now,POLY_ACCEL_LEGATO_BLEND_SEC);
+          neonScheduleEnvelope(pg,true,gear,now);
+          scheduleWidthModEnvelope(pg,true,gear,now);
         });
       }
       return true;
@@ -7237,6 +7342,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function reviveBestPolyReleaseTail(incomingSemitone, keyId, velocity=1) {
       const targetAbs=Number(incomingSemitone)+state.octaveShift*12;
+      // Acceleration is the only feature allowed to retune a still-decaying
+      // release tail into a new note. With Accelleration=0, never cannibalize
+      // the previous note: let its full release continue independently.
+      const anyGearAcceleration=state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0);
+      if(!anyGearAcceleration)return false;
       const plan=planNearestPolyReleaseTailAssignments(incomingSemitone);
       let candidate=plan.get(targetAbs)||null;
       const tails=[...(state.polyReleaseTails||[])].filter(v=>v&&!v._forceStopped);
@@ -7249,18 +7359,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function enforcePolyVoiceBudget(incomingSemitone) {
-      interruptSameNoteReleaseTail(incomingSemitone);
-      let live = polyLiveVoices();
-      while (live.length >= POLY_MAX_VOICES) {
-        live.sort((a,b) => (Number(a._polyVoiceOrder)||0) - (Number(b._polyVoiceOrder)||0));
-        // Prefer the oldest release tail. If all eight slots are held, gently
-        // steal the oldest held note so the new note can start immediately.
-        const victim = live.find(v => v?.releasing) || live[0];
-        forceStopPolyVoice(victim, POLY_STEAL_FADE, 'voice-budget');
-        live = polyLiveVoices();
-        if (victim === live[0] && live.length >= POLY_MAX_VOICES) break;
-      }
-      return live.length < POLY_MAX_VOICES;
+      // The 8-voice polyphony limit applies to NOTES CURRENTLY HELD, not to
+      // their independent ADSR release tails. A released note is still audible
+      // and must be allowed to ring; it does not consume a held-note slot.
+      // Therefore C-release -> D -> E can coexist freely. Only the 9th held note
+      // steals the oldest HELD voice, using the existing short fade.
+      let held = [...state.polyVoices.values()].filter(v => v && !v._forceStopped && !v.releasing);
+      if (held.length < POLY_MAX_VOICES) return true;
+      held.sort((a,b) => (Number(a._polyVoiceOrder)||0) - (Number(b._polyVoiceOrder)||0));
+      const victim = held[0];
+      forceStopPolyVoice(victim, POLY_STEAL_FADE, 'voice-budget');
+      return [...state.polyVoices.values()].filter(v => v && !v._forceStopped && !v.releasing).length < POLY_MAX_VOICES;
     }
 
     function exposePolyDiagnostics() {
@@ -7271,9 +7380,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           releaseTails: state.polyReleaseTails?.size || 0,
           registry: state.polyVoiceRegistry?.size || 0,
           maxReleaseTails: POLY_MAX_RELEASE_TAILS,
+          releaseTailOrders:[...(state.polyReleaseTails||[])].map(v=>Number(v?._polyVoiceOrder)||0),
           live: polyLiveVoices().length,
+          heldVoiceBudget: [...state.polyVoices.values()].filter(v=>v&&!v._forceStopped&&!v.releasing).length,
           oldestOrder: Math.min(...polyLiveVoices().map(v => Number(v._polyVoiceOrder)||Infinity)),
           sameNoteTailCount: (sem)=>polyLiveVoices().filter(v=>Number(v.semitone)===Number(sem)&&v.releasing).length,
+          accelerationEnabled: state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0),
+          tailReuseAllowed: state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0),
           heldKeys:[...state.pressedKeys],
           physicalKeys:[...state.keyboardPhysicalKeyDownCodes],
           heldVoiceKeys:[...state.polyVoices.keys()],
@@ -7871,10 +7984,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             sine.frequency.setValueAtTime(gearFreq,now);
             osc.connect(shapeGain); shapeGain.connect(delayNode); sine.connect(sineGain); sineGain.connect(delayNode);
             osc.start(now); sine.start(now);
-            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
+            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
           } else {
             osc.connect(delayNode); osc.start(now);
-            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
+            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
           }
         }
       }); } catch (constructionError) {
@@ -7911,8 +8024,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         state.polyVoices.delete(keyId);
         voice.releasing = true;
         voice.keyHeld = false;
-        voice.gears.forEach(disconnectPolyGear);
-        try { voice.masterGain.disconnect(); } catch(e) {}
+        disposePolyVoiceGraph(voice);
         state.polyReleaseTails?.delete(voice);
         return;
       }
@@ -7962,9 +8074,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       updatePolyVoices();
 
       voice._cleanupTimer = setTimeout(() => {
-        voice.gears.forEach(disconnectPolyGear);
-        try { voice.masterGain.gain.cancelScheduledValues(state.audioCtx?.currentTime || 0); } catch(e) {}
-        try { voice.masterGain.disconnect(); } catch(e) {}
+        try { voice.masterGain?.gain.cancelScheduledValues(state.audioCtx?.currentTime || 0); } catch(e) {}
+        disposePolyVoiceGraph(voice);
         state.polyReleaseTails?.delete(voice);
         state.polyVoiceRegistry?.delete(voice);
         if (state.polyMode && state.polyVoices.size === 0 && (!state.polyReleaseTails || state.polyReleaseTails.size === 0)) {
@@ -7997,6 +8108,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const current=Math.max(0.001,Number(p?.value)||target);
       try{ if(p) scheduleSmoothPitchRamp(p,current,target,now,durationSec); }catch(_){}
       try{ if(ps) scheduleSmoothPitchRamp(ps,current,target,now,durationSec); }catch(_){}
+      // Delay alignment is scheduled by updatePolyVoices so it can use the same
+      // acceleration duration as the frequency ramp. Do not touch it here, or a
+      // per-frame retune would continually restart the phase transition.
       pg._accelTargetFreq=target; pg._accelDurationSec=durationSec;
     }
 
@@ -8022,7 +8136,27 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const gearFreq = Math.max(0.001, voice.masterFreq * Math.abs(gear.ratio) * shapeMotion.rate);
           const phaseRad = (Number(gear.phaseOffsetDeg) || 0) * Math.PI / 180;
           const delay = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(phaseRad, gearFreq);
-          pg.delayNode.delayTime.setTargetAtTime(delay, now, 0.005);
+          // When this gear is using POLY Accelleration, the oscillator frequency
+          // does not jump to the new pitch. The phase-alignment delay must follow
+          // the same smooth transition or the delay line changes phase almost
+          // instantly while the oscillator is still gliding. That mismatch is a
+          // tiny broadband discontinuity heard as the click at note attack.
+          // Keep the delay automation on the exact same acceleration timebase.
+          const accelSec = pg.osc && pg._accelAllowed === true
+            ? clampGearAccelerationMs(gear.accelerationMs) / 1000
+            : 0;
+          const delayChanged = !Number.isFinite(pg._accelTargetDelay) ||
+            Math.abs(pg._accelTargetDelay - delay) > Math.max(1e-9, Math.abs(delay) * 1e-7);
+          if (pg.osc && pg._accelAllowed === true && accelSec > 0 && delayChanged) {
+            try {
+              const currentDelay = Math.max(0.000001, Number(pg.delayNode.delayTime.value) || delay);
+              scheduleSmoothPitchRamp(pg.delayNode.delayTime, currentDelay, delay, now, accelSec);
+            } catch (_) {}
+            pg._accelTargetDelay = delay;
+          } else if (!(pg.osc && pg._accelAllowed === true && accelSec > 0)) {
+            pg.delayNode.delayTime.setTargetAtTime(delay, now, 0.005);
+            pg._accelTargetDelay = delay;
+          }
           pg.gainNode.gain.setTargetAtTime(getPolyGearVolume(gear, driverMode) * (voice.velocity || 1), now, 0.01);
 
           if (driverMode && pg.source) {
@@ -8569,6 +8703,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const ve=document.getElementById('midi-velocity-value'); if(ve) ve.textContent=`${Math.round((state.midiLastVelocity||1)*100)}%`;
       const pb=document.getElementById('midi-pitch-bend-range'); if(pb && document.activeElement!==pb) pb.value=String(Number(state.midiPitchBendRange)||2);
     }
+    function scheduleMidiUiSync() {
+      if (state._midiUiSyncPending) return;
+      state._midiUiSyncPending = true;
+      requestAnimationFrame(() => {
+        state._midiUiSyncPending = false;
+        try { syncKeyboardAudioGate(); } catch (_) {}
+        try { syncMidiControllerUI(); } catch (_) {}
+      });
+    }
     function applyMidiPitchBendToAudio() {
       if(!state.audioCtx || !state.audioRunning) return;
       const now=state.audioCtx.currentTime;
@@ -8614,32 +8757,49 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(type===0x90 && velocity>0){
         const id=midiChannelKey(channel,note);
         const old=state.midiHeldNotes.get(id);
-        if(old){ old.sustained=false; if(state.polyMode) stopPolyVoice(`midi-${id}`); else if(state.releaseOnKeyup) releaseKeyboardNotes(`midi-${id}`); state.midiHeldNotes.delete(id); }
-        const v=midiNoteToVoice(note); v.channel=channel; v.velocity=velocity; v.velocityGain=midiVelocityGain(velocity); v.sustained=false;
+        if(old){
+          old.downCount=Math.max(1,Number(old.downCount)||1)+1;
+          old.sustained=false;
+          old.velocity=velocity; old.velocityGain=midiVelocityGain(velocity);
+          state.midiLastVelocity=old.velocityGain;
+          scheduleMidiUiSync();
+          return;
+        }
+        const v=midiNoteToVoice(note); v.channel=channel; v.velocity=velocity; v.velocityGain=midiVelocityGain(velocity); v.sustained=false; v.downCount=1;
         state.midiHeldNotes.set(id,v);
         state.midiLastVelocity=v.velocityGain;
         const oldOct=state.octaveShift; state.octaveShift=0; state._midiInputVelocity=v.velocityGain;
         playSemitone(v.semitone,`midi-${id}`,v.velocityGain); state.octaveShift=oldOct;
-        syncKeyboardAudioGate(); syncMidiControllerUI();
+        scheduleMidiUiSync();
       } else if(type===0x80 || (type===0x90 && velocity===0)){
         const id=midiChannelKey(channel,note), v=state.midiHeldNotes.get(id); if(!v)return;
+        if((Number(v.downCount)||1)>1){ v.downCount-=1; scheduleMidiUiSync(); return; }
         if(state.midiSustainGlobal || state.midiSustainChannels.has(channel)){
-          v.sustained=true; syncMidiControllerUI(); return;
+          v.sustained=true; scheduleMidiUiSync(); return;
         }
         state.midiHeldNotes.delete(id); const keyId=`midi-${id}`;
-        if(state.polyMode){ stopPolyVoice(keyId); syncKeyboardAudioGate(); }
+        if(state.polyMode){ stopPolyVoice(keyId); }
         else if(state.releaseOnKeyup){ releaseKeyboardNotes(keyId); }
         if(state.midiHeldNotes.size===0) { state._midiInputVelocity=1; }
-        syncKeyboardAudioGate(); syncMidiControllerUI();
+        scheduleMidiUiSync();
       } else if(type===0xb0){
         const cc=d[1]&127, value=velocity;
         if(cc===64){
           if(value>=64){ state.midiSustainGlobal = true; state.midiSustainChannels.add(channel); }
           else { state.midiSustainGlobal = false; state.midiSustainChannels.clear(); releaseSustainedMidiNotes(null); }
-          syncMidiControllerUI();
+          scheduleMidiUiSync();
         } else if(cc===1){
-          state.midiModWheel=value/127; syncMidiControllerUI();
+          state.midiModWheel=value/127; scheduleMidiUiSync();
           updateDynamicGearWidthModulation(state.audioCtx?.currentTime||0); updateDynamicPolyWidthModulation(state.audioCtx?.currentTime||0);
+        } else if(cc===123){
+          const ids=[...state.midiHeldNotes.keys()];
+          ids.forEach(id=>{ const keyId=`midi-${id}`; state.midiHeldNotes.delete(id); if(state.polyMode) stopPolyVoice(keyId); else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId); });
+          state._midiInputVelocity=1; scheduleMidiUiSync();
+        } else if(cc===120){
+          state.midiHeldNotes.clear(); state.midiSustainGlobal=false; state.midiSustainChannels.clear();
+          if(state.polyMode) stopAllPolyVoices();
+          state.pressedKeys.clear(); state.keyboardPointerHeldKeys.clear();
+          state._midiInputVelocity=1; scheduleMidiUiSync();
         }
       } else if(type===0xe0){
         const bend14=((d[2]&127)<<7)|(d[1]&127);
@@ -8685,6 +8845,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     const fundSlider = document.getElementById('slider-fundamental');
     const canvasCrankControl = document.getElementById('canvas-crank-control');
     const canvasCrankSlider = document.getElementById('canvas-crank-slider');
+    requestAnimationFrame(() => { try { positionCanvasCrankControl(); } catch (_) {} });
     const canvasCrankValue = document.getElementById('canvas-crank-value');
 
     // The Speed box itself can be repositioned independently of the physical crank.
