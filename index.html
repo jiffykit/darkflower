@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v78</title>
+  <title>JI Gear Synth v82-fixed</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -1805,6 +1805,14 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
                Existing Shape / Tooth Shape / Volume / ADSR controls above remain the
                single source of truth. These are the remaining unique per-gear controls. -->
           <div id="palette-current-gear-extras" style="margin-top:8px;border-top:1px solid var(--border-color);padding-top:6px;display:flex;flex-direction:column;gap:7px;">
+            <div style="padding-bottom:2px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <strong style="color:var(--accent-cyan);" title="Independent per-gear portamento/glissando time for note changes.">Accelleration</strong>
+                <span id="val-palette-acceleration" style="min-width:56px;text-align:right;color:var(--accent-cyan);font-weight:700;">0 ms</span>
+              </div>
+              <input id="slider-palette-acceleration" type="range" min="0" max="5000" step="10" value="0"
+                     style="width:100%;margin-top:4px;" aria-label="Accelleration" title="0 ms = immediate pitch change; higher values glide to the new pitch.">
+            </div>
             <div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
                 <strong style="color:var(--accent-cyan);">Teeth Count</strong>
@@ -2442,6 +2450,13 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         this.toothWidth = 0.5000; // 0..1 shape width; 0.5000 = neutral/default
         this.sourceMode = this.toothWaveform === 'clockwork' ? 'clockwork' : this.toothWaveform;
         this.adsr = { ...state.adsr };
+        // Independent per-gear portamento/glissando duration for pitch changes.
+        // 0 ms is an immediate jump; otherwise the current frequency bends to the
+        // new target over this many milliseconds. Runtime automation state is kept
+        // separately and is never persisted.
+        this.accelerationMs = 0;
+        this._accelTargetAudioFreq = null;
+        this._accelLastDurationSec = null;
         // MOD WIDTH is an alternate use for this gear's ADSR graph. When enabled,
         // the selected gear's graph edits drive width morphing instead of volume.
         // Store the graph values separately so switching back to normal ADSR restores
@@ -3296,18 +3311,61 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
   }
   onMessage(m){
     if(m.type==='configure'){
-      this.gears=m.gears||[]; this.gears.forEach(g=>{g.phase=Number.isFinite(Number(g.phase))?Number(g.phase):0;}); this.masterFreq=Number(m.masterFreq)||1; this.currentMasterFreq=this.masterFreq; this.targetMasterFreq=this.masterFreq; this.pitchRatio=1;
+      this.gears=m.gears||[]; this.gears.forEach(g=>{
+        g.phase=Number.isFinite(Number(g.phase))?Number(g.phase):0;
+        g.accelerationSec=Math.max(0,Number(g.accelerationSec)||0);
+        g.currentFreq=Math.max(.001,(Number(m.masterFreq)||1)*Math.abs(Number(g.ratio)||0));
+        g.targetFreq=g.currentFreq;
+        g.glideStartFreq=g.currentFreq; g.glideStartFrame=this.frame; g.glideEndFrame=this.frame; g.noteStartFrame=this.frame; g.accelEligible=true;
+      }); this.masterFreq=Number(m.masterFreq)||1; this.currentMasterFreq=this.masterFreq; this.targetMasterFreq=this.masterFreq; this.pitchRatio=1;
       this.glideSeconds=Number(m.glideSeconds)||0; this.frame=0; this.releaseFrame=null; this.releaseEndFrame=null; this.releaseNotified=false; this.gateOpen=true; this.active=true;
     } else if(m.type==='retune'){
       const f=Math.max(.001,Number(m.masterFreq)||this.currentMasterFreq||1); this.targetMasterFreq=f;
-      this.glideSeconds=Number(m.glideSeconds)||0; if(this.glideSeconds<=0)this.currentMasterFreq=f;
-    } else if(m.type==='pitch-bend'){ this.pitchRatio=Math.max(0.000001,Number(m.ratio)||1); this.targetMasterFreq=this.masterFreq*this.pitchRatio; if(this.glideSeconds<=0)this.currentMasterFreq=this.targetMasterFreq;
+      this.currentMasterFreq=f;
+      this.glideSeconds=Number(m.glideSeconds)||0;
+      const startFrame=this.frame;
+      this.gears.forEach(g=>{
+        const target=f*Math.abs(Number(g.ratio)||0);
+        g.glideStartFreq=Math.max(.001,Number(g.currentFreq)||target);
+        g.targetFreq=Math.max(.001,target);
+        const d=Math.max(0,Number(g.accelerationSec)||0);
+        g.glideStartFrame=startFrame; g.glideEndFrame=startFrame+Math.ceil(d*sampleRate);
+        if(d<=0)g.currentFreq=g.targetFreq;
+      });
+    } else if(m.type==='reopen'){
+      const f=Math.max(.001,Number(m.masterFreq)||this.targetMasterFreq||this.currentMasterFreq||1);
+      this.active=true; this.gateOpen=true; this.releaseFrame=null; this.releaseEndFrame=null; this.releaseNotified=false;
+      this.masterFreq=f; this.targetMasterFreq=f; this.currentMasterFreq=f; this.pitchRatio=1;
+      const startFrame=this.frame;
+      const eligible=m.accelEligible||{};
+      this.gears.forEach((g,i)=>{
+        g.noteStartFrame=startFrame; g.releaseFrame=null; g.releaseStart=0; g.accelEligible=true;
+        const target=Math.max(.001,f*Math.abs(Number(g.ratio)||0));
+        const allowed=eligible && typeof eligible==='object' ? eligible[g.id]!==false : true;
+        const d=(g.accelerationSec>0 && allowed)?g.accelerationSec:0;
+        g.glideStartFreq=Math.max(.001,Number(g.currentFreq)||target); g.targetFreq=target;
+        g.glideStartFrame=startFrame; g.glideEndFrame=startFrame+Math.ceil(d*sampleRate);
+        if(d<=0)g.currentFreq=target;
+      });
+    } else if(m.type==='pitch-bend'){
+      this.pitchRatio=Math.max(0.000001,Number(m.ratio)||1); this.targetMasterFreq=this.masterFreq*this.pitchRatio; this.currentMasterFreq=this.targetMasterFreq;
+      const startFrame=this.frame;
+      this.gears.forEach(g=>{
+        const target=this.targetMasterFreq*Math.abs(Number(g.ratio)||0);
+        g.glideStartFreq=Math.max(.001,Number(g.currentFreq)||target); g.targetFreq=Math.max(.001,target);
+        const d=Math.max(0,Number(g.accelerationSec)||0);
+        g.glideStartFrame=startFrame; g.glideEndFrame=startFrame+Math.ceil(d*sampleRate);
+        if(d<=0)g.currentFreq=g.targetFreq;
+      });
     } else if(m.type==='noteoff'){
       if(!this.active || !this.gateOpen || this.releaseFrame!==null)return;
       this.gateOpen=false;
       let maxReleaseSamples=0;
       this.gears.forEach(g=>{
         g.releaseStart=this.envelopeAt(g,this.frame);
+        const ageFrames=Math.max(0,this.frame-(Number(g.noteStartFrame)||0));
+        const decayWindowFrames=(Math.max(0,Math.min(10,Number(g.attack)||0))+Math.max(0,Math.min(2,Number(g.decay)||0)))*sampleRate;
+        g.accelEligible = ageFrames <= decayWindowFrames + 1;
         g.releaseFrame=this.frame;
         const r=Math.max(0,Math.min(10,Number(g.release)||0))*sampleRate;
         if(r>maxReleaseSamples) maxReleaseSamples=r;
@@ -3339,8 +3397,10 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
     const a=Math.max(0,Math.min(10,Number(g.attack)||0))*sampleRate;
     const d=Math.max(0,Math.min(2,Number(g.decay)||0))*sampleRate;
     const sus=Math.max(0,Math.min(1,Number(g.sustain)));
-    const f=Number(frame)||0;
-    if(g.releaseFrame!==undefined && g.releaseFrame!==null && f>=g.releaseFrame){
+    const absoluteFrame=Number(frame)||0;
+    const noteStart=Number.isFinite(Number(g.noteStartFrame))?Number(g.noteStartFrame):0;
+    const f=Math.max(0,absoluteFrame-noteStart);
+    if(g.releaseFrame!==undefined && g.releaseFrame!==null && absoluteFrame>=g.releaseFrame){
       const r=Math.max(0,Math.min(10,Number(g.release)||0))*sampleRate;
       if(r<=0)return 0;
       const t=Math.min(1,(f-g.releaseFrame)/r); const start=Math.max(0,Math.min(1,Number(g.releaseStart)||0));
@@ -3371,14 +3431,22 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
         for(let j=i+1;j<out.length;j++) out[j]=0;
         return true;
       }
-      if(this.glideSeconds>0 && Math.abs(this.targetMasterFreq-this.currentMasterFreq)>1e-8){
-        const tc=Math.max(.005,this.glideSeconds/3); const alpha=1-Math.exp(-1/(sampleRate*tc)); this.currentMasterFreq += (this.targetMasterFreq-this.currentMasterFreq)*alpha;
-      } else this.currentMasterFreq=this.targetMasterFreq;
+      this.currentMasterFreq=this.targetMasterFreq;
       let sum=0;
       for(const g of this.gears){
         let env=this.envelopeAt(g,this.frame);
         if(env<=1e-7)continue;
-        const baseFreq=Math.max(.001,this.currentMasterFreq*Math.abs(Number(g.ratio)||0));
+        const ratio=Math.abs(Number(g.ratio)||0);
+        const targetFreq=Math.max(.001,this.targetMasterFreq*ratio);
+        const dFrames=Math.max(0,(Number(g.glideEndFrame)||0)-(Number(g.glideStartFrame)||0));
+        if(dFrames>0 && this.frame < g.glideEndFrame){
+          const u=Math.max(0,Math.min(1,(this.frame-g.glideStartFrame)/dFrames));
+          const e=u*u*(3-2*u);
+          g.currentFreq=g.glideStartFreq+(g.targetFreq-g.glideStartFreq)*e;
+        } else {
+          g.currentFreq=targetFreq;
+        }
+        const baseFreq=Math.max(.001,g.currentFreq);
         const rate=this.shapeRate(g.shape,g.phase+(Number(g.phaseOffset)||0),g.shapeParams||{});
         const freq=baseFreq*rate;
         g.phase=(g.phase||0)+2*Math.PI*freq/sampleRate;
@@ -3446,7 +3514,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return state.gears.filter(g=>!g.muted && Math.abs(g.ratio)>0).map(g=>{
         const coeff=getPolyWaveCoefficients(getGearToothWaveform(g),getGearToothWidth(g),64);
         const harmonics=[];for(let h=1;h<64;h++)harmonics.push({re:coeff.real[h]||0,im:coeff.imag[h]||0});
-        return {ratio:Number(g.ratio)||0,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
+        return {id:g.id,ratio:Number(g.ratio)||0,accelerationSec:clampGearAccelerationMs(g.accelerationMs)/1000,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
       });
     }
 
@@ -3455,7 +3523,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const slot=pool.free.pop(); if(!slot)return null; const now=state.audioCtx.currentTime,masterFreq=getPolyMasterFrequency(semitone+state.octaveShift*12);
       const configuredReleases=state.gears.filter(g=>!g.muted && Math.abs(g.ratio)>0).map(g=>{const r=Number(g.adsr?.release);return Number.isFinite(r)?Math.max(0,Math.min(10,r)):0;});
       try{slot.voiceGain.gain.cancelScheduledValues(now);slot.voiceGain.gain.setValueAtTime(1,now);}catch(_){}
-      const voice={keyId,semitone,absoluteSemitone:semitone+state.octaveShift*12,masterFreq,voiceRatio:Math.max(.000001,masterFreq/Math.max(.001,state.baseFundamentalFreq||1)),driverMode:false,optimized:true,slot,gears:new Map(),masterGain:slot.voiceGain,workletNode:slot.node,keyHeld:true,releasing:false,releaseTime:configuredReleases.length?Math.max(...configuredReleases):0,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1))};
+      const voice={keyId,semitone,_noteStartedAt:now,_releaseStartedAt:null,absoluteSemitone:semitone+state.octaveShift*12,masterFreq,voiceRatio:Math.max(.000001,masterFreq/Math.max(.001,state.baseFundamentalFreq||1)),driverMode:false,optimized:true,slot,gears:new Map(),masterGain:slot.voiceGain,workletNode:slot.node,keyHeld:true,releasing:false,releaseTime:configuredReleases.length?Math.max(...configuredReleases):0,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1))};
       slot.busy=true;slot.voice=voice;
       state.polyVoiceRegistry?.add(voice);
       markPolyVoiceOrder(voice);
@@ -3483,7 +3551,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       trimPolyReleaseTails();
       const now=state.audioCtx?.currentTime||0;
       const releaseSeconds=Math.max(0,Math.min(10,Number(voice.releaseTime)||0));
-      voice.gears.forEach(pg=>{if(pg?.gear) neonScheduleEnvelope(pg,false,pg.gear,now);});
+      voice._releaseStartedAt=now;
+      voice._accelEligibleByGear=new Map();
+      voice.gears?.forEach(pg=>{
+        const g=pg?.gear; if(!g)return;
+        const age=Math.max(0,now-Number(voice._noteStartedAt||now));
+        const window=Math.max(0,Number(g.adsr?.attack)||0)+Math.max(0,Number(g.adsr?.decay)||0);
+        voice._accelEligibleByGear.set(g.id,age<=window+0.001);
+        neonScheduleEnvelope(pg,false,g,now);
+      });
       voice.keyHeld=false;
       voice.releaseEndTime=now+releaseSeconds;
       // Capture the release time at the physical key-up moment. Continuous has
@@ -3511,8 +3587,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function updateOptimizedPolyVoices(){
       if(!state.audioCtx)return; const pool=state.polyAudioPool;if(!pool.ready)return; const baseFund=Math.max(.001,state.baseFundamentalFreq||1);
       state.polyVoices.forEach(voice=>{
-        if(!voice.optimized||voice.releasing)return; const target=getPolyMasterFrequency(voice.semitone+state.octaveShift*12) * midiPitchBendRatio(); voice.masterFreq=target; voice.voiceRatio=Math.max(.000001,target/baseFund);
-        try{voice.slot.node.port.postMessage({type:'retune',masterFreq:target,glideSeconds:state.legato?state.glissTime:0});}catch(_){}
+        if(!voice.optimized||voice.releasing)return;
+        const target=getPolyMasterFrequency(voice.semitone+state.octaveShift*12) * midiPitchBendRatio();
+        voice.masterFreq=target; voice.voiceRatio=Math.max(.000001,target/baseFund);
+        // Do not resend an identical retune every animation frame. The worklet
+        // treats retune as the start of a new per-gear acceleration ramp, so
+        // repeating the same target would continually restart the bend and make
+        // long accelerations appear to move only a tiny amount.
+        const changed=!Number.isFinite(voice._accelTargetMasterFreq) ||
+          Math.abs(voice._accelTargetMasterFreq-target)>Math.max(1e-8,Math.abs(target)*1e-9);
+        if(changed){
+          voice._accelTargetMasterFreq=target;
+          try{voice.slot.node.port.postMessage({type:'retune',masterFreq:target,glideSeconds:0});}catch(_){}
+        }
         const g=state.gears.find(x=>x.isMain)||state.gears[0]; if(voice.slot.panner.positionX&&g){voice.slot.panner.positionX.setValueAtTime(0,state.audioCtx.currentTime);voice.slot.panner.positionY.setValueAtTime(0,state.audioCtx.currentTime);voice.slot.panner.positionZ.setValueAtTime(0,state.audioCtx.currentTime);}
       });
     }
@@ -3858,7 +3945,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
         if (!driverMode && gear.sourceMode === 'audio' && gear.audioSource) {
           const segmentDuration = Math.max(.001, (gear.audioLoopEnd || gear.audioBuffer?.duration || .001) - (gear.audioLoopStart || 0));
-          gear.audioSource.playbackRate.setTargetAtTime(Math.max(.00001, segmentDuration * Math.abs(gear.freq || .001) * (gear._shapeRate || 1)), now, state.legato ? Math.max(.005, state.glissTime/3) : .005);
+          const targetRate = Math.max(.00001, segmentDuration * Math.abs(gear.freq || .001) * (gear._shapeRate || 1));
+          const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+          const prevTarget = Number(gear._accelTargetAudioFreq);
+          const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
+          const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
+          if (changed) {
+            try {
+              const p=gear.audioSource.playbackRate;
+              const currentRate=Math.max(.00001,Number(p.value)||targetRate);
+              p.cancelScheduledValues(now); p.setValueAtTime(currentRate,now);
+              if(durationSec>0.000001) p.linearRampToValueAtTime(targetRate,now+durationSec); else p.setValueAtTime(targetRate,now);
+            } catch (_) {}
+            gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=durationSec;
+          }
         }
         if (!driverMode && gear.sourceMode === 'noise') configureNoiseFilters(gear);
 
@@ -3888,27 +3988,32 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (!driverMode && gear.osc && !['audio','noise','midi'].includes(gear.sourceMode)) {
           const targetFreq = Math.max(0.001, gear.freq * (gear._shapeRate || 1));
           if (state.isSlidingFreq) {
+            gear._accelTargetAudioFreq = targetFreq;
+            gear._accelLastDurationSec = 0;
             gear.osc.frequency.value = targetFreq; if (gear.oscSine) gear.oscSine.frequency.value = targetFreq;
-            gear.delayNode.delayTime.value = 0.0001;
-          } else if (state.legato) {
-            // Porta ON: deliberately glide pitch. This is the only pitch smoothing
-            // used for keyboard note changes.
-            const glideTc = Math.max(0.005, state.glissTime / 3);
-            gear.osc.frequency.setTargetAtTime(targetFreq, now, glideTc); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(targetFreq, now, glideTc);
-            const targetDelay = getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
-            gear.delayNode.delayTime.setTargetAtTime(targetDelay, now, glideTc);
+            gear.delayNode.delayTime.value = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
           } else {
-            // Porta OFF: pitch must jump immediately. Direct AudioParam values are
-            // used rather than setValueAtTime so repeated note changes cannot flood
-            // the browser's automation timeline.
-            gear.osc.frequency.value = targetFreq; if (gear.oscSine) gear.oscSine.frequency.value = targetFreq;
-            const targetDelay = getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
-            gear.delayNode.delayTime.value = targetDelay;
+            applyGearAccelerationToAudio(gear, targetFreq, now, false);
+            const targetDelay = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
+            try { gear.delayNode.delayTime.value = targetDelay; } catch (_) {}
           }
         } else if (driverMode) {
           const source = state.audioDriver.sources.get(gear.id);
           if (source) {
-            source.playbackRate.setTargetAtTime(Math.max(0.000001, Math.abs(gear.ratio) * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1)), now, 0.01);
+            const targetRate = Math.max(0.000001, Math.abs(gear.ratio) * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1));
+            const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+            const prevTarget = Number(gear._accelTargetAudioFreq);
+            const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
+            const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
+            try {
+              if (changed) {
+                const p=source.playbackRate;
+                const currentRate=Math.max(.000001,Number(p.value)||targetRate);
+                p.cancelScheduledValues(now); p.setValueAtTime(currentRate,now);
+                if(durationSec>0.000001) p.linearRampToValueAtTime(targetRate,now+durationSec); else p.setValueAtTime(targetRate,now);
+                gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=durationSec;
+              }
+            } catch (_) { try { source.playbackRate.value=targetRate; } catch(__){} }
           }
           // The buffer is the source in driver mode. Apply the same signed phase
           // convention as the visual hand, using the actual per-gear playback rate.
@@ -4211,6 +4316,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
     function syncPaletteCurrentGearExtras(gear){
       if(!gear) return;
+      const accelSlider=document.getElementById('slider-palette-acceleration');
+      const accelValue=document.getElementById('val-palette-acceleration');
+      const accelerationMs=clampGearAccelerationMs(gear.accelerationMs);
+      if(accelSlider) accelSlider.value=String(accelerationMs);
+      if(accelValue) accelValue.textContent=formatGearAcceleration(accelerationMs);
       const teethVal=document.getElementById('palette-teeth-value'); if(teethVal) teethVal.textContent=String(Math.round(gear.teeth||0));
       const orbitChk=document.getElementById('chk-palette-orbit'); if(orbitChk){orbitChk.checked=!!gear.orbitEnabled;orbitChk.disabled=!!gear.isMain;}
       const orbitTime=document.getElementById('slider-palette-orbit-time'); const orbitTimeVal=document.getElementById('val-palette-orbit-time');
@@ -6357,7 +6467,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       let nx=main.x+Math.cos(a+Math.PI)*radius, ny=main.y+Math.sin(a+Math.PI)*radius;
       if(!source.orbitEnabled && Math.hypot(dx,dy)<1){nx=main.x+radius;ny=main.y;}
       const copy=addGear(source.teeth,nx,ny,false); if(!copy)return null;
-      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,phaseOffsetDeg:-Number(source.phaseOffsetDeg||0),adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
+      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,accelerationMs:Math.max(0,Math.min(5000,Number(source.accelerationMs)||0)),shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,phaseOffsetDeg:-Number(source.phaseOffsetDeg||0),adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
       if(source.audioBuffer){copy.audioBuffer=source.audioBuffer;copy.audioFileName=source.audioFileName;copy.audioLoopStart=source.audioLoopStart;copy.audioLoopEnd=source.audioLoopEnd;}
       if(source.sourceMode==='midi'){copy.midiOutput=source.midiOutput;copy.midiNote=source.midiNote;}
       if(copy.orbitEnabled){copy.x=main.x+Math.cos(copy.orbitAngle)*radius;copy.y=main.y+Math.sin(copy.orbitAngle)*radius;}
@@ -6502,33 +6612,134 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       syncCanvasCrankControl();
     }
 
+    function clampGearAccelerationMs(value) {
+      return Math.max(0, Math.min(5000, Number(value) || 0));
+    }
+
+    function formatGearAcceleration(ms) {
+      const v = clampGearAccelerationMs(ms);
+      if (v >= 1000 && Math.abs(v % 1000) < 0.001) return `${(v / 1000).toFixed(v >= 2000 ? 0 : 1)} s`;
+      if (v >= 1000) return `${(v / 1000).toFixed(2)} s`;
+      return `${Math.round(v)} ms`;
+    }
+
+    // Smooth S-curve interpolation for per-gear pitch motion. Unlike a linear ramp,
+    // smoothstep has zero slope at both ends, eliminating the abrupt knee at the
+    // beginning/end of long harmonic bends while still reaching the target exactly.
+    function scheduleSmoothPitchRamp(param, from, to, start, durationSec) {
+      if (!param) return;
+      const a=Number(from), b=Number(to), t0=Number(start)||0, d=Math.max(0,Number(durationSec)||0);
+      param.cancelScheduledValues(t0);
+      param.setValueAtTime(a,t0);
+      if (d<=0.000001) { param.setValueAtTime(b,t0); return; }
+      const steps=Math.max(12,Math.min(96,Math.ceil(d*96)));
+      for(let i=1;i<=steps;i++){
+        const u=i/steps;
+        const e=u*u*(3-2*u);
+        param.linearRampToValueAtTime(a+(b-a)*e,t0+d*u);
+      }
+    }
+
+    // Apply the selected gear's own portamento time to its current pitch target.
+    // This deliberately does NOT consult the global LEGATO/GLISS setting. Each gear
+    // carries its own independent bend time, so a 1:1 can jump while 2:1, 3:1, etc.
+    // glide simultaneously. A new target begins from the instantaneous current
+    // AudioParam value, which makes rapid melody/chord changes naturally bend from
+    // wherever the previous harmonic currently is.
+    function applyGearAccelerationToAudio(gear, targetFreq, now=state.audioCtx?.currentTime||0, force=false) {
+      if (!gear || !state.audioCtx) return Math.max(0.001, Number(targetFreq)||0.001);
+      const target = Math.max(0.001, Number(targetFreq)||0.001);
+      const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+      const previousTarget = Number(gear._accelTargetAudioFreq);
+      const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
+      const changed = force || !Number.isFinite(previousTarget) || Math.abs(previousTarget - target) > Math.max(1e-6, Math.abs(target) * 1e-7) || durationChanged;
+      const currentParam = gear.osc?.frequency?.value;
+      const current = Number.isFinite(currentParam) && currentParam > 0 ? currentParam : target;
+
+      if (!changed) return Math.max(0.001, Number(gear.osc?.frequency?.value)||target);
+
+      gear._accelTargetAudioFreq = target;
+      gear._accelLastDurationSec = durationSec;
+
+      try {
+        if (gear.osc?.frequency) {
+          const p = gear.osc.frequency;
+          scheduleSmoothPitchRamp(p,current,target,now,durationSec);
+        }
+        if (gear.oscSine?.frequency) {
+          const p = gear.oscSine.frequency;
+          scheduleSmoothPitchRamp(p,current,target,now,durationSec);
+        }
+      } catch (_) {
+        try {
+          if (gear.osc?.frequency) gear.osc.frequency.value = target;
+          if (gear.oscSine?.frequency) gear.oscSine.frequency.value = target;
+        } catch (_) {}
+      }
+
+      try {
+        if (gear.delayNode?.delayTime) {
+          const delayTarget = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, target);
+          gear.delayNode.delayTime.cancelScheduledValues(now);
+          gear.delayNode.delayTime.setValueAtTime(delayTarget, now);
+        }
+      } catch (_) {}
+
+      return current;
+    }
+
     function retuneVisibleKeyboardAudio(freq) {
       if (!state.audioCtx || !state.audioRunning || state.polyMode) return;
       const now = state.audioCtx.currentTime;
       const base = Math.max(0, Number(freq) || 0);
       const driverMode = !!state.audioDriver.buffer && state.audioDriver.playing;
-      const mainGear = state.gears.find(g => g.isMain) || state.gears[0];
       state.gears.forEach(gear => {
         const ratio = Number.isFinite(gear.ratio) ? Math.abs(gear.ratio) : 0;
         gear.freq = ratio * base;
         gear.isUltrasonic = gear.freq > 20000 || gear.freq > state.audioCtx.sampleRate / 2;
         if (gear.osc && !driverMode && gear.sourceMode !== 'audio' && gear.sourceMode !== 'noise' && gear.sourceMode !== 'midi') {
           const targetFreq = Math.max(0.001, gear.freq * (gear._shapeRate || 1));
-          if (state.legato) {
-            gear.osc.frequency.setTargetAtTime(targetFreq, now, Math.max(0.005, state.glissTime / 3)); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(targetFreq, now, Math.max(0.005, state.glissTime / 3));
-            gear.delayNode?.delayTime.setTargetAtTime(gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq), now, Math.max(0.005, state.glissTime / 3));
-          } else {
-            // Direct assignment is immediate and does not append an AudioParam automation event.
-            // This is critical for rapid ASDFGH/MIDI playing with POLY OFF.
-            gear.osc.frequency.value = targetFreq;
-            if (gear.delayNode?.delayTime) gear.delayNode.delayTime.value = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
+          const current = applyGearAccelerationToAudio(gear, targetFreq, now, true);
+          // Keep phase alignment tied to the actual instantaneous pitch while the
+          // independent acceleration is in progress.
+          if (gear.delayNode?.delayTime) {
+            try {
+              const delayTarget = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
+              gear.delayNode.delayTime.value = delayTarget;
+            } catch (_) {}
           }
+          void current;
+        } else if (gear.sourceMode === 'audio' && gear.audioSource && !driverMode) {
+          const segmentDuration = Math.max(.001, (gear.audioLoopEnd || gear.audioBuffer?.duration || .001) - (gear.audioLoopStart || 0));
+          const targetRate = Math.max(.00001, segmentDuration * gear.freq * (gear._shapeRate || 1));
+          const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+          try {
+            const p = gear.audioSource.playbackRate;
+            const prevTarget = Number(gear._accelTargetAudioFreq);
+            const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || Number(gear._accelLastDurationSec)!==durationSec;
+            if (changed) {
+              const currentRate = Math.max(.00001, Number(p.value)||targetRate);
+              p.cancelScheduledValues(now); p.setValueAtTime(currentRate,now);
+              if(durationSec>0.000001) p.linearRampToValueAtTime(targetRate,now+durationSec); else p.setValueAtTime(targetRate,now);
+              gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=durationSec;
+            }
+          } catch (_) { try { gear.audioSource.playbackRate.value=targetRate; } catch(__){} }
         } else if (driverMode) {
           const source = state.audioDriver.sources.get(gear.id);
           if (source) {
             const targetRate = Math.max(0.000001, ratio * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1));
-            if (state.legato) source.playbackRate.setTargetAtTime(targetRate, now, Math.max(0.005, state.glissTime / 3));
-            else source.playbackRate.value = targetRate;
+            const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+            const prevTarget = Number(gear._accelTargetAudioFreq);
+            const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || Number(gear._accelLastDurationSec)!==durationSec;
+            try {
+              if (changed) {
+                const p=source.playbackRate;
+                const currentRate=Math.max(.000001,Number(p.value)||targetRate);
+                p.cancelScheduledValues(now); p.setValueAtTime(currentRate,now);
+                if(durationSec>0.000001) p.linearRampToValueAtTime(targetRate,now+durationSec); else p.setValueAtTime(targetRate,now);
+                gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=durationSec;
+              }
+            } catch (_) { try { source.playbackRate.value=targetRate; } catch(__){} }
           }
         }
       });
@@ -6941,6 +7152,26 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice._forceStopped = false;
       voice._sameNoteInterrupted = false;
       voice.velocity=Math.max(.0001,Math.min(1,Number(velocity)||1));
+      // A release tail may be reused for portamento only when that original note
+      // was released before its ADSR decay window had elapsed. Once a note has
+      // reached sustain or an actual release-only tail, a new note starts at its
+      // own pitch instead of bending from the old one.
+      voice._accelEligibleByGear = new Map();
+      if (voice._releaseStartedAt != null && voice._noteStartedAt != null) {
+        const age=Math.max(0,now-Number(voice._noteStartedAt));
+        voice.gears?.forEach(pg=>{
+          const g=pg?.gear; if(!g)return;
+          const window=Math.max(0,Number(g.adsr?.attack)||0)+Math.max(0,Number(g.adsr?.decay)||0);
+          voice._accelEligibleByGear.set(g.id, age <= window + 0.001);
+        });
+      } else {
+        voice.gears?.forEach(pg=>voice._accelEligibleByGear.set(pg.gear.id,true));
+      }
+      // The reopened voice is now a new note. Preserve the OLD note's eligibility
+      // decisions above, then reset its start time so its next release is measured
+      // from this new note rather than from the obsolete source note.
+      voice._noteStartedAt=now;
+      voice._releaseStartedAt=null;
       markPolyVoiceOrder(voice);
       state.polyVoices.set(keyId, voice);
 
@@ -6961,26 +7192,59 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         });
         voice.releaseTime = releaseValues.length ? Math.max(...releaseValues) : 0;
         voice.gears.forEach(pg=>{ if(pg?.gear) neonScheduleEnvelope(pg,true,pg.gear,now); });
-        try { voice.slot?.node?.port.postMessage({type:'configure',masterFreq,glideSeconds:state.legato?state.glissTime:0,gears:getOptimizedPolyConfig(masterFreq,voice.velocity)}); } catch (_) {}
+        const accelEligible={}; voice._accelEligibleByGear?.forEach?.((v,k)=>{accelEligible[k]=v!==false;});
+        try { voice.slot?.node?.port.postMessage({type:'reopen',masterFreq,velocity:voice.velocity,accelEligible}); } catch (_) {}
       } else {
         voice.gears?.forEach(pg=>{
           const gear=pg?.gear; if(!gear || !pg.adsrGainNode?.gain)return;
+          pg._accelTargetFreq=null;
+          pg._accelDurationSec=null;
+          pg._accelAllowed=voice._accelEligibleByGear?.get?.(gear.id)!==false;
           scheduleBloomedGearAdsr(true,gear,pg.adsrGainNode.gain,now,pg);
         });
       }
       return true;
     }
 
+    function getRequestedNewPolySemitones(extraSemitone=null){
+      const out=[];
+      state.pressedKeys.forEach(code=>{if(Object.prototype.hasOwnProperty.call(KEY_TO_SEMITONE,code))out.push(KEY_TO_SEMITONE[code]+state.octaveShift*12);});
+      state.midiHeldNotes.forEach(v=>{const n=Number(v?.semitone);if(Number.isFinite(n))out.push(n);});
+      if(Number.isFinite(Number(extraSemitone)))out.push(Number(extraSemitone)+state.octaveShift*12);
+      return [...new Set(out.map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+    }
+
+    function planNearestPolyReleaseTailAssignments(extraSemitone=null){
+      const tails=[...(state.polyReleaseTails||[])].filter(v=>v&&!v._forceStopped&&v.releasing)
+        .sort((a,b)=>Number(a.absoluteSemitone)-Number(b.absoluteSemitone));
+      if(!tails.length)return new Map();
+      const requested=getRequestedNewPolySemitones(extraSemitone);
+      const active=new Set([...state.polyVoices.values()].map(v=>Number(v.absoluteSemitone)));
+      const incoming=requested.filter(n=>!active.has(n)).sort((a,b)=>a-b);
+      if(!incoming.length)return new Map();
+      const map=new Map();
+      // Voice-leading rule: preserve vertical order of the previous chord. This is
+      // deliberately order-independent with respect to the physical key-down order:
+      // lowest new note inherits the lowest released voice, next inherits next, etc.
+      // For unequal chord sizes, interpolate the old voice rank across the new ranks.
+      incoming.forEach((note,i)=>{
+        const sourceIndex=tails.length===1 ? 0 : Math.round(i*(tails.length-1)/Math.max(1,incoming.length-1));
+        const candidate=tails[sourceIndex];
+        if(candidate)map.set(note,candidate);
+      });
+      return map;
+    }
+
     function reviveBestPolyReleaseTail(incomingSemitone, keyId, velocity=1) {
-      const tails=[...(state.polyReleaseTails||[])].filter(v=>v && !v._forceStopped);
-      if (!tails.length) return false;
-      const target=Number(incomingSemitone);
-      const same=tails.filter(v=>Number(v.semitone)===target).sort((a,b)=>(Number(b._polyVoiceOrder)||0)-(Number(a._polyVoiceOrder)||0));
-      if (!same.length) return false;
-      const candidate=same[0];
-      // Never repurpose a different pitch's release tail. Doing so abruptly retunes
-      // the still-decaying oscillator and is the source of the low-frequency thud.
-      same.slice(1).forEach(v=>forceStopPolyVoice(v,POLY_SAME_NOTE_FADE,'same-note'));
+      const targetAbs=Number(incomingSemitone)+state.octaveShift*12;
+      const plan=planNearestPolyReleaseTailAssignments(incomingSemitone);
+      let candidate=plan.get(targetAbs)||null;
+      const tails=[...(state.polyReleaseTails||[])].filter(v=>v&&!v._forceStopped);
+      if(!candidate){
+        const same=tails.filter(v=>Number(v.semitone)===Number(incomingSemitone)).sort((a,b)=>(Number(b._polyVoiceOrder)||0)-(Number(a._polyVoiceOrder)||0));
+        candidate=same[0]||null;
+      }
+      if(!candidate)return false;
       return revivePolyReleaseTail(candidate,incomingSemitone,keyId,velocity);
     }
 
@@ -7052,6 +7316,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             state.spatialEnabled=!!enabled;
             return state.spatialEnabled;
           },
+          setAllAcceleration: seconds => {
+            const v=Math.max(0,Math.min(5,Number(seconds)||0));
+            state.gears.forEach(g=>g.accelerationMs=v*1000);
+            return v;
+          },
+          setAllDecay: seconds => {
+            const v=Math.max(0,Math.min(2,Number(seconds)||0));
+            state.gears.forEach(g=>{if(g?.adsr)g.adsr.decay=v;});
+            return v;
+          },
+          voiceSnapshot: () => [...state.polyVoices.values(),...(state.polyReleaseTails||[])].map(v=>({keyId:v.keyId,semitone:v.semitone,absoluteSemitone:v.absoluteSemitone,releasing:!!v.releasing,optimized:!!v.optimized,accelEligible:v._accelEligibleByGear ? Object.fromEntries(v._accelEligibleByGear.entries()) : null,gears:v.gears ? [...v.gears.values()].map(pg=>({gearId:pg.gear?.id,target:pg._accelTargetFreq,current:pg.osc?.frequency?.value,allowed:pg._accelAllowed})) : []})),
           orphanTestClear: () => {
             state.pressedKeys.clear();
             state.keyboardPointerHeldKeys.clear();
@@ -7449,6 +7724,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const voice = {
         keyId,
         semitone,
+        _noteStartedAt: now,
+        _releaseStartedAt: null,
         absoluteSemitone,
         masterFreq,
         voiceRatio,
@@ -7594,10 +7871,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             sine.frequency.setValueAtTime(gearFreq,now);
             osc.connect(shapeGain); shapeGain.connect(delayNode); sine.connect(sineGain); sineGain.connect(delayNode);
             osc.start(now); sine.start(now);
-            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear});
+            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
           } else {
             osc.connect(delayNode); osc.start(now);
-            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear});
+            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
           }
         }
       }); } catch (constructionError) {
@@ -7648,6 +7925,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         return Number.isFinite(value) ? Math.min(10, Math.max(0, value)) : 0;
       });
       const releaseTime = releaseValues.length ? Math.max(...releaseValues) : 0;
+      const releaseStartedAt=now;
+      voice._releaseStartedAt=releaseStartedAt;
+      voice._accelEligibleByGear=new Map();
+      voice.gears?.forEach(pg=>{
+        const g=pg?.gear; if(!g)return;
+        const age=Math.max(0,now-Number(voice._noteStartedAt||now));
+        const window=Math.max(0,Number(g.adsr?.attack)||0)+Math.max(0,Number(g.adsr?.decay)||0);
+        voice._accelEligibleByGear.set(g.id,age<=window+0.001);
+      });
       voice.keyHeld = false;
       voice.releasing = true;
 
@@ -7697,6 +7983,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       Array.from(state.polyReleaseTails || []).forEach(v => forceStopPolyVoice(v, POLY_SAME_NOTE_FADE, 'stop-all'));
     }
 
+    function applyPolyGearAcceleration(pg,targetFreq,now=state.audioCtx?.currentTime||0,force=false) {
+      if(!pg?.gear || !state.audioCtx) return;
+      const gear=pg.gear;
+      const target=Math.max(0.001,Number(targetFreq)||0.001);
+      const prevTarget=Number(pg._accelTargetFreq);
+      const durationSec=pg._accelAllowed===true ? clampGearAccelerationMs(gear.accelerationMs)/1000 : 0;
+      const durationChanged=Number(pg._accelDurationSec)!==durationSec;
+      const changed=force||!Number.isFinite(prevTarget)||Math.abs(prevTarget-target)>Math.max(1e-6,Math.abs(target)*1e-7)||durationChanged;
+      if(!changed)return;
+      const p=pg.osc?.frequency;
+      const ps=pg.oscSine?.frequency;
+      const current=Math.max(0.001,Number(p?.value)||target);
+      try{ if(p) scheduleSmoothPitchRamp(p,current,target,now,durationSec); }catch(_){}
+      try{ if(ps) scheduleSmoothPitchRamp(ps,current,target,now,durationSec); }catch(_){}
+      pg._accelTargetFreq=target; pg._accelDurationSec=durationSec;
+    }
+
     function updatePolyVoices() {
       if (!state.audioCtx || !state.audioRunning) return;
       const now = state.audioCtx.currentTime;
@@ -7743,12 +8046,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             pg.noiseHPF.Q.setTargetAtTime(q, now, 0.01);
             pg.noiseLPF.Q.setTargetAtTime(q, now, 0.01);
           } else if (!driverMode && pg.osc) {
-            if (state.legato) {
-              pg.osc.frequency.setTargetAtTime(gearFreq,now,Math.max(0.005,state.glissTime/3)); if (pg.oscSine) pg.oscSine.frequency.setTargetAtTime(gearFreq,now,Math.max(0.005,state.glissTime/3));
-            } else {
-              // POLY + Porta OFF: every pressed note gets its exact frequency immediately.
-              pg.osc.frequency.setValueAtTime(gearFreq, now); if (pg.oscSine) pg.oscSine.frequency.setValueAtTime(gearFreq, now);
-            }
+            // POLY uses the gear's own Accelleration setting. Global LEGATO/GLISS
+            // is intentionally not involved here. Every harmonic in every voice
+            // can therefore bend with its own independent, smooth S-curve.
+            applyPolyGearAcceleration(pg,gearFreq,now,false);
           }
         });
 
@@ -9722,6 +10023,24 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('btn-palette-teeth-down')?.addEventListener('click',()=>paletteTeethChange(-1));
     document.getElementById('btn-palette-teeth-up')?.addEventListener('click',()=>paletteTeethChange(1));
 
+    document.getElementById('slider-palette-acceleration')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return;
+      gear.accelerationMs=clampGearAccelerationMs(e.target.value);
+      const value=document.getElementById('val-palette-acceleration');
+      if(value)value.textContent=formatGearAcceleration(gear.accelerationMs);
+      // Changing the setting while a glide is in progress immediately reapplies the
+      // new time from the pitch currently being heard to the gear's present target.
+      const now=state.audioCtx?.currentTime||0;
+      if(state.audioRunning){
+        if(gear.osc && !['audio','noise','midi'].includes(gear.sourceMode) && Math.abs(Number(gear.ratio)||0)>0){
+          const targetFreq=Math.max(.001,Math.abs(Number(gear.freq)||0.001)*(gear._shapeRate||1));
+          applyGearAccelerationToAudio(gear,targetFreq,now,true);
+        }
+      }
+      syncPaletteCurrentGearExtras(gear);
+      renderGearList();
+    });
+
     document.getElementById('chk-palette-orbit')?.addEventListener('change',e=>{
       const gear=getActivePaletteGear(); if(!gear)return;
       gear.orbitEnabled=!!e.target.checked;
@@ -10682,7 +11001,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
       volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
       orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
-      shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:safeNumber(g.toothWidth,.5),widthModEnabled:!!g.widthModEnabled,widthMod:g.widthMod?cloneJSON(g.widthMod):null,sourceMode:g.sourceMode,adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
+      shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:safeNumber(g.toothWidth,.5),widthModEnabled:!!g.widthModEnabled,widthMod:g.widthMod?cloneJSON(g.widthMod):null,sourceMode:g.sourceMode,accelerationMs:Math.max(0,Math.min(5000,safeNumber(g.accelerationMs,0))),adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
       audioFileName:g.audioFileName||'',audioLoopStart:g.audioLoopStart||0,audioLoopEnd:g.audioLoopEnd||0,midiNote:g.midiNote||60,magneticMesh:g.magneticMesh!==false,
       shapeParams:g.shapeParams?cloneJSON(g.shapeParams):{},neighbors:Array.from(g.neighbors||[]),audioWav:audio
     };
@@ -10749,7 +11068,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     const snapshots=Array.isArray(p.state.gears)?p.state.gears:[];
     for(const sg of snapshots){
       const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
-      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
       g.widthModEnabled=!!sg.widthModEnabled;
       if(sg.widthMod) g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
       else g.widthMod={...g.adsr};
