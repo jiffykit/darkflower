@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v88</title>
+  <title>JI Gear Synth v89</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -1484,6 +1484,13 @@
     }
 
     #ratio-palette-modal .floating-title::after{content:"";}
+
+  #midi-learn-menu { position:fixed; z-index:100000; display:none; min-width:190px; padding:4px; background:rgba(24,17,10,.97); border:1px solid #8b6835; border-radius:7px; box-shadow:0 8px 24px rgba(0,0,0,.55); font-size:.72rem; }
+  #midi-learn-menu.is-open { display:block; }
+  #midi-learn-menu button { display:block; width:100%; border:0; background:transparent; color:#ead8b4; text-align:left; padding:7px 9px; border-radius:4px; cursor:pointer; }
+  #midi-learn-menu button:hover { background:rgba(213,162,75,.16); }
+  #midi-learn-menu .midi-learn-status { padding:6px 9px; color:#62f08a; border-top:1px solid rgba(255,255,255,.08); margin-top:3px; }
+  .midi-learn-armed { outline:2px solid #62f08a !important; outline-offset:1px; }
 </style>
 <style id="user-presets-css">
 #user-presets-toggle{font:700 10px/1 Arial,sans-serif;letter-spacing:.6px;padding:4px 8px;min-width:58px;}
@@ -2319,6 +2326,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       midiPitchBendSemitones: 0,
       midiPitchBendRange: 2,
       midiLastVelocity: 1,
+      midiLearn: { armed: null, mappings: [] },
       lastNoteDownPerf: 0,
       legato: false,             // Legato/glissando smoothing for active pitch changes and POLY voice retuning
       glissTime: 0.20,           // Glissando glide duration in seconds
@@ -3355,6 +3363,10 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
         g.glideStartFrame=startFrame; g.glideEndFrame=startFrame+Math.ceil(d*sampleRate);
         if(d<=0)g.currentFreq=target;
       });
+    } else if(m.type==='shape-width'){
+      const id=Number(m.gearId);
+      const harmonics=Array.isArray(m.harmonics)?m.harmonics:null;
+      if(harmonics){ this.gears.forEach(g=>{ if(Number(g.id)===id) g.harmonics=harmonics; }); }
     } else if(m.type==='pitch-bend'){
       this.pitchRatio=Math.max(0.000001,Number(m.ratio)||1); this.targetMasterFreq=this.masterFreq*this.pitchRatio; this.currentMasterFreq=this.targetMasterFreq;
       const startFrame=this.frame;
@@ -3832,6 +3844,53 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       delayNode.delayTime.cancelScheduledValues(now);
       delayNode.delayTime.setValueAtTime(wrappedDelay, now + fade * 0.5);
       gain.gain.linearRampToValueAtTime(held, now + fade);
+    }
+
+    function applyMidiShapeWidth(gear, now=state.audioCtx?.currentTime||0){
+      if(!gear || !state.audioCtx || gear.sourceMode==='noise' || gear.sourceMode==='midi' || gear.sourceMode==='audio') return;
+      const base=getGearToothWidth(gear);
+      const wheel=Number.isFinite(Number(gear._midiWidth)) ? Number(gear._midiWidth) : 1;
+      const target=normalizeToothWidth(0.02+(base-0.02)*wheel);
+      if(gear._midiEffectiveWidth!=null && Math.abs(gear._midiEffectiveWidth-target)<0.00005) return;
+      gear._midiEffectiveWidth=target;
+      const type=getGearToothWaveform(gear);
+      if(type==='clockwork' || !gear.osc) return;
+      try{
+        // Change the PeriodicWave while the shaped branch is momentarily muted by
+        // a short audio-rate-safe dip, then restore it. This avoids the hard
+        // waveform discontinuity that would otherwise sound like a click.
+        const hold=Math.max(.0001,Number(gear.oscShapeGain?.gain?.value)||1);
+        if(gear.oscShapeGain){
+          gear.oscShapeGain.gain.cancelScheduledValues(now);
+          gear.oscShapeGain.gain.setValueAtTime(hold,now);
+          gear.oscShapeGain.gain.linearRampToValueAtTime(0,now+.003);
+        }
+        gear.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx,type,target,1));
+        if(gear.oscShapeGain){
+          gear.oscShapeGain.gain.setValueAtTime(0,now+.003);
+          gear.oscShapeGain.gain.linearRampToValueAtTime(1,now+.008);
+        }
+        gear._audioWaveKey=`${type}:${target.toFixed(4)}`;
+        applyMidiShapeWidthToPoly(gear,target,now);
+      }catch(_){ }
+    }
+
+    function applyMidiShapeWidthToPoly(gear, target, now=state.audioCtx?.currentTime||0){
+      if(!gear || !state.polyMode) return;
+      const coeff=getPolyWaveCoefficients(getGearToothWaveform(gear),target,64);
+      const harmonics=[]; for(let h=1;h<64;h++) harmonics.push({re:coeff.real[h]||0,im:coeff.imag[h]||0});
+      state.polyVoices.forEach(v=>{
+        if(!v) return;
+        if(v.optimized && v.slot?.node){ try{v.slot.node.port.postMessage({type:'shape-width',gearId:gear.id,harmonics});}catch(_){} return; }
+        const pg=v.gears?.get?.(gear.id); if(!pg?.osc || gear.sourceMode==='noise' || gear.sourceMode==='midi' || gear.sourceMode==='audio' || getGearToothWaveform(gear)==='clockwork') return;
+        try{
+          const shapeGain=pg.oscShapeGain;
+          const hold=Math.max(.0001,Number(shapeGain?.gain?.value)||1);
+          if(shapeGain){ shapeGain.gain.cancelScheduledValues(now); shapeGain.gain.setValueAtTime(hold,now); shapeGain.gain.linearRampToValueAtTime(0,now+.003); }
+          pg.osc.setPeriodicWave(getToothPeriodicWave(state.audioCtx,getGearToothWaveform(gear),target,1));
+          if(shapeGain){ shapeGain.gain.setValueAtTime(0,now+.003); shapeGain.gain.linearRampToValueAtTime(1,now+.008); }
+        }catch(_){}
+      });
     }
 
     function updateDynamicGearWidthModulation(now=state.audioCtx?.currentTime||0){
@@ -8641,6 +8700,155 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
       }
 
+    // MIDI LEARN -------------------------------------------------------------
+    // Mappings are semantic rather than tied to transient inspector DOM nodes.
+    // This is important because CURRENT GEAR is rebuilt whenever the selection changes.
+    function getMidiLearnTarget(el){
+      if(!el) return null;
+      const id=el.id||'';
+      const selectedId=state.selectedGearId;
+      if(id==='slider-inspector-volume') return {scope:'gear',gearId:selectedId,property:'volume',kind:'slider'};
+      if(id==='slider-inspector-tooth-width') return {scope:'gear',gearId:selectedId,property:'toothWidth',kind:'slider'};
+      if(id==='slider-inspector-ratio') return {scope:'gear',gearId:selectedId,property:'ratio',kind:'slider'};
+      if(id==='slider-palette-volume') return {scope:'gear',gearId:state.activePaletteGearId||selectedId,property:'volume',kind:'slider'};
+      if(el.matches('input[type="range"]')) return {scope:'dom',elementId:id,kind:'slider'};
+      if(el.matches('button,[role="button"]')) return {scope:'dom',elementId:id,kind:'button'};
+      return null;
+    }
+    function midiLearnKey(t){ return t ? `${t.scope}:${t.scope==='gear'?`${t.gearId}:${t.property}`:t.elementId}` : ''; }
+    function findMidiLearnMapping(t){
+      const key=midiLearnKey(t); if(!key) return null;
+      return (state.midiLearn?.mappings||[]).find(m=>m.targetKey===key) || null;
+    }
+    function setMidiLearnMapping(t,m){
+      if(!state.midiLearn) state.midiLearn={armed:null,mappings:[]};
+      const key=midiLearnKey(t); state.midiLearn.mappings=state.midiLearn.mappings||[];
+      state.midiLearn.mappings=state.midiLearn.mappings.filter(x=>x.targetKey!==key);
+      if(m) state.midiLearn.mappings.push({...m,targetKey:key,target:{...t}});
+      try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){ }
+    }
+    function loadMidiLearnMappings(){
+      try{const x=JSON.parse(localStorage.getItem('darkflower.midiLearn.v1')||'null'); if(x&&Array.isArray(x.mappings)) state.midiLearn={armed:null,mappings:x.mappings};}catch(_){ }
+      state.midiLearn=state.midiLearn||{armed:null,mappings:[]};
+    }
+    function armMidiLearn(el){
+      const target=getMidiLearnTarget(el); if(!target) return false;
+      state.midiLearn.armed={target};
+      document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+      el.classList.add('midi-learn-armed');
+      setMidiStatus(`MIDI LEARN: move a fader, ribbon, CC, button or pad`,true);
+      return true;
+    }
+    function clearMidiLearn(el){
+      const target=getMidiLearnTarget(el); if(!target) return;
+      setMidiLearnMapping(target,null);
+      const m=findMidiLearnMapping(target);
+      document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+      if(state.midiLearn.armed?.target && midiLearnKey(state.midiLearn.armed.target)===midiLearnKey(target)) state.midiLearn.armed=null;
+      setMidiStatus('MIDI LEARN cleared',true);
+    }
+    function showMidiLearnMenu(el,x,y){
+      let menu=document.getElementById('midi-learn-menu');
+      if(!menu){
+        menu=document.createElement('div'); menu.id='midi-learn-menu';
+        menu.innerHTML='<button data-action="learn">MIDI LEARN</button><button data-action="clear">CLEAR MIDI LEARN</button><div class="midi-learn-status"></div>';
+        document.body.appendChild(menu);
+        menu.addEventListener('click',ev=>{
+          const b=ev.target.closest('button[data-action]'); if(!b) return;
+          const tgt=menu.__target; if(!tgt) return;
+          if(b.dataset.action==='learn') armMidiLearn(tgt);
+          else clearMidiLearn(tgt);
+          menu.classList.remove('is-open'); menu.__target=null;
+        });
+      }
+      menu.__target=el;
+      const target=getMidiLearnTarget(el), map=findMidiLearnMapping(target);
+      const st=menu.querySelector('.midi-learn-status');
+      if(st) st.textContent=map?`Linked: ${map.kind==='cc'?`CC${map.number}`:`MIDI ${map.number}`}`:'Not linked';
+      menu.style.left=`${Math.max(4,Math.min(window.innerWidth-menu.offsetWidth-4,x))}px`;
+      menu.style.top=`${Math.max(4,Math.min(window.innerHeight-menu.offsetHeight-4,y))}px`;
+      menu.classList.add('is-open');
+    }
+    document.addEventListener('contextmenu',e=>{
+      const el=e.target.closest?.('input[type="range"],button,[role="button"]');
+      if(!el || el.closest('#midi-learn-menu') || el===canvas || el.closest('canvas')) return;
+      const target=getMidiLearnTarget(el); if(!target) return;
+      e.preventDefault(); e.stopPropagation();
+      showMidiLearnMenu(el,e.clientX,e.clientY);
+    },true);
+    document.addEventListener('pointerdown',e=>{
+      const menu=document.getElementById('midi-learn-menu');
+      if(menu?.classList.contains('is-open') && !e.target.closest('#midi-learn-menu')) menu.classList.remove('is-open');
+    },true);
+    loadMidiLearnMappings();
+
+    function applyMidiLearnToTarget(mapping, value, press=false){
+      if(!mapping?.target) return;
+      const t=mapping.target;
+      if(t.scope==='gear'){
+        const gear=state.gearMap.get(Number(t.gearId)); if(!gear) return;
+        let v=value;
+        if(t.property==='volume') v=Math.max(0,Math.min(1,value));
+        else if(t.property==='toothWidth') v=normalizeToothWidth(value*0.98);
+        else if(t.property==='ratio') v=Math.max(0.0625,Math.min(16,value));
+        if(t.property==='volume') gear.volume=v;
+        else if(t.property==='toothWidth') gear.toothWidth=v;
+        else if(t.property==='ratio' && !gear.isMain) gear.ratio=v;
+        if(t.property==='volume'){
+          if(gear.id===state.selectedGearId){ const out=document.getElementById('val-inspector-volume'); if(out) out.textContent=`${Math.round(gear.volume*100)}%`; }
+          const pv=document.getElementById('val-palette-volume'); if(pv&&gear.id===state.activePaletteGearId) pv.textContent=`${Math.round(gear.volume*100)}%`;
+        }
+        if(t.property==='toothWidth'){ const out=document.getElementById('val-inspector-tooth-width'); if(out&&gear.id===state.selectedGearId) out.textContent=gear.toothWidth.toFixed(4); }
+        updateAudioNodes();
+        if(state.polyMode) updatePolyVoices();
+        renderGearList?.();
+        updateInspector?.();
+        return;
+      }
+      if(t.scope==='dom'){
+        const el=document.getElementById(t.elementId); if(!el) return;
+        if(t.kind==='button'){ if(press) el.click(); return; }
+        if(el instanceof HTMLInputElement && el.type==='range'){
+          const min=Number(el.min||0), max=Number(el.max||1);
+          el.value=String(min+(max-min)*value); el.dispatchEvent(new Event('input',{bubbles:true}));
+        }
+      }
+    }
+    function handleMidiLearnCapture(d,status,channel){
+      const armed=state.midiLearn?.armed; if(!armed?.target) return false;
+      const type=status&0xf0, number=d[1]&127, velocity=(d[2]||0)&127;
+      if(type===0xb0){
+        const map={kind:'cc',number,channel};
+        setMidiLearnMapping(armed.target,map); state.midiLearn.armed=null;
+        document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+        applyMidiLearnToTarget({target:armed.target,...map},velocity/127,velocity>0);
+        setMidiStatus(`MIDI LEARN linked to CC${number}`,true); return true;
+      }
+      if(type===0x90 || type===0x80){
+        const map={kind:'note',number,channel};
+        setMidiLearnMapping(armed.target,map); state.midiLearn.armed=null;
+        document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+        applyMidiLearnToTarget({target:armed.target,...map},velocity>0?velocity/127:0, type===0x90&&velocity>0);
+        setMidiStatus(`MIDI LEARN linked to MIDI note ${number}`,true); return true;
+      }
+      return false;
+    }
+    function applyStoredMidiMappings(d,status,channel){
+      const type=status&0xf0, number=d[1]&127, velocity=(d[2]||0)&127;
+      (state.midiLearn?.mappings||[]).forEach(m=>{
+        if(Number(m.channel)!==channel && Number(m.channel)!==255) return;
+        if(m.kind==='cc' && type===0xb0 && Number(m.number)===number){
+          const pressed=velocity>=64; const was=!!m._pressed; m._pressed=pressed;
+          if(m.target?.kind==='button'){ if(pressed&&!was) applyMidiLearnToTarget(m,1,true); }
+          else applyMidiLearnToTarget(m,velocity/127,pressed);
+        } else if(m.kind==='note' && Number(m.number)===number && (type===0x90||type===0x80)){
+          const pressed=type===0x90&&velocity>0;
+          if(m.target?.kind==='button'){ if(pressed) applyMidiLearnToTarget(m,velocity/127,true); }
+          else applyMidiLearnToTarget(m,pressed?velocity/127:0,pressed);
+        }
+      });
+    }
+
     // WEB MIDI INPUT
     function setMidiStatus(text, ok = false) {
       const el = document.getElementById('midi-status');
@@ -8754,6 +8962,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const d=event?.data; if(!d || d.length<2)return;
       const status=d[0]&0xff, type=status&0xf0, channel=status&0x0f;
       const note=d[1]&127, velocity=(d[2]||0)&127;
+      if(handleMidiLearnCapture(d,status,channel)) return;
+      applyStoredMidiMappings(d,status,channel);
       if(type===0x90 && velocity>0){
         const id=midiChannelKey(channel,note);
         const old=state.midiHeldNotes.get(id);
@@ -8790,6 +9000,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           scheduleMidiUiSync();
         } else if(cc===1){
           state.midiModWheel=value/127; scheduleMidiUiSync();
+          // Default CC1 destination: SHAPE WIDTH of the currently selected gear.
+          // The configured tooth width remains the upper limit; zero is the narrowest
+          // useful width and full wheel restores the gear's configured width.
+          const selected=state.gearMap.get(state.selectedGearId);
+          if(selected && selected.sourceMode!=='noise'){
+            selected._midiWidth=value/127;
+            selected._midiWidthActive=true;
+            applyMidiShapeWidth(selected,state.audioCtx?.currentTime||0);
+          }
+          // NOISE keeps its traditional CC1 filter-band response as well.
+          state.gears.forEach(g=>{ if(g.sourceMode==='noise') configureNoiseFilters(g,null,state.audioCtx?.currentTime||0); });
           updateDynamicGearWidthModulation(state.audioCtx?.currentTime||0); updateDynamicPolyWidthModulation(state.audioCtx?.currentTime||0);
         } else if(cc===123){
           const ids=[...state.midiHeldNotes.keys()];
@@ -9104,7 +9325,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <button id="btn-inspector-teeth-up" type="button" style="padding:3px 9px; font-size:0.9rem; line-height:1;">+</button>
           </div>
         </div>
-        <div class="inspector-current-gear-hidden">
+        <div>
           <div style="margin-top:6px;">
             <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Gear Volume</span><span id="val-inspector-volume" style="color:var(--accent-cyan)">${Math.round(Math.max(0,Math.min(1,gear.volume))*100)}%</span></label>
             <input type="range" id="slider-inspector-volume" min="0" max="1" step="0.01" value="${Math.max(0,Math.min(1,gear.volume))}" style="width:100%;">
@@ -11161,6 +11382,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     return {
       id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
       volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
+      midiWidthActive:!!g._midiWidthActive,midiWidth:safeNumber(g._midiWidth,1),
       orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
       shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:safeNumber(g.toothWidth,.5),widthModEnabled:!!g.widthModEnabled,widthMod:g.widthMod?cloneJSON(g.widthMod):null,sourceMode:g.sourceMode,accelerationMs:Math.max(0,Math.min(5000,safeNumber(g.accelerationMs,0))),adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
       audioFileName:g.audioFileName||'',audioLoopStart:g.audioLoopStart||0,audioLoopEnd:g.audioLoopEnd||0,midiNote:g.midiNote||60,magneticMesh:g.magneticMesh!==false,
@@ -11172,7 +11394,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       waveform:state.waveform,clockworkTickWidthMs:state.clockworkTickWidthMs,masterVolume:state.masterVolume,spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:state.spatialScale,
       fundamentalFreq:state.fundamentalFreq,targetFundamentalFreq:state.targetFundamentalFreq,baseFundamentalFreq:state.baseFundamentalFreq,octaveShift:state.octaveShift,releaseOnKeyup:!!state.releaseOnKeyup,legato:!!state.legato,glissTime:state.glissTime,
       adsr:cloneJSON(state.adsr),bloom:cloneJSON(state.bloom),mainTeeth:state.mainTeeth,camera:cloneJSON(state.camera),driveDirection:state.driveDirection,pitchModule:state.pitchModule,polyMode:!!state.polyMode,jiKeyboard:!!state.jiKeyboard,visualMode:state.visualMode,
-      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
+      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,midiLearn:cloneJSON(state.midiLearn||{armed:null,mappings:[]}),crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
     }};
   }
   let presets=[];
@@ -11218,7 +11440,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     state.fundamentalFreq=Math.max(0,safeNumber(st.fundamentalFreq,state.fundamentalFreq));state.targetFundamentalFreq=safeNumber(st.targetFundamentalFreq,state.fundamentalFreq);state.baseFundamentalFreq=Math.max(.001,safeNumber(st.baseFundamentalFreq,state.baseFundamentalFreq));state.octaveShift=Math.max(-3,Math.min(3,Math.round(safeNumber(st.octaveShift,state.octaveShift))));
     state.releaseOnKeyup=!!st.releaseOnKeyup;state.legato=!!st.legato;state.glissTime=Math.max(0,safeNumber(st.glissTime,state.glissTime));if(st.adsr)state.adsr={...state.adsr,...cloneJSON(st.adsr)};if(st.bloom)state.bloom={...state.bloom,...cloneJSON(st.bloom)};
     state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
-    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};
+    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
   }
   async function loadPreset(p){
     if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
@@ -11229,7 +11451,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     const snapshots=Array.isArray(p.state.gears)?p.state.gears:[];
     for(const sg of snapshots){
       const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
-      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
       g.widthModEnabled=!!sg.widthModEnabled;
       if(sg.widthMod) g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
       else g.widthMod={...g.adsr};
