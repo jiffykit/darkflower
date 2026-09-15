@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v92</title>
+  <title>JI Gear Synth v93</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -2108,24 +2108,15 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
           <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-poly">
+                <input type="checkbox" id="chk-poly" checked>
                 <span>Poly</span>
               </label>
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-continuous" checked>
+                <input type="checkbox" id="chk-continuous">
                 <span>Continuous</span>
               </label>
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-legato">
-                <span>Porta</span>
-              </label>
-              <div id="gliss-control-group" class="gliss-inline" style="display:flex; align-items:center; gap:5px; opacity:0.5; transition:opacity 0.2s ease;">
-                <label style="font-size:0.68rem; color:var(--text-muted); white-space:nowrap;">Gliss:</label>
-                <input type="range" id="slider-gliss-time" min="0.01" max="2.0" step="0.01" value="0.20" disabled style="width:78px; min-width:58px;">
-                <span id="val-gliss-time" style="font-size:0.68rem; color:var(--accent-cyan); font-weight:bold; min-width:34px; text-align:right;">0.20s</span>
-              </div>
-              <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-ji-keyboard">
+                <input type="checkbox" id="chk-ji-keyboard" checked>
                 <span>JI</span>
               </label>
             </div>
@@ -2323,7 +2314,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       octaveShift: 0,            // Octave shift (-3 to +3)
       pressedKeys: new Set(),    // Active playing piano keys
       activeSemitone: null,      // Active playing semitone
-      releaseOnKeyup: false,     // Continuous is the default startup mode
+      releaseOnKeyup: true,      // Continuous OFF is the default startup mode
       keyboardAudioActive: false, // Gate state is established by initAudio() or an actual note-on.
       audioRoutingWatchdog: null,
       audioRoutingWatchdogBusy: false,
@@ -2339,7 +2330,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       midiLastVelocity: 1,
       midiLearn: { armed: null, mappings: [] },
       lastNoteDownPerf: 0,
-      legato: false,             // Legato/glissando smoothing for active pitch changes and POLY voice retuning
+      legato: false,             // Retained internally; Portamento UI is retired in favour of Accelleration
       glissTime: 0.20,           // Glissando glide duration in seconds
       adsr: { attack: 0.01, decay: 0.01, sustain: 0.80, release: 0.50, attackCurve: 0, decayCurve: 0, releaseCurve: 0 },
       bloom: { amount: 0, placementOrder: false },
@@ -2387,8 +2378,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         savedDriverRPM: 33.3,
         beltTargetId: null
       },
-      polyMode: false,
-      jiKeyboard: false,          // Retune POLY chords to nearest simple JI ratios
+      polyMode: true,
+      jiKeyboard: true,           // Retune POLY chords to nearest simple JI ratios
       polyVoices: new Map(),
       polyReleaseTails: new Set(),
       // Master ownership registry for every POLY voice ever allocated. This is
@@ -3574,7 +3565,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const slot=pool.free.pop(); if(!slot)return null; const now=state.audioCtx.currentTime,masterFreq=getPolyMasterFrequency(semitone+state.octaveShift*12);
       const configuredReleases=state.gears.filter(g=>!g.muted && Math.abs(g.ratio)>0).map(g=>{const r=Number(g.adsr?.release);return Number.isFinite(r)?Math.max(0,Math.min(10,r)):0;});
       try{slot.voiceGain.gain.cancelScheduledValues(now);slot.voiceGain.gain.setValueAtTime(1,now);}catch(_){}
-      const voice={keyId,semitone,_noteStartedAt:now,_releaseStartedAt:null,absoluteSemitone:semitone+state.octaveShift*12,masterFreq,voiceRatio:Math.max(.000001,masterFreq/Math.max(.001,state.baseFundamentalFreq||1)),driverMode:false,optimized:true,slot,gears:new Map(),masterGain:slot.voiceGain,workletNode:slot.node,keyHeld:true,releasing:false,releaseTime:configuredReleases.length?Math.max(...configuredReleases):0,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1))};
+      const voice={keyId,semitone,_noteStartedAt:now,_releaseStartedAt:null,absoluteSemitone:semitone+state.octaveShift*12,masterFreq,voiceRatio:Math.max(.000001,masterFreq/Math.max(.001,state.baseFundamentalFreq||1)),driverMode:false,optimized:true,slot,gears:new Map(),masterGain:slot.voiceGain,workletNode:slot.node,keyHeld:true,releasing:false,releaseTime:configuredReleases.length?Math.max(...configuredReleases):0,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1)),_neonNoteColor:neonColorForPitch(69+semitone+state.octaveShift*12)};
       slot.busy=true;slot.voice=voice;
       slot.generation=(Number(slot.generation)||0)+1;
       voice._workletGeneration=slot.generation;
@@ -5233,10 +5224,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function drawNeonPolyTrains(toothCounts){
-      // Released POLY tails keep their audio ADSRs running in Web Audio, but
-      // they no longer need mechanical animation, orbit calculations, or Neon
-      // geometry on the main thread. They stay spatially fixed until cleanup.
-      const active=[...state.polyVoices.values()].filter(Boolean);
+      // Draw both held voices and their ADSR release tails. A released note keeps
+      // its own musical colour for the entire fade instead of falling back to the
+      // default machine colour when it leaves polyVoices.
+      const active=[...state.polyVoices.values(), ...(state.polyReleaseTails||[])].filter(Boolean);
       if(!active.length)return false;
       active.sort((a,b)=>(Number(a.absoluteSemitone)||0)-(Number(b.absoluteSemitone)||0));
       const rootSemitone=Number(active[0].absoluteSemitone)||0;
@@ -5244,15 +5235,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       active.forEach((voice,vi)=>{
         const noteSemitone=Number(voice.absoluteSemitone)||0;
         const trainScale=neonTrainScale(noteSemitone,rootSemitone);
-        const rootPhase=neonVoiceRootPhase(voice);
         state.gears.forEach((gear,i)=>{
           if(gear.muted||gear.isUltrasonic||Math.abs(Number(gear.ratio)||0)===0)return;
           const intensity=neonVoiceGearIntensity(voice,gear,now);
           if(intensity<=.0005)return;
           const harmonicSemitone=noteSemitone + 12*Math.log2(Math.max(.000001,Math.abs(Number(gear.ratio)||1)));
-          const color=neonColorForPitch(69 + harmonicSemitone);
+          // The main gear/petal preserves the exact note colour through release.
+          // Harmonic secondary gears keep their existing ratio-derived colours.
+          const color=(gear.isMain && voice._neonNoteColor) ? voice._neonNoteColor : neonColorForPitch(69 + harmonicSemitone);
           const rotation=neonVoiceGearRotation(voice,gear);
-          const pg=voice.gears?.get(gear.id);
           // Optimized POLY uses a worklet rather than per-gear AudioNodes; its
           // visual targets are still stored in voice.gears so the same ADSR timing
           // and release tails drive the glow.
@@ -7311,6 +7302,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice.keyId = keyId;
       voice.semitone = Number(semitone) || 0;
       voice.absoluteSemitone = absoluteSemitone;
+      voice._neonNoteColor = neonColorForPitch(69 + absoluteSemitone);
       voice.masterFreq = masterFreq;
       voice.voiceRatio = Math.max(0.000001, masterFreq / Math.max(0.001, state.baseFundamentalFreq || 1));
       voice.keyHeld = true;
@@ -7917,7 +7909,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         masterGain: state.audioCtx.createGain(),
         gears: new Map(),
         keyHeld: true,
-        velocity: Math.max(0.0001, Math.min(1, Number(options?.velocity ?? state._midiInputVelocity ?? 1) || 1))
+        velocity: Math.max(0.0001, Math.min(1, Number(options?.velocity ?? state._midiInputVelocity ?? 1) || 1)),
+        _neonNoteColor: neonColorForPitch(69 + absoluteSemitone)
       };
       markPolyVoiceOrder(voice);
 
@@ -8781,23 +8774,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         state.jiKeyboard = e.target.checked;
         if (state.polyMode && state.polyVoices.size) updatePolyVoices();
       });
-
-      const legatoChk = document.getElementById('chk-legato');
-      const glissSlider = document.getElementById('slider-gliss-time');
-      const glissVal = document.getElementById('val-gliss-time');
-      const glissGroup = document.getElementById('gliss-control-group');
-
-      legatoChk.addEventListener('change', (e) => {
-        state.legato = e.target.checked;
-        glissSlider.disabled = !state.legato;
-        glissGroup.style.opacity = state.legato ? '1' : '0.5';
-      });
-
-      glissSlider.addEventListener('input', (e) => {
-        state.glissTime = parseFloat(e.target.value);
-        glissVal.textContent = `${state.glissTime.toFixed(2)}s`;
-      });
-      }
+    }
 
     // MIDI LEARN -------------------------------------------------------------
     // Mappings are semantic rather than tied to transient inspector DOM nodes.
@@ -10924,6 +10901,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     // INITIALIZATION
     function initApp() {
+      // Startup defaults: POLY on, Continuous off, JI on. Portamento remains
+      // internally disabled; per-gear Accelleration is now the pitch-transition control.
+      state.polyMode = true;
+      state.releaseOnKeyup = true;
+      state.jiKeyboard = true;
+      state.legato = false;
       // Start as a physical machine: the crank is attached and the generator is stopped.
       // Preserve A4=440 Hz as the pre-crank setting so deleting the crank restores the A=440 reference.
       addGear(120, 0, 0, true);
@@ -11640,9 +11623,9 @@ body.neon-visual-mode #desktop-focus-toggle{
     // Restore persisted positions/angles after kinematic recomputation.
     snapshots.forEach(sg=>{const g=byId.get(sg.id);if(g){g.x=safeNumber(sg.x,g.x);g.y=safeNumber(sg.y,g.y);g.angle=safeNumber(sg.angle,g.angle);}});
     try{setFundamentalFrequency(state.fundamentalFreq,false,true);}catch(_){ }
-    const ui=[['input-master-vol',state.masterVolume],['slider-clockwork-width',state.clockworkTickWidthMs],['input-octave-shift',state.octaveShift],['slider-gliss-time',state.glissTime]];
+    const ui=[['input-master-vol',state.masterVolume],['slider-clockwork-width',state.clockworkTickWidthMs],['input-octave-shift',state.octaveShift]];
     ui.forEach(([id,val])=>{const x=el(id);if(x){x.value=String(val);x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}));}});
-    const checks=[['chk-poly',state.polyMode],['chk-continuous',!state.releaseOnKeyup],['chk-legato',state.legato],['chk-ji-keyboard',state.jiKeyboard]];checks.forEach(([id,val])=>{const x=el(id);if(x){x.checked=!!val;}});
+    const checks=[['chk-poly',state.polyMode],['chk-continuous',!state.releaseOnKeyup],['chk-ji-keyboard',state.jiKeyboard]];checks.forEach(([id,val])=>{const x=el(id);if(x){x.checked=!!val;}});
     if(typeof window.setSteamWhistleVisualMode==='function')window.setSteamWhistleVisualMode(state.visualMode);
     const loadedBloomAmount=Number(state.bloom?.amount)||0;const loadedBloomSlider=el('slider-keyboard-bloom'),loadedBloomPlacement=el('chk-bloom-placement-order'),loadedBloomValue=el('keyboard-bloom-value');if(loadedBloomSlider)loadedBloomSlider.value=loadedBloomAmount;if(loadedBloomPlacement)loadedBloomPlacement.checked=!!state.bloom?.placementOrder;if(loadedBloomValue){const label=Math.abs(loadedBloomAmount)<.005?'normal':loadedBloomAmount<0?'high → fundamental':'fundamental → high';loadedBloomValue.textContent=`${loadedBloomAmount>0?'+':''}${loadedBloomAmount.toFixed(2)}s · ${label}`;}renderRationalGearPalette?.();window.updateInspector?.();window.renderGearList?.();
     setStatus('Loaded '+(p.name||'preset'));
