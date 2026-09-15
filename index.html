@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v89</title>
+  <title>JI Gear Synth v92</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -1500,12 +1500,20 @@
 #user-preset-menu .preset-head strong{font-size:10px;letter-spacing:.8px;flex:1;}
 #user-preset-menu .preset-head input{min-width:0;flex:1;height:26px;box-sizing:border-box;}
 #user-preset-menu .preset-head button{height:26px;padding:2px 7px;font-size:9px;}
-#user-preset-menu .preset-list{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:5px;}
+#user-preset-menu .preset-list{overflow:auto;padding:6px;display:flex;flex-direction:column;gap:3px;outline:none;overscroll-behavior:contain;}
 #user-preset-menu .preset-empty{padding:12px 8px;color:var(--text-muted,#9a9a9a);font-size:10px;text-align:center;}
-#user-preset-menu .preset-item{display:flex;align-items:center;gap:6px;padding:6px 7px;border:1px solid rgba(117,85,45,.7);border-radius:6px;background:rgba(45,31,18,.48);}
+#user-preset-menu .preset-item{display:flex;align-items:center;gap:6px;padding:6px 7px;border:1px solid rgba(117,85,45,.7);border-radius:6px;background:rgba(45,31,18,.48);cursor:pointer;}
+#user-preset-menu .preset-item.is-active{outline:1px solid rgba(255,255,255,.72);box-shadow:0 0 0 1px rgba(255,255,255,.15),inset 0 0 12px rgba(255,255,255,.05);}
 #user-preset-menu .preset-name{min-width:0;flex:1;font-size:10px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 #user-preset-menu .preset-actions{display:flex;gap:4px;flex:0 0 auto;}
 #user-preset-menu .preset-actions button{font-size:8px;padding:3px 6px;}
+#user-preset-menu .preset-category{display:flex;align-items:center;gap:5px;padding:5px 7px 4px;color:var(--text-muted,#a9a9a9);font-size:9px;font-weight:800;letter-spacing:.5px;cursor:pointer;user-select:none;border-radius:5px;}
+#user-preset-menu .preset-category:hover{background:rgba(255,255,255,.04);}
+#user-preset-menu .preset-category .cat-arrow{width:10px;display:inline-block;text-align:center;}
+#user-preset-menu .preset-category .cat-count{margin-left:auto;font-weight:600;opacity:.7;}
+#user-preset-menu .preset-depth-1{padding-left:18px;}
+#user-preset-menu .preset-depth-2{padding-left:29px;}
+#user-preset-menu .preset-depth-3{padding-left:40px;}
 #user-preset-menu .preset-foot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid #4f3b22;}
 #user-preset-menu .preset-foot button{flex:1;font-size:8px;padding:5px 6px;}
 #user-preset-menu .preset-status{font-size:8px;color:var(--text-muted,#9a9a9a);min-height:11px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1515,6 +1523,11 @@ body.neon-visual-mode #user-preset-menu .preset-item{border-color:rgba(57,255,13
 body.neon-visual-mode #user-preset-menu .preset-head strong,body.neon-visual-mode #user-preset-menu .preset-name{color:#8bffb7;letter-spacing:.8px;text-shadow:0 0 6px rgba(57,255,136,.28);}
 #user-presets-toggle{display:none!important;}
 #keyboard-user-presets-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:27px;padding:3px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;margin-left:auto;}
+.keyboard-bloom-label,.keyboard-bloom-options{display:none!important;}
+.keyboard-bloom-slider-row{display:flex;align-items:center;gap:7px;width:100%;height:24px;}
+.keyboard-bloom-slider-row > input[type="range"]{flex:1 1 auto;min-width:120px;}
+.keyboard-bloom-placement{display:flex!important;align-items:center;gap:4px;white-space:nowrap;}
+
 @media(max-width:900px) and (orientation:portrait){#keyboard-user-presets-toggle{display:none!important;}}
 #mobile-user-presets-toggle{z-index:12550;box-sizing:border-box;min-width:62px;padding:5px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;}
 .palette-mod-width-toggle{display:inline-flex;align-items:center;gap:4px;color:#62f08a;font-size:.62rem;font-weight:800;cursor:pointer;white-space:nowrap;}
@@ -1958,15 +1971,13 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         <div class="panel-box keyboard-panel-box">
           <button id="keyboard-user-presets-toggle" type="button" title="User presets" aria-label="User presets">PRESETS</button>
           <div class="panel-title keyboard-panel-title">
-            <span class="keyboard-title-label">KEYBOARD</span>
+            <span class="keyboard-title-label">BLOOM</span>
             <span class="keyboard-panel-spacer" aria-hidden="true"></span>
             <div class="keyboard-bloom-wrap" aria-label="Global harmonic bloom">
-              <div class="keyboard-bloom-label"><strong>BLOOM</strong><span id="keyboard-bloom-value">0.00s · normal</span></div>
               <div class="keyboard-bloom-slider-row">
                 <input id="slider-keyboard-bloom" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Global harmonic bloom time and order" title="Bloom: left = high harmonics first; right = fundamental first">
                 <label class="keyboard-bloom-placement"><input id="chk-bloom-placement-order" type="checkbox"><span>Placement order</span></label>
               </div>
-              <div class="keyboard-bloom-options"><span>HIGH ←</span><span>0</span><span>→ LOW</span></div>
             </div>
           </div>
           <div class="keyboard-container" id="virtual-keyboard" aria-label="8 octave piano keyboard">
@@ -5664,6 +5675,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       state.polyReleaseWatchdog = window.setInterval(() => {
         try {
           forceReleaseOrphanedPolyVoices();
+          reconcilePolyVoiceRegistry();
           scheduleAudioIdleShutdown();
           if (state.releaseOnKeyup && state.pressedKeys.size === 0 && state.midiHeldNotes.size === 0 && state.polyVoices.size === 0 && (!state.polyReleaseTails || state.polyReleaseTails.size === 0)) {
             state.activeSemitone = null;
@@ -8148,9 +8160,96 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }, Math.ceil(releaseTime * 1000) + 12);
     }
 
+    function hardStopPolyVoice(voice, fadeSeconds=0.008) {
+      if (!voice) return;
+      const now = state.audioCtx?.currentTime || 0;
+      const fade = Math.max(0.001, Number(fadeSeconds) || 0.008);
+      voice._forceStopped = true;
+      voice.keyHeld = false;
+      voice.releasing = true;
+      if (voice._cleanupTimer) { clearTimeout(voice._cleanupTimer); voice._cleanupTimer = null; }
+
+      // Remove the logical voice immediately. Audio is allowed only the tiny
+      // safety fade below, so a panic/mode-change can never leave an orphan in
+      // either the active map or the release-tail set.
+      if (state.polyVoices.get(voice.keyId) === voice) state.polyVoices.delete(voice.keyId);
+      state.polyReleaseTails?.delete(voice);
+      state.polyVoiceRegistry?.delete(voice);
+
+      if (voice.optimized) {
+        const slot = voice.slot;
+        if (!slot || slot.voice !== voice) return;
+        try {
+          slot.voiceGain.gain.cancelScheduledValues(now);
+          slot.voiceGain.gain.setValueAtTime(Math.max(0, Number(slot.voiceGain.gain.value) || 1), now);
+          slot.voiceGain.gain.linearRampToValueAtTime(0, now + fade);
+        } catch (_) {}
+        voice._hardStopTimer = setTimeout(() => {
+          // Only clear this slot if it still belongs to the same voice. A newer
+          // generation must never be stopped by a stale panic timer.
+          if (!slot || slot.voice !== voice) return;
+          try { slot.node.port.postMessage({type:'stop'}); } catch (_) {}
+          try {
+            slot.voiceGain.gain.cancelScheduledValues(state.audioCtx?.currentTime || 0);
+            slot.voiceGain.gain.setValueAtTime(0, state.audioCtx?.currentTime || 0);
+          } catch (_) {}
+          slot.busy = false;
+          slot.voice = null;
+          const pool = state.polyAudioPool;
+          if (pool?.free && !pool.free.includes(slot)) pool.free.push(slot);
+          updateAudioNodes();
+        }, Math.ceil(fade * 1000) + 4);
+        return;
+      }
+
+      try {
+        voice.masterGain?.gain.cancelScheduledValues(now);
+        voice.masterGain?.gain.setValueAtTime(Math.max(0, Number(voice.masterGain.gain.value) || 1), now);
+        voice.masterGain?.gain.linearRampToValueAtTime(0, now + fade);
+      } catch (_) {}
+      voice._hardStopTimer = setTimeout(() => {
+        // The voice was already removed from the maps above; this callback is
+        // purely physical graph disposal and cannot affect a newer note.
+        try { disposePolyVoiceGraph(voice); } catch (_) {}
+        updateAudioNodes();
+      }, Math.ceil(fade * 1000) + 4);
+    }
+
+    function reconcilePolyVoiceRegistry() {
+      if (!state.polyMode) return;
+      const live = new Set([
+        ...state.polyVoices.values(),
+        ...(state.polyReleaseTails || [])
+      ]);
+      // Registry is a safety net only. It must never contain a voice that is not
+      // represented by one of the authoritative lifecycle sets.
+      [...(state.polyVoiceRegistry || [])].forEach(voice => {
+        if (!live.has(voice)) {
+          hardStopPolyVoice(voice, 0.004);
+        }
+      });
+      // A pooled worklet slot can only be audible when its voice belongs to one of
+      // those same sets. If a bookkeeping race ever breaks that invariant, silence
+      // and return the slot before it can become a stuck note.
+      state.polyAudioPool?.slots?.forEach(slot => {
+        const voice = slot.voice;
+        if (slot.busy && voice && !live.has(voice)) hardStopPolyVoice(voice, 0.004);
+      });
+      // Keep the registry exact after reconciliation.
+      state.polyVoiceRegistry = new Set(live);
+    }
+
     function stopAllPolyVoices() {
-      Array.from(state.polyVoices.keys()).forEach(stopPolyVoice);
-      Array.from(state.polyReleaseTails || []).forEach(v => forceStopPolyVoice(v, POLY_SAME_NOTE_FADE, 'stop-all'));
+      const all = new Set([
+        ...state.polyVoices.values(),
+        ...(state.polyReleaseTails || []),
+        ...(state.polyVoiceRegistry || [])
+      ]);
+      all.forEach(v => hardStopPolyVoice(v, 0.008));
+      state.polyVoices.clear();
+      state.polyReleaseTails?.clear();
+      state.polyVoiceRegistry?.clear();
+      updateAudioNodes();
     }
 
     function applyPolyGearAcceleration(pg,targetFreq,now=state.audioCtx?.currentTime||0,force=false) {
@@ -11401,24 +11500,95 @@ body.neon-visual-mode #desktop-focus-toggle{
   try{presets=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');if(!Array.isArray(presets))presets=[];}catch(_){presets=[];}
   const menu=document.createElement('section');menu.id='user-preset-menu';menu.setAttribute('aria-label','User Presets');menu.innerHTML=`
     <div class="preset-head"><strong>USER PRESETS</strong><input id="user-preset-name" type="text" maxlength="80" placeholder="Preset name"><button id="user-preset-save" class="btn-primary">SAVE</button><button id="user-preset-close" title="Close">×</button></div>
-    <div class="preset-list" id="user-preset-list"></div>
-    <div class="preset-foot"><button id="user-preset-export-current">EXPORT CURRENT .COG</button><button id="user-preset-import">IMPORT .COG</button><input id="user-preset-file" type="file" accept=".cog,application/json" hidden><span class="preset-status" id="user-preset-status"></span></div>`;
+    <div class="preset-list" id="user-preset-list" tabindex="0"></div>
+    <div class="preset-foot"><button id="user-preset-export-current">EXPORT CURRENT .COG</button><button id="user-preset-export-all">EXPORT ALL</button><button id="user-preset-import">IMPORT PACK/.COG</button><input id="user-preset-file" type="file" accept=".cog,.cogpack,application/json" hidden><span class="preset-status" id="user-preset-status"></span></div>`;
   document.body.appendChild(menu);
   const desktopLauncher=document.getElementById('keyboard-user-presets-toggle');if(desktopLauncher)desktopLauncher.setAttribute('aria-expanded','false');
   const inputName=el('user-preset-name'), list=el('user-preset-list'), status=el('user-preset-status');
   let open=false;
   function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(presets));return true;}catch(_){status.textContent='Local storage full - use .COG export';return false;}}
   function setStatus(t){if(status){status.textContent=t||'';clearTimeout(setStatus.t);setStatus.t=setTimeout(()=>status.textContent='',2600);}}
-  function render(){
-    if(!presets.length){list.innerHTML='<div class="preset-empty">No saved presets yet.</div>';return;}
-    list.innerHTML='';presets.forEach((p,i)=>{
-      const row=document.createElement('div');row.className='preset-item';
-      const name=document.createElement('div');name.className='preset-name';name.textContent=p.name||'Untitled';
-      const actions=document.createElement('div');actions.className='preset-actions';
-      const mk=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.type='button';b.addEventListener('click',fn);return b;};
-      actions.append(mk('LOAD',()=>loadPreset(p)),mk('EXPORT',()=>exportPreset(p)),mk('DELETE',()=>{if(!confirm(`Delete preset “${p.name}”?`))return;presets.splice(i,1);persist();render();setStatus('Deleted');}));
-      row.append(name,actions);list.appendChild(row);
+  const collapsedCategories=new Set();
+  let flatLeaves=[];
+  let activeIndex=-1;
+  let wheelCarry=0;
+  let loadSequence=0;
+  let presetLoadBusy=false;
+  let pendingLoadIndex=null;
+  function splitPresetName(name){
+    return String(name||'Untitled').split(':').map(x=>x.trim()).filter(Boolean);
+  }
+  function buildPresetTree(){
+    const root={name:'',children:new Map(),leaves:[]};
+    presets.forEach((p,i)=>{
+      const parts=splitPresetName(p.name||'Untitled');
+      const leafName=parts.pop()||'Untitled';
+      let node=root;
+      parts.forEach(part=>{
+        if(!node.children.has(part))node.children.set(part,{name:part,children:new Map(),leaves:[]});
+        node=node.children.get(part);
+      });
+      node.leaves.push({preset:p,index:i,name:leafName,parts});
     });
+    return root;
+  }
+  function categoryKey(parts){return parts.join('\u001f');}
+  function render(){
+    if(!presets.length){list.innerHTML='<div class="preset-empty">No saved presets yet.</div>';flatLeaves=[];activeIndex=-1;return;}
+    const root=buildPresetTree();flatLeaves=[];list.innerHTML='';
+    const renderNode=(node,depth,path)=>{
+      const entries=[...node.children.entries()].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true,sensitivity:'base'}));
+      entries.forEach(([name,child])=>{
+        const key=categoryKey(path.concat(name));
+        const cat=document.createElement('div');cat.className='preset-category preset-depth-'+Math.min(depth+1,3);cat.dataset.categoryKey=key;
+        const hasChildren=child.children.size||child.leaves.length;
+        const arrow=document.createElement('span');arrow.className='cat-arrow';arrow.textContent=collapsedCategories.has(key)?'▶':'▼';
+        const label=document.createElement('span');label.textContent=name;
+        const count=document.createElement('span');count.className='cat-count';count.textContent=String(countLeaves(child));
+        cat.append(arrow,label,count);
+        cat.addEventListener('click',()=>{if(collapsedCategories.has(key))collapsedCategories.delete(key);else collapsedCategories.add(key);render();});
+        list.appendChild(cat);
+        if(collapsedCategories.has(key))return;
+        renderNode(child,depth+1,path.concat(name));
+      });
+      const sortedLeaves=node.leaves.slice().sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true,sensitivity:'base'})||a.index-b.index);
+      sortedLeaves.forEach(item=>{
+        flatLeaves.push(item);
+        const row=document.createElement('div');row.className='preset-item';if(flatLeaves.length-1===activeIndex)row.classList.add('is-active');row.dataset.presetIndex=String(flatLeaves.length-1);row.title=item.preset.name||item.name;
+        const name=document.createElement('div');name.className='preset-name';name.textContent=item.name;
+        const actions=document.createElement('div');actions.className='preset-actions';
+        const mk=(txt,fn)=>{const b=document.createElement('button');b.textContent=txt;b.type='button';b.addEventListener('click',e=>{e.stopPropagation();fn();});return b;};
+        actions.append(mk('LOAD',()=>loadByFlatIndex(flatLeaves.indexOf(item))),mk('EXPORT',()=>exportPreset(item.preset)),mk('DELETE',()=>{if(!confirm(`Delete preset “${item.preset.name}”?`))return;presets.splice(item.index,1);persist();if(activeIndex>=flatLeaves.length-1)activeIndex=flatLeaves.length-2;render();setStatus('Deleted');}));
+        row.append(name,actions);
+        row.addEventListener('click',()=>loadByFlatIndex(Number(row.dataset.presetIndex)));
+        list.appendChild(row);
+      });
+    };
+    const countLeaves=n=>n.leaves.length+[...n.children.values()].reduce((sum,c)=>sum+countLeaves(c),0);
+    renderNode(root,0,[]);
+  }
+  async function loadByFlatIndex(index){
+    if(!flatLeaves.length)return;
+    index=Math.max(0,Math.min(flatLeaves.length-1,index));
+    activeIndex=index;pendingLoadIndex=index;render();
+    requestAnimationFrame(()=>{const row=list.querySelector(`[data-preset-index="${index}"]`);row?.scrollIntoView({block:'nearest'});});
+    if(presetLoadBusy)return;
+    presetLoadBusy=true;
+    try{
+      while(pendingLoadIndex!==null){
+        const target=pendingLoadIndex;pendingLoadIndex=null;
+        const item=flatLeaves[target];if(!item)continue;
+        const seq=++loadSequence;
+        await loadPreset(item.preset);
+        if(seq===loadSequence)setStatus('Loaded '+(item.preset.name||item.name));
+      }
+    }finally{presetLoadBusy=false;}
+  }
+  function moveSelection(delta){
+    if(!flatLeaves.length)return;
+    let next=activeIndex<0?(delta>0?0:flatLeaves.length-1):activeIndex+delta;
+    next=(next+flatLeaves.length)%flatLeaves.length;
+    loadByFlatIndex(next);
   }
   function anchorMenu(){
     const key=el('virtual-keyboard');if(!key)return;
@@ -11428,12 +11598,17 @@ body.neon-visual-mode #desktop-focus-toggle{
     menu.style.width=mw+'px';menu.style.maxHeight=mh+'px';menu.style.left=left+'px';menu.style.top=Math.max(8,top)+'px';
     if(desktopLauncher) desktopLauncher.setAttribute('aria-expanded',open?'true':'false');
   }
-  function setOpen(v){open=!!v;menu.classList.toggle('is-open',open);document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));if(open){anchorMenu();render();inputName?.focus();}}
+  function setOpen(v){open=!!v;menu.classList.toggle('is-open',open);document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));if(open){anchorMenu();render();list?.focus?.();}}
   function toggle(){setOpen(!open);}
   function downloadText(name,text,type){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),500);}
   function exportPreset(p){downloadText((p.name||'preset').replace(/[^a-z0-9 _.-]/gi,'_')+'.cog',JSON.stringify(p,null,2),'application/octet-stream');setStatus('Exported .COG');}
+  function exportAll(){
+    const pack={format:'STEAMWHISTLE-PRESET-PACK',version:1,name:'DARKFLOWER Preset Pack',createdAt:new Date().toISOString(),presets:cloneJSON(presets)};
+    downloadText('DARKFLOWER-Preset-Pack.cogpack',JSON.stringify(pack,null,2),'application/json');
+    setStatus(`Exported ${presets.length} presets`);
+  }
   function exportCurrent(){const name=inputName.value.trim()||'DARKFLOWER Preset';exportPreset(makePreset(name));}
-  function saveCurrent(){const name=inputName.value.trim()||`Preset ${presets.length+1}`;const p=makePreset(name);const idx=presets.findIndex(x=>x.name.toLowerCase()===p.name.toLowerCase());if(idx>=0)presets[idx]=p;else presets.unshift(p);persist();render();setStatus('Saved');}
+  function saveCurrent(){const name=inputName.value.trim()||`Preset ${presets.length+1}`;const p=makePreset(name);const idx=presets.findIndex(x=>String(x.name||'').toLowerCase()===p.name.toLowerCase());if(idx>=0)presets[idx]=p;else presets.unshift(p);persist();render();const leaf=flatLeaves.findIndex(x=>x.preset===p);activeIndex=leaf;setStatus('Saved');}
   function assignStateValues(st){
     state.waveform=st.waveform||state.waveform;state.clockworkTickWidthMs=safeNumber(st.clockworkTickWidthMs,state.clockworkTickWidthMs);state.masterVolume=Math.max(0,Math.min(1,safeNumber(st.masterVolume,state.masterVolume)));
     state.spatialEnabled=st.spatialEnabled!==false;state.spatialMode=st.spatialMode||state.spatialMode;state.spatialScale=safeNumber(st.spatialScale,state.spatialScale);
@@ -11474,14 +11649,26 @@ body.neon-visual-mode #desktop-focus-toggle{
     if(wasRunning){try{initAudio();}catch(_){}}
     setTimeout(()=>{snapshots.forEach(async sg=>{const g=byId.get(sg.id);if(!g||!sg.audioWav)return;const b=await wavBase64ToAudioBuffer(sg.audioWav,state.audioCtx);if(b){g.audioBuffer=b;g.audioLoopEnd=Math.min(g.audioLoopEnd||b.duration,b.duration);g.audioSource=null;updateAudioNodes();renderRationalGearPalette?.();window.updateInspector?.();}});},0);
   }
-  inputName?.addEventListener('keydown',e=>{if(e.key==='Enter')saveCurrent();});
-  el('user-preset-save')?.addEventListener('click',saveCurrent);el('user-preset-close')?.addEventListener('click',()=>setOpen(false));el('user-preset-export-current')?.addEventListener('click',exportCurrent);el('user-preset-import')?.addEventListener('click',()=>el('user-preset-file')?.click());
-  el('user-preset-file')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const p=JSON.parse(await f.text());if(!p.format)p.format='STEAMWHISTLE-COG';p.name=p.name||f.name.replace(/\.cog$/i,'');presets.unshift(p);persist();render();setStatus('Imported '+p.name);}catch(_){setStatus('Invalid .COG file');}e.target.value='';});
+  inputName?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveCurrent();setOpen(false);}});
+  el('user-preset-save')?.addEventListener('click',saveCurrent);el('user-preset-close')?.addEventListener('click',()=>setOpen(false));el('user-preset-export-current')?.addEventListener('click',exportCurrent);el('user-preset-export-all')?.addEventListener('click',exportAll);el('user-preset-import')?.addEventListener('click',()=>el('user-preset-file')?.click());
+  el('user-preset-file')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());let incoming=[];if(data?.format==='STEAMWHISTLE-PRESET-PACK'&&Array.isArray(data.presets)){incoming=data.presets.filter(x=>x&&x.format==='STEAMWHISTLE-COG'&&x.state);}else if(data?.format==='STEAMWHISTLE-COG'&&data.state){incoming=[data];}else throw new Error('format');
+      const seen=new Map(presets.map((p,i)=>[String(p.name||'').toLowerCase(),i]));incoming.forEach(p=>{const key=String(p.name||'Untitled').toLowerCase();if(seen.has(key))presets[seen.get(key)]=p;else{seen.set(key,presets.length);presets.push(p);}});persist();render();setStatus(`Imported ${incoming.length} preset${incoming.length===1?'':'s'}`);
+    }catch(_){setStatus('Invalid preset or pack');}e.target.value='';});
+  list?.addEventListener('keydown',e=>{if(!open)return;if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();moveSelection(e.key==='ArrowDown'?1:-1);}else if(e.key==='Home'){e.preventDefault();loadByFlatIndex(0);}else if(e.key==='End'){e.preventDefault();loadByFlatIndex(flatLeaves.length-1);}else if(e.key==='Enter'&&activeIndex>=0){e.preventDefault();loadByFlatIndex(activeIndex);}});
+  list?.addEventListener('wheel',e=>{if(!open||!flatLeaves.length)return;e.preventDefault();wheelCarry+=e.deltaY;const threshold=Math.max(18,Math.min(70,list.clientHeight/5));while(Math.abs(wheelCarry)>=threshold){moveSelection(wheelCarry>0?1:-1);wheelCarry += wheelCarry>0?-threshold:threshold;}},{passive:false});
   window.addUserPreset=saveCurrent;window.exportUserPreset=exportCurrent;
   window.__toggleUserPresetMenu=toggle;
-  desktopLauncher?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();toggle();});
-  document.addEventListener('click',e=>{const b=e.target.closest?.('#mobile-user-presets-toggle');if(!b)return;e.preventDefault();e.stopPropagation();toggle();});
-  document.addEventListener('click',e=>{if(open&&!menu.contains(e.target)&&!e.target.closest('#keyboard-user-presets-toggle'))setOpen(false);});
+  desktopLauncher?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();if(!open)setOpen(true);});
+  document.addEventListener('click',e=>{const b=e.target.closest?.('#mobile-user-presets-toggle');if(!b)return;e.preventDefault();e.stopPropagation();if(!open)setOpen(true);});
+  menu.addEventListener('click',e=>e.stopPropagation());
+  menu.addEventListener('pointerdown',e=>e.stopPropagation());
+  document.addEventListener('click',e=>{if(open&&!menu.contains(e.target)&&!e.target.closest('#keyboard-user-presets-toggle')&&!e.target.closest('#mobile-user-presets-toggle'))setOpen(false);});
+  document.addEventListener('keydown',e=>{
+    if(!open||e.key!=='Enter')return;
+    const t=e.target;
+    if(t&&t.closest?.('#user-preset-name')){e.preventDefault();saveCurrent();setOpen(false);return;}
+    e.preventDefault();setOpen(false);
+  });
   window.addEventListener('resize',()=>{if(open)anchorMenu();});window.addEventListener('scroll',()=>{if(open)anchorMenu();},{passive:true});
   render();
 })();
@@ -11565,7 +11752,9 @@ body.neon-visual-mode #desktop-focus-toggle{
     min-height:24px!important;height:24px!important;padding-right:90px!important;margin:0!important;
     display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:6px!important;
   }
-  #sidebar .keyboard-bloom-wrap{min-width:170px!important;max-width:none!important;flex:1 1 auto!important;}
+  #sidebar .keyboard-title-label{flex:0 0 auto!important;}
+  #sidebar .keyboard-bloom-wrap{min-width:0!important;max-width:none!important;flex:1 1 auto!important;}
+  #sidebar .keyboard-bloom-slider-row{height:24px!important;}
   #sidebar #keyboard-user-presets-toggle{top:4px!important;right:6px!important;}
   #sidebar .keyboard-container{
     width:100%!important;height:65px!important;min-height:65px!important;margin:3px 0 0!important;padding:2px!important;
