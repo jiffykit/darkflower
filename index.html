@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v93</title>
+  <title>JI Gear Synth v98</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -2172,8 +2172,9 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
  </div>
         </div>
 
-        <div class="panel-box">
-          <button id="btn-open-ratio-palette" class="btn-primary" style="width:100%;">Open Gears Palette</button>
+        <div class="panel-box" id="global-acceleration-panel">
+          <div class="panel-title"><span>Global Acceleration</span><span id="val-global-acceleration" class="val">0 ms</span></div>
+          <input id="slider-global-acceleration" type="range" min="0" max="5000" step="10" value="0" style="width:100%;" aria-label="Global Acceleration" title="Scales every non-zero per-gear Accelleration setting. The gear with the highest individual setting reaches this global value.">
         </div>
 
         <!-- ACTIVE GEAR NETWORK LIST -->
@@ -2329,6 +2330,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       midiPitchBendRange: 2,
       midiLastVelocity: 1,
       midiLearn: { armed: null, mappings: [] },
+      globalAccelerationMs: 0,
       lastNoteDownPerf: 0,
       legato: false,             // Retained internally; Portamento UI is retired in favour of Accelleration
       glissTime: 0.20,           // Glissando glide duration in seconds
@@ -2392,6 +2394,13 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       polyOrbitUpdateNextPerfMs: 0,
       polyWidthUpdateNextPerfMs: 0,
       visualRenderNextPerfMs: 0,
+      // Render-loop health telemetry. Audio must never depend on the visual loop.
+      lastRenderFramePerf: 0,
+      lastRenderErrorPerf: 0,
+      renderLoopErrorCount: 0,
+      lastRenderError: '',
+      neonPathCache: new Map(),
+      neonPathCacheVersion: 0,
       keyboardPointerToKey: new Map(),
       keyboardKeyPointerCounts: new Map(),
       keyboardPointerHeldKeys: new Set(),
@@ -3556,7 +3565,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return state.gears.filter(g=>!g.muted && Math.abs(g.ratio)>0).map(g=>{
         const coeff=getPolyWaveCoefficients(getGearToothWaveform(g),getGearToothWidth(g),64);
         const harmonics=[];for(let h=1;h<64;h++)harmonics.push({re:coeff.real[h]||0,im:coeff.imag[h]||0});
-        return {id:g.id,ratio:Number(g.ratio)||0,accelerationSec:clampGearAccelerationMs(g.accelerationMs)/1000,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
+        return {id:g.id,ratio:Number(g.ratio)||0,accelerationSec:getEffectiveGearAccelerationMs(g)/1000,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
       });
     }
 
@@ -3599,7 +3608,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice._accelEligibleByGear=new Map();
       voice.gears?.forEach(pg=>{
         const g=pg?.gear; if(!g)return;
-        voice._accelEligibleByGear.set(g.id,clampGearAccelerationMs(g.accelerationMs)>0);
+        voice._accelEligibleByGear.set(g.id,getEffectiveGearAccelerationMs(g)>0);
         neonScheduleEnvelope(pg,false,g,now);
       });
       voice.keyHeld=false;
@@ -4035,7 +4044,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (!driverMode && gear.sourceMode === 'audio' && gear.audioSource) {
           const segmentDuration = Math.max(.001, (gear.audioLoopEnd || gear.audioBuffer?.duration || .001) - (gear.audioLoopStart || 0));
           const targetRate = Math.max(.00001, segmentDuration * Math.abs(gear.freq || .001) * (gear._shapeRate || 1));
-          const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+          const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
           const prevTarget = Number(gear._accelTargetAudioFreq);
           const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
           const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
@@ -4090,7 +4099,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const source = state.audioDriver.sources.get(gear.id);
           if (source) {
             const targetRate = Math.max(0.000001, Math.abs(gear.ratio) * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1));
-            const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+            const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
             const prevTarget = Number(gear._accelTargetAudioFreq);
             const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
             const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
@@ -5205,6 +5214,39 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(main) main._neonNoteColor=color;
     }
 
+    function neonPathCacheKey(gear,toothCount,widthMorph){
+      const p=gear?.shapeParams||{};
+      const ps=Object.keys(p).sort().map(k=>`${k}:${Number(p[k]).toFixed(5)}`).join(',');
+      const width=normalizeToothWidth(gear?.toothWidth);
+      const morph=normalizeWidthModLevel(widthMorph);
+      const pitch=Math.max(12,Number(gear?.pitchRadius)||40);
+      return [gear?.id||0,toothCount,gear?.shape||'circular',gear?.toothWaveform||gear?.sourceMode||state.waveform||'sine',pitch.toFixed(3),width.toFixed(4),morph.toFixed(4),ps].join('|');
+    }
+    function getNeonGearPath(gear,toothCount,widthMorph){
+      if(typeof Path2D==='undefined') return null;
+      const key=neonPathCacheKey(gear,toothCount,widthMorph);
+      const cache=state.neonPathCache || (state.neonPathCache=new Map());
+      let path=cache.get(key);
+      if(path) return path;
+      path=new Path2D();
+      const pitch=Math.max(12,Number(gear?.pitchRadius)||40);
+      const samples=Math.min(960,Math.max(180,toothCount*24));
+      for(let i=0;i<=samples;i++){
+        const a=TAU*i/samples;
+        const q=neonGearPoint(gear,a,toothCount,{widthMorph});
+        if(i===0) path.moveTo(q.x,q.y); else path.lineTo(q.x,q.y);
+      }
+      cache.set(key,path);
+      // Keep the cache bounded. Geometry is keyed by gear + shape parameters, so
+      // pruning old entries prevents a long session of slider changes from retaining
+      // hundreds of obsolete Path2D objects.
+      if(cache.size>192){
+        const first=cache.keys().next().value;
+        if(first!==undefined) cache.delete(first);
+      }
+      return path;
+    }
+
     function drawNeonGear(gear,index,toothCounts,visual={}){
       const toothCount=Math.max(3,toothCounts.get(gear.id)||12),color=visual.color||(gear.isMain&&gear._neonNoteColor)||getNeonColor(gear,index),now=state.audioCtx?.currentTime??performance.now()/1000;
       const rawIntensity=Math.max(0,Math.min(1,Number.isFinite(Number(visual.intensity))?Number(visual.intensity):getNeonGearBrightness(gear,now)));
@@ -5212,14 +5254,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(intensity<=0.0005)return;
       const pitch=Math.max(12,Number(gear.pitchRadius)||40),rotation=Number.isFinite(Number(visual.rotation))?Number(visual.rotation):Number(gear.angle)||0,scale=Math.max(.25,Number(visual.scale)||1);
       const widthMorph=visual.widthMorph==null?getGearWidthModLevel(gear,now):visual.widthMorph;
-      const samples=Math.min(960,Math.max(180,toothCount*24)),points=[];
-      for(let i=0;i<=samples;i++){const a=TAU*i/samples,q=neonGearPoint(gear,a,toothCount,{widthMorph}),c=Math.cos(rotation),ss=Math.sin(rotation);points.push({x:q.x*c-q.y*ss,y:q.x*ss+q.y*c});}
-      const trace=(lineWidth,alpha,blur,rotAdd=0)=>{ctx.save();if(rotAdd){const c=Math.cos(rotAdd),ss=Math.sin(rotAdd);ctx.transform(c,ss,-ss,c,0,0);}ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.max(0,alpha);ctx.strokeStyle=color;ctx.shadowColor=color;ctx.shadowBlur=blur;ctx.lineWidth=lineWidth;ctx.lineJoin='round';ctx.lineCap='round';ctx.beginPath();points.forEach((pt,i)=>i?ctx.lineTo(pt.x,pt.y):ctx.moveTo(pt.x,pt.y));ctx.stroke();ctx.restore();};
+      const path=getNeonGearPath(gear,toothCount,widthMorph);
+      if(!path) return;
       ctx.save();ctx.translate(gear.x,gear.y);ctx.scale(scale,scale);
       const bloomT=Math.max(0,(intensity-.18)/.82);
       if(bloomT>.01){const fieldR=Math.max(canvas.width,canvas.height)*(.24+.42*bloomT),grad=ctx.createRadialGradient(0,0,0,0,0,fieldR),colorHue=(String(color).match(/hsl\(([-0-9.]+)/i)||[])[1]||neonHueForPitch(Number(gear.harmonicSemitone??gear.frequency??0));grad.addColorStop(0,`hsla(${colorHue},100%,60%,${.075*bloomT*scale})`);grad.addColorStop(.28,`hsla(${colorHue},100%,55%,${.028*bloomT})`);grad.addColorStop(1,'rgba(0,0,0,0)');ctx.globalCompositeOperation='lighter';ctx.fillStyle=grad;ctx.beginPath();ctx.arc(0,0,fieldR,0,TAU);ctx.fill();}
+      const trace=(lineWidth,alpha,blur,rotAdd=0)=>{ctx.save();ctx.rotate(rotation+rotAdd);ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.max(0,alpha);ctx.strokeStyle=color;ctx.shadowColor=color;ctx.shadowBlur=blur;ctx.lineWidth=lineWidth;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke(path);ctx.restore();};
       if(rawIntensity>.75){const trail=Math.min(1,(rawIntensity-.75)/.25);for(let g=5;g>=1;g--){const k=g/5;trace(Math.max(3,pitch*.055),(.045+.085*trail)*(1-k*.62),pitch*(1.6+3.0*trail),-(.022+.055*trail)*g);}}
-      const boost=1+.75*Math.min(1,intensity);trace(Math.max(11,pitch*.15)*boost,intensity*.16,pitch*(5.8+5.5*bloomT));trace(Math.max(8,pitch*.115)*boost,intensity*.21,pitch*(4.2+4.8*bloomT));trace(Math.max(5,pitch*.075)*boost,intensity*.31,pitch*(2.7+3.2*bloomT));trace(Math.max(3,pitch*.045)*boost,intensity*.47,pitch*(1.35+1.8*bloomT));trace(Math.max(1.8,pitch*.022)*boost,Math.min(1,intensity*.86),pitch*(.54+.72*bloomT));trace(Math.max(1,pitch*.010)*boost,Math.min(1,intensity*1.08),pitch*(.22+.24*bloomT));
+      const boost=1+.75*Math.min(1,intensity);
+      trace(Math.max(11,pitch*.15)*boost,intensity*.16,pitch*(5.8+5.5*bloomT));
+      trace(Math.max(8,pitch*.115)*boost,intensity*.21,pitch*(4.2+4.8*bloomT));
+      trace(Math.max(5,pitch*.075)*boost,intensity*.31,pitch*(2.7+3.2*bloomT));
+      trace(Math.max(3,pitch*.045)*boost,intensity*.47,pitch*(1.35+1.8*bloomT));
+      trace(Math.max(1.8,pitch*.022)*boost,Math.min(1,intensity*.86),pitch*(.54+.72*bloomT));
+      trace(Math.max(1,pitch*.010)*boost,Math.min(1,intensity*1.08),pitch*(.22+.24*bloomT));
       ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,intensity*.34);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=pitch*(1+1.4*bloomT);ctx.beginPath();ctx.arc(0,0,Math.max(1.4,pitch*.02),0,TAU);ctx.fill();ctx.restore();
     }
 
@@ -5261,6 +5309,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       ctx.translate(canvas.width/2 + state.camera.x,canvas.height/2 + state.camera.y);
       ctx.scale(state.camera.zoom,state.camera.zoom);
       const toothCounts=getNeonToothCounts();
+      // Width/shape/tooth controls change the geometry key automatically; no global
+      // invalidation is needed. The bounded cache handles old variants safely.
       if(state.polyMode && drawNeonPolyTrains(toothCounts)){
         ctx.restore();
         return;
@@ -5402,20 +5452,36 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if (!param) return;
       const t = Number.isFinite(Number(target)) ? Number(target) : 0;
       const duration = HRTF_POSITION_RAMP_SEC;
+      const h = meta || {};
+      const lastTarget = Number(h.target);
+      const lastSchedule = Number(h.scheduledAt);
+      // HRTF targets can change every animation frame. Do not enqueue a new AudioParam
+      // automation curve at 60+ Hz. Re-sample at ~30 Hz and let the overlapping curve
+      // interpolate the motion continuously on the audio thread.
+      if (Number.isFinite(lastTarget) && Number.isFinite(lastSchedule) &&
+          Math.abs(t-lastTarget) < 0.0007 && (now-lastSchedule) < 0.033) return;
       let current = Number(param.value);
-      if (meta && Number.isFinite(meta.time) && Number.isFinite(meta.start) && Number.isFinite(meta.target) && Number.isFinite(meta.duration)) {
-        const u = Math.max(0, Math.min(1, (now - meta.time) / Math.max(0.001, meta.duration)));
-        current = meta.start + (meta.target - meta.start) * u;
+      if (Number.isFinite(h.time) && Number.isFinite(h.start) && Number.isFinite(h.target) && Number.isFinite(h.duration)) {
+        const u = Math.max(0, Math.min(1, (now-h.time)/Math.max(0.001,h.duration)));
+        current = h.start+(h.target-h.start)*u;
       }
-      if (!Number.isFinite(current)) current = t;
+      if (!Number.isFinite(current)) current=t;
       try {
         param.cancelScheduledValues(now);
-        param.setValueAtTime(current, now);
-        param.linearRampToValueAtTime(t, now + duration);
+        const points=9, curve=new Float32Array(points);
+        const a=Math.max(-1,Math.min(1,current)), b=Math.max(-1,Math.min(1,t));
+        for(let i=0;i<points;i++){
+          const u=i/(points-1), e=u*u*(3-2*u);
+          curve[i]=a+(b-a)*e;
+        }
+        param.setValueCurveAtTime(curve,now,duration);
       } catch (_) {
-        try { param.value = t; } catch (_) {}
+        try {
+          param.setValueAtTime(current,now);
+          param.linearRampToValueAtTime(t,now+duration);
+        } catch (__){ try { param.value=t; } catch(___) {} }
       }
-      if (meta) { meta.start=current; meta.target=t; meta.time=now; meta.duration=duration; }
+      h.start=current; h.target=t; h.time=now; h.duration=duration; h.scheduledAt=now;
     }
     function smoothHrtfPannerPosition(panner, x, y, z, now, holder) {
       if (!panner) return;
@@ -5755,7 +5821,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
     }
 
+    let renderLoopScheduled = false;
+
+    // Keep exactly one visual RAF chain alive. A single uncaught exception inside
+    // renderLoop used to kill the chain permanently while Web Audio continued on
+    // its own thread, producing silent/stuck visuals with perfectly good audio.
+    function scheduleRenderLoop(){
+      if(renderLoopScheduled) return;
+      renderLoopScheduled = true;
+      requestAnimationFrame(t => {
+        renderLoopScheduled = false;
+        renderLoop(t);
+      });
+    }
+
     function renderLoop(now) {
+      state.lastRenderFramePerf = performance.now();
+      try {
       const dt = Math.min(0.1, Math.max(0, (now - lastTime) / 1000));
       lastTime = now;
       const audioNow = state.audioCtx?.currentTime || 0;
@@ -6019,9 +6101,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       ctx.restore();
       }
       }
-      requestAnimationFrame(renderLoop);
+      } catch (err) {
+        // Never let a rendering exception terminate the RAF chain. Clear cached
+        // neon geometry because a stale Path2D/cache entry is one of the few
+        // long-session failures that can occur after many visual parameter changes.
+        state.lastRenderErrorPerf = performance.now();
+        state.renderLoopErrorCount = (Number(state.renderLoopErrorCount) || 0) + 1;
+        state.lastRenderError = String(err?.stack || err || 'Unknown render error');
+        try { state.neonPathCache?.clear?.(); } catch (_) {}
+        if(state.renderLoopErrorCount <= 3 || state.renderLoopErrorCount % 120 === 0){
+          console.error('[DARKFLOWER] render loop recovered from error:', err);
+        }
+      } finally {
+        state.lastRenderFramePerf = performance.now();
+        scheduleRenderLoop();
+      }
     }
-    requestAnimationFrame(renderLoop);
+    scheduleRenderLoop();
 
     /* PICK UP & MOVE GEAR INTERACTIONS */
     function screenToWorld(sx, sy) {
@@ -6722,6 +6818,28 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return Math.max(0, Math.min(5000, Number(value) || 0));
     }
 
+    function getGlobalAccelerationMs() {
+      return clampGearAccelerationMs(state.globalAccelerationMs);
+    }
+
+    function getEffectiveGearAccelerationMs(gear) {
+      const raw = clampGearAccelerationMs(gear?.accelerationMs);
+      if (raw <= 0) return 0;
+      const global = getGlobalAccelerationMs();
+      if (global <= 0) return 0;
+      const maxRaw = state.gears.reduce((max, g) => Math.max(max, clampGearAccelerationMs(g?.accelerationMs)), 0);
+      if (maxRaw <= 0) return 0;
+      return Math.min(5000, global * (raw / maxRaw));
+    }
+
+    function syncGlobalAccelerationUI() {
+      const slider=document.getElementById('slider-global-acceleration');
+      const value=document.getElementById('val-global-acceleration');
+      const v=getGlobalAccelerationMs();
+      if(slider) slider.value=String(v);
+      if(value) value.textContent=formatGearAcceleration(v);
+    }
+
     function formatGearAcceleration(ms) {
       const v = clampGearAccelerationMs(ms);
       if (v >= 1000 && Math.abs(v % 1000) < 0.001) return `${(v / 1000).toFixed(v >= 2000 ? 0 : 1)} s`;
@@ -6735,14 +6853,24 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function scheduleSmoothPitchRamp(param, from, to, start, durationSec) {
       if (!param) return;
       const a=Number(from), b=Number(to), t0=Number(start)||0, d=Math.max(0,Number(durationSec)||0);
-      param.cancelScheduledValues(t0);
-      param.setValueAtTime(a,t0);
-      if (d<=0.000001) { param.setValueAtTime(b,t0); return; }
-      const steps=Math.max(12,Math.min(96,Math.ceil(d*96)));
-      for(let i=1;i<=steps;i++){
-        const u=i/steps;
-        const e=u*u*(3-2*u);
-        param.linearRampToValueAtTime(a+(b-a)*e,t0+d*u);
+      try { param.cancelScheduledValues(t0); } catch (_) {}
+      if (d<=0.000001) { try { param.setValueAtTime(b,t0); } catch (_) {} return; }
+      // A single AudioParam curve replaces dozens of linearRampToValueAtTime calls.
+      // The audio thread still receives a smooth S-curve, while the main thread only
+      // performs one parameter scheduling operation per acceleration target.
+      try {
+        const points=Math.max(17,Math.min(49,Math.ceil(d*48)+1));
+        const curve=new Float32Array(points);
+        for(let i=0;i<points;i++){
+          const u=i/(points-1), e=u*u*(3-2*u);
+          curve[i]=a+(b-a)*e;
+        }
+        param.setValueCurveAtTime(curve,t0,d);
+      } catch (_) {
+        try {
+          param.setValueAtTime(a,t0);
+          param.linearRampToValueAtTime(b,t0+d);
+        } catch (__){ try { param.value=b; } catch(___) {} }
       }
     }
 
@@ -6755,7 +6883,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function applyGearAccelerationToAudio(gear, targetFreq, now=state.audioCtx?.currentTime||0, force=false) {
       if (!gear || !state.audioCtx) return Math.max(0.001, Number(targetFreq)||0.001);
       const target = Math.max(0.001, Number(targetFreq)||0.001);
-      const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+      const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
       const previousTarget = Number(gear._accelTargetAudioFreq);
       const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
       const changed = force || !Number.isFinite(previousTarget) || Math.abs(previousTarget - target) > Math.max(1e-6, Math.abs(target) * 1e-7) || durationChanged;
@@ -6818,7 +6946,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         } else if (gear.sourceMode === 'audio' && gear.audioSource && !driverMode) {
           const segmentDuration = Math.max(.001, (gear.audioLoopEnd || gear.audioBuffer?.duration || .001) - (gear.audioLoopStart || 0));
           const targetRate = Math.max(.00001, segmentDuration * gear.freq * (gear._shapeRate || 1));
-          const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+          const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
           try {
             const p = gear.audioSource.playbackRate;
             const prevTarget = Number(gear._accelTargetAudioFreq);
@@ -6834,7 +6962,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const source = state.audioDriver.sources.get(gear.id);
           if (source) {
             const targetRate = Math.max(0.000001, ratio * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1));
-            const durationSec = clampGearAccelerationMs(gear.accelerationMs) / 1000;
+            const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
             const prevTarget = Number(gear._accelTargetAudioFreq);
             const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || Number(gear._accelLastDurationSec)!==durationSec;
             try {
@@ -7317,7 +7445,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       voice._accelEligibleByGear = new Map();
       voice.gears?.forEach(pg=>{
         const g=pg?.gear; if(!g)return;
-        voice._accelEligibleByGear.set(g.id,clampGearAccelerationMs(g.accelerationMs)>0);
+        voice._accelEligibleByGear.set(g.id,getEffectiveGearAccelerationMs(g)>0);
       });
       // The reopened voice is now a new note. Reset its start time so the next
       // final note-off measures release from this note rather than its old source.
@@ -7408,7 +7536,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       // Acceleration is the only feature allowed to retune a still-decaying
       // release tail into a new note. With Accelleration=0, never cannibalize
       // the previous note: let its full release continue independently.
-      const anyGearAcceleration=state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0);
+      const anyGearAcceleration=state.gears.some(g=>getEffectiveGearAccelerationMs(g)>0);
       if(!anyGearAcceleration)return false;
       const plan=planNearestPolyReleaseTailAssignments(incomingSemitone);
       let candidate=plan.get(targetAbs)||null;
@@ -7448,8 +7576,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           heldVoiceBudget: [...state.polyVoices.values()].filter(v=>v&&!v._forceStopped&&!v.releasing).length,
           oldestOrder: Math.min(...polyLiveVoices().map(v => Number(v._polyVoiceOrder)||Infinity)),
           sameNoteTailCount: (sem)=>polyLiveVoices().filter(v=>Number(v.semitone)===Number(sem)&&v.releasing).length,
-          accelerationEnabled: state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0),
-          tailReuseAllowed: state.gears.some(g=>clampGearAccelerationMs(g?.accelerationMs)>0),
+          accelerationEnabled: state.gears.some(g=>getEffectiveGearAccelerationMs(g)>0),
+          tailReuseAllowed: state.gears.some(g=>getEffectiveGearAccelerationMs(g)>0),
           heldKeys:[...state.pressedKeys],
           physicalKeys:[...state.keyboardPhysicalKeyDownCodes],
           heldVoiceKeys:[...state.polyVoices.keys()],
@@ -7497,6 +7625,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             state.gears.forEach(g=>g.accelerationMs=v*1000);
             return v;
           },
+          setGlobalAcceleration: seconds => {
+            state.globalAccelerationMs=clampGearAccelerationMs((Number(seconds)||0)*1000);
+            syncGlobalAccelerationUI();
+            return state.globalAccelerationMs/1000;
+          },
+          getEffectiveAccelerations: () => Object.fromEntries(state.gears.map(g=>[g.id,getEffectiveGearAccelerationMs(g)])),
           setAllDecay: seconds => {
             const v=Math.max(0,Math.min(2,Number(seconds)||0));
             state.gears.forEach(g=>{if(g?.adsr)g.adsr.decay=v;});
@@ -7571,13 +7705,152 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           notes.push(KEY_TO_SEMITONE[code] + state.octaveShift * 12);
         }
       });
-      return notes.filter(Number.isFinite).sort((a, b) => a - b);
+      return [...new Set(notes.filter(Number.isFinite))].sort((a, b) => a - b);
+    }
+
+    // JI chord-root selection is independent of the lowest sounding note.
+    // The old implementation used held[0], which made an inversion such as
+    // E4-G4-C5 treat E as the root. For a major triad that turns the 4:5:6
+    // structure into a stack of unrelated intervals and can increase audible
+    // beating. We first recognise familiar chord structures from pitch classes,
+    // then fall back to a consonance/complexity score for less obvious chords.
+    const JI_ROOT_PATTERNS = [
+      {intervals:[0,4,7],           bonus:-120, name:'major triad'},
+      {intervals:[0,3,7],           bonus:-120, name:'minor triad'},
+      {intervals:[0,4,7,10],        bonus:-105, name:'dominant seventh'},
+      {intervals:[0,4,7,11],        bonus:-105, name:'major seventh'},
+      {intervals:[0,3,7,10],        bonus:-105, name:'minor seventh'},
+      {intervals:[0,3,6],            bonus:-95,  name:'diminished triad'},
+      {intervals:[0,3,6,9],           bonus:-90,  name:'diminished seventh'},
+      {intervals:[0,2,7],             bonus:-75,  name:'sus2'},
+      {intervals:[0,5,7],             bonus:-75,  name:'sus4'},
+      {intervals:[0,4,8],             bonus:-70,  name:'augmented triad'},
+      {intervals:[0,2,4,7,9],         bonus:-55,  name:'pentatonic'},
+      {intervals:[0,2,4,5,7,9,11],   bonus:-35,  name:'major scale'},
+      {intervals:[0,2,3,5,7,8,10],    bonus:-35,  name:'minor scale'}
+    ];
+
+    function normPc12(v){
+      const n=Math.round(Number(v)||0)%12;
+      return (n+12)%12;
+    }
+
+    function rootPatternScore(intervals){
+      const key=intervals.slice().sort((a,b)=>a-b).join(',');
+      let bonus=0;
+      JI_ROOT_PATTERNS.forEach(p=>{
+        if(p.intervals.join(',')===key) bonus=Math.min(bonus,p.bonus);
+      });
+      return bonus;
+    }
+
+    function jiRatioComplexityForInterval(semitones){
+      if(!jiRatioTable) jiRatioTable=buildJIRatioTable();
+      const pc=normPc12(semitones);
+      const abs=Math.min(pc,12-pc);
+      const r=nearestSimpleJIRatio(abs);
+      const ratio=Math.max(r,1/r);
+      // Smaller integer numerator/denominator is musically preferred.
+      let complexity=12;
+      jiRatioTable.forEach(c=>{
+        if(Math.abs(Math.log2(c.ratio)-Math.log2(ratio))<1e-9) complexity=Math.min(complexity,c.complexity);
+      });
+      return complexity + (Math.abs(semitones)%12===0 ? 0 : 0.25);
+    }
+
+    function nearestSimpleRatioInfoFromFrequencyRatio(ratio){
+      if(!jiRatioTable) jiRatioTable=buildJIRatioTable();
+      let r=Math.max(1e-9,Number(ratio)||1);
+      while(r>=2) r/=2;
+      while(r<1) r*=2;
+      const cents=1200*Math.log2(r);
+      let best={ratio:1,error:Infinity,complexity:Infinity};
+      jiRatioTable.forEach(candidate=>{
+        const cc=1200*Math.log2(candidate.ratio);
+        const error=Math.abs(cc-cents);
+        if(error<best.error-0.001 || (Math.abs(error-best.error)<=0.001 && candidate.complexity<best.complexity)){
+          best={ratio:candidate.ratio,error,complexity:candidate.complexity};
+        }
+      });
+      return best;
+    }
+
+    function tunedChordFrequenciesForRoot(notes,root){
+      return notes.map(n=>{
+        const equalRatio=Math.pow(2,n/12);
+        const interval=n-root;
+        const withinOctave=((interval%12)+12)%12;
+        const ji=nearestSimpleJIRatio(withinOctave);
+        const equalIntervalRatio=Math.pow(2,withinOctave/12);
+        return state.baseFundamentalFreq*equalRatio*(ji/equalIntervalRatio);
+      });
+    }
+
+    function scoreJiVoicing(notes,root){
+      const freqs=tunedChordFrequenciesForRoot(notes,root);
+      let score=0;
+
+      // Pairwise consonance is the main objective. This deliberately evaluates
+      // the actual resulting voicing, not just the intervals from the chosen
+      // root. It lets an inversion choose the reference note that produces the
+      // cleanest complete chord, which is especially useful for minor triads.
+      for(let i=0;i<freqs.length;i++){
+        for(let j=i+1;j<freqs.length;j++){
+          const info=nearestSimpleRatioInfoFromFrequencyRatio(freqs[j]/freqs[i]);
+          score += info.complexity*1.00 + info.error*0.055;
+        }
+      }
+
+      // Also reward a simple relationship between the selected root and each
+      // member, but less strongly than the complete-voicing score.
+      notes.forEach(n=>{
+        if(n===root)return;
+        const iv=((n-root)%12+12)%12;
+        const r=nearestSimpleJIRatio(iv);
+        let complexity=12;
+        if(!jiRatioTable)jiRatioTable=buildJIRatioTable();
+        jiRatioTable.forEach(c=>{if(Math.abs(Math.log2(c.ratio)-Math.log2(Math.max(r,1/r)))<1e-9)complexity=Math.min(complexity,c.complexity);});
+        score += complexity*0.20;
+      });
+
+      // Familiar chord roots get a small tie-break preference, while a cleaner
+      // pairwise tuning can override it. This keeps C as the root reference for
+      // E-G-C while allowing C-E-A (A minor inversion) to favour the cleaner
+      // 5:4 / 5:3 / 4:3 network rather than the less stable 13:11 minor third.
+      const intervals=[...new Set(notes.map(n=>normPc12(n-root)))].sort((a,b)=>a-b);
+      const patternBonus=rootPatternScore(intervals);
+      score += patternBonus*0.08;
+
+      return {score,freqs};
+    }
+
+    function estimateJiRoot(held){
+      if(!held.length) return null;
+      if(held.length===1) return held[0];
+
+      const sorted=[...held].sort((a,b)=>a-b);
+      const cacheKey=sorted.join(',');
+      if(state._jiRootCacheKey===cacheKey && Number.isFinite(state._jiRootCacheValue)) return state._jiRootCacheValue;
+
+      let bestRoot=sorted[0], bestScore=Infinity;
+      sorted.forEach(root=>{
+        const result=scoreJiVoicing(sorted,root);
+        if(result.score<bestScore-0.001 || (Math.abs(result.score-bestScore)<=0.001 && root<bestRoot)){
+          bestScore=result.score;
+          bestRoot=root;
+        }
+      });
+
+      state._jiRootCacheKey=cacheKey;
+      state._jiRootCacheValue=bestRoot;
+      state._jiRootCacheScore=bestScore;
+      return bestRoot;
     }
 
     function getPolyMasterFrequency(absoluteSemitone) {
       // Always start from the note's own absolute 12-EDO frequency.
-      // Nearest-JI is applied only as a cents correction, so changing the
-      // held chord can never move a surviving note by an octave.
+      // JI is a cents correction, preserving each note's octave. Root selection
+      // is chord-aware rather than simply using the lowest held note.
       const equalRatio = Math.pow(2, absoluteSemitone / 12);
       let freq = state.baseFundamentalFreq * equalRatio;
 
@@ -7588,14 +7861,18 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const held = getHeldAbsoluteSemitones();
       if (held.length < 2) return Math.max(0.001, freq);
 
-      const root = held[0];
+      const root = estimateJiRoot(held);
+      if(!Number.isFinite(root)) return Math.max(0.001,freq);
+
       const interval = absoluteSemitone - root;
       const withinOctave = ((interval % 12) + 12) % 12;
       const ji = nearestSimpleJIRatio(withinOctave);
       const equalIntervalRatio = Math.pow(2, withinOctave / 12);
 
-      // Preserve the note's existing octave and replace only the 12-EDO
-      // interval inside that octave with the nearest simple JI ratio.
+      // Preserve the note's existing octave and replace only the 12-EDO interval
+      // inside that octave with the nearest simple JI ratio. This applies equally
+      // to root position and inversions, so the chord can be root-tuned even when
+      // the lowest physical note is not the root.
       const jiCorrection = ji / equalIntervalRatio;
       freq *= jiCorrection;
       return Math.max(0.001, freq);
@@ -8048,10 +8325,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             sine.frequency.setValueAtTime(gearFreq,now);
             osc.connect(shapeGain); shapeGain.connect(delayNode); sine.connect(sineGain); sineGain.connect(delayNode);
             osc.start(now); sine.start(now);
-            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
+            voice.gears.set(gear.id,{osc,oscSine:sine,oscShapeGain:shapeGain,oscSineGain:sineGain,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:getEffectiveGearAccelerationMs(gear)/1000,_accelAllowed:false});
           } else {
             osc.connect(delayNode); osc.start(now);
-            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:clampGearAccelerationMs(gear.accelerationMs)/1000,_accelAllowed:false});
+            voice.gears.set(gear.id,{osc,delayNode,gainNode,adsrGainNode,pannerNode,gear,_accelTargetFreq:gearFreq,_accelTargetDelay:null,_accelDurationSec:getEffectiveGearAccelerationMs(gear)/1000,_accelAllowed:false});
           }
         }
       }); } catch (constructionError) {
@@ -8250,7 +8527,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const gear=pg.gear;
       const target=Math.max(0.001,Number(targetFreq)||0.001);
       const prevTarget=Number(pg._accelTargetFreq);
-      const durationSec=pg._accelAllowed===true ? clampGearAccelerationMs(gear.accelerationMs)/1000 : 0;
+      const durationSec=pg._accelAllowed===true ? getEffectiveGearAccelerationMs(gear)/1000 : 0;
       const durationChanged=Number(pg._accelDurationSec)!==durationSec;
       const changed=force||!Number.isFinite(prevTarget)||Math.abs(prevTarget-target)>Math.max(1e-6,Math.abs(target)*1e-7)||durationChanged;
       if(!changed)return;
@@ -8294,7 +8571,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           // tiny broadband discontinuity heard as the click at note attack.
           // Keep the delay automation on the exact same acceleration timebase.
           const accelSec = pg.osc && pg._accelAllowed === true
-            ? clampGearAccelerationMs(gear.accelerationMs) / 1000
+            ? getEffectiveGearAccelerationMs(gear) / 1000
             : 0;
           const delayChanged = !Number.isFinite(pg._accelTargetDelay) ||
             Math.abs(pg._accelTargetDelay - delay) > Math.max(1e-9, Math.abs(delay) * 1e-7);
@@ -8924,6 +9201,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         }
       });
     }
+
+    syncGlobalAccelerationUI();
 
     // WEB MIDI INPUT
     function setMidiStatus(text, ok = false) {
@@ -10481,6 +10760,24 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('btn-palette-teeth-down')?.addEventListener('click',()=>paletteTeethChange(-1));
     document.getElementById('btn-palette-teeth-up')?.addEventListener('click',()=>paletteTeethChange(1));
 
+    document.getElementById('slider-global-acceleration')?.addEventListener('input', e => {
+      state.globalAccelerationMs = clampGearAccelerationMs(e.target.value);
+      syncGlobalAccelerationUI();
+      if(state.audioRunning){
+        const now=state.audioCtx?.currentTime||0;
+        state.gears.forEach(g=>{
+          if(g.osc && !['audio','noise','midi'].includes(g.sourceMode) && Math.abs(Number(g.ratio)||0)>0){
+            const targetFreq=Math.max(.001,Math.abs(Number(g.freq)||.001)*(g._shapeRate||1));
+            applyGearAccelerationToAudio(g,targetFreq,now,true);
+          }
+        });
+      }
+      if(state.polyMode) updatePolyVoices();
+      updateAudioNodes();
+      renderGearList();
+      updateInspector?.();
+    });
+
     document.getElementById('slider-palette-acceleration')?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return;
       gear.accelerationMs=clampGearAccelerationMs(e.target.value);
@@ -11212,6 +11509,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     state.neonPalette?.clear();
     state.neonColorOrder=null;
     state.staticBackgroundCache=null;
+    state.neonPathCache?.clear?.();
     const desktop=document.getElementById('chk-visual-mode-desktop');
     if(desktop)desktop.checked=neon;
     const mobile=document.getElementById('chk-visual-mode');
@@ -11281,7 +11579,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     midi:panel('#btn-midi-enable'),
     spatial:panel('#chk-spatial-enable'),
     gearNetwork:panel('#gear-list-container'),
-    openRatio:panel('#btn-open-ratio-palette'),
+    globalAcceleration:panel('#global-acceleration-panel'),
     ratioModal:document.getElementById('ratio-palette-modal'),
     detail:document.getElementById('selected-gear-detail'),
     inspector:document.getElementById('inspector-panel'),
@@ -11297,7 +11595,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     keyboardPanelNext:keyboardPanel.nextSibling||null,
     movable:new Map()
   };
-  [nodes.master,nodes.midi,nodes.spatial,nodes.gearNetwork,nodes.ratioModal,nodes.openRatio,nodes.detail].filter(Boolean).forEach(node=>{
+  [nodes.master,nodes.midi,nodes.spatial,nodes.globalAcceleration,nodes.gearNetwork,nodes.ratioModal,nodes.detail].filter(Boolean).forEach(node=>{
     original.movable.set(node,{parent:node.parentNode,next:node.nextSibling,display:node.style.display});
   });
   let inMode=false,drawerOpen=false,drawer=null,dock=null,drawerScroll=null,keyboardOptions=null,bloomDrawer=null;
@@ -11334,7 +11632,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     drawerScroll=document.createElement('div');drawerScroll.id='mobile-one-screen-scroll';drawerScroll.appendChild(visualRow);drawer.appendChild(drawerScroll);app.appendChild(drawer);
 
     // Master, MIDI, spatial and legacy driver controls.
-    [nodes.master,nodes.midi,nodes.spatial].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
+    [nodes.master,nodes.midi,nodes.spatial,nodes.globalAcceleration].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
 
     // Harmonic presets + complete Current Gear editor remain in the controls drawer on portrait phones.
     if(nodes.ratioModal){
@@ -11346,7 +11644,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       const wrap=document.createElement('div');wrap.id='gear-network-mobile';wrap.appendChild(makeSectionTitle('CURRENT GEAR / NETWORK'));wrap.appendChild(nodes.gearNetwork);drawerScroll.appendChild(wrap);
     }
 
-    if(nodes.openRatio)nodes.openRatio.style.display='none';
+
     if(nodes.detail)nodes.detail.style.display='none';
     if(nodes.master)nodes.master.style.display='block';
   }
@@ -11476,7 +11774,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       waveform:state.waveform,clockworkTickWidthMs:state.clockworkTickWidthMs,masterVolume:state.masterVolume,spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:state.spatialScale,
       fundamentalFreq:state.fundamentalFreq,targetFundamentalFreq:state.targetFundamentalFreq,baseFundamentalFreq:state.baseFundamentalFreq,octaveShift:state.octaveShift,releaseOnKeyup:!!state.releaseOnKeyup,legato:!!state.legato,glissTime:state.glissTime,
       adsr:cloneJSON(state.adsr),bloom:cloneJSON(state.bloom),mainTeeth:state.mainTeeth,camera:cloneJSON(state.camera),driveDirection:state.driveDirection,pitchModule:state.pitchModule,polyMode:!!state.polyMode,jiKeyboard:!!state.jiKeyboard,visualMode:state.visualMode,
-      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,midiLearn:cloneJSON(state.midiLearn||{armed:null,mappings:[]}),crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
+      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,globalAccelerationMs:clampGearAccelerationMs(state.globalAccelerationMs),midiLearn:cloneJSON(state.midiLearn||{armed:null,mappings:[]}),crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
     }};
   }
   let presets=[];
@@ -11598,7 +11896,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     state.fundamentalFreq=Math.max(0,safeNumber(st.fundamentalFreq,state.fundamentalFreq));state.targetFundamentalFreq=safeNumber(st.targetFundamentalFreq,state.fundamentalFreq);state.baseFundamentalFreq=Math.max(.001,safeNumber(st.baseFundamentalFreq,state.baseFundamentalFreq));state.octaveShift=Math.max(-3,Math.min(3,Math.round(safeNumber(st.octaveShift,state.octaveShift))));
     state.releaseOnKeyup=!!st.releaseOnKeyup;state.legato=!!st.legato;state.glissTime=Math.max(0,safeNumber(st.glissTime,state.glissTime));if(st.adsr)state.adsr={...state.adsr,...cloneJSON(st.adsr)};if(st.bloom)state.bloom={...state.bloom,...cloneJSON(st.bloom)};
     state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
-    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
+    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.globalAccelerationMs=clampGearAccelerationMs(st.globalAccelerationMs);state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
   }
   async function loadPreset(p){
     if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
