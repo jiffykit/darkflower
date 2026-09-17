@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v98</title>
+  <title>JI Gear Synth v107</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -210,7 +210,7 @@
 
     .rational-palette {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 6px;
       max-height: 320px;
       overflow: auto;
@@ -761,6 +761,22 @@
     .keyboard-bloom-options input{margin:0}
     @media (max-width:900px) and (orientation:portrait){.keyboard-bloom-wrap{min-width:132px;max-width:210px}#slider-keyboard-bloom{height:18px}}
     @media (max-width:520px){.keyboard-panel-title{padding-right:6px;}.keyboard-panel-title .keyboard-bloom-wrap{flex:1 1 100%;max-width:100%;min-width:0;}.keyboard-panel-title #keyboard-user-presets-toggle{position:relative;top:auto;right:auto;margin-left:auto;order:3;}.keyboard-panel-title .keyboard-panel-spacer{display:none!important;}}
+
+/* STYLIZED ROTARY KNOBS: every range control except BLOOM and SHAPE WIDTH */
+.rotary-host{display:flex;align-items:center;justify-content:center;width:62px;min-width:62px;height:58px;margin:3px auto 1px;position:relative;touch-action:none;user-select:none;}
+.rotary-knob{width:52px;height:52px;border-radius:50%;position:relative;display:flex;align-items:center;justify-content:center;cursor:ns-resize;touch-action:none;user-select:none;transform:none!important;
+  background:radial-gradient(circle at 34% 28%,#f5dca0 0 6%,#c58e35 20%,#74501f 54%,#2a1708 76%,#0c0804 100%);
+  border:2px solid #9d7133;box-shadow:inset 0 2px 4px rgba(255,245,200,.38),inset 0 -5px 8px rgba(0,0,0,.65),0 3px 7px rgba(0,0,0,.55);}
+.rotary-knob::before{content:"";position:absolute;width:3px;height:11px;border-radius:3px;background:#f7e2aa;top:4px;left:50%;transform:translateX(-50%) rotate(var(--knob-angle,0deg));transform-origin:50% 22px;box-shadow:0 1px 2px #000;}
+.rotary-knob::after{content:"";position:absolute;inset:5px;border-radius:50%;border:1px solid rgba(255,241,190,.22);pointer-events:none;}
+.rotary-value{position:relative;z-index:2;min-width:44px;max-width:54px;text-align:center;padding:3px 2px;border-radius:4px;background:rgba(12,8,4,.68);color:#f5dfad;font:700 9px Georgia,serif;line-height:1.1;text-shadow:0 1px 2px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:none!important;}
+.rotary-host.rotary-disabled .rotary-knob{opacity:.38;cursor:not-allowed;filter:saturate(.45);}
+.rotary-label{display:flex!important;align-items:center;justify-content:center;gap:2px;font-size:.62rem!important;line-height:1!important;text-align:center;margin-bottom:1px!important;white-space:nowrap;}
+.rotary-label .val,.rotary-label span[id^="val-"]{display:none!important;}
+.rotary-inline{display:inline-flex!important;vertical-align:middle!important;margin:0 3px!important;width:58px!important;min-width:58px!important;height:58px!important;}
+.rotary-inline .rotary-knob{width:50px;height:50px;}
+@media (max-width:900px){.rotary-host{width:58px;min-width:58px;height:55px}.rotary-knob{width:49px;height:49px}.rotary-value{font-size:8px;min-width:40px}}
+
     /* MAIN CANVAS AREA */
     #canvas-container {
       flex: 1;
@@ -1419,7 +1435,7 @@
       border-bottom:1px solid #8a6230; box-shadow:0 5px 18px rgba(0,0,0,.55);
     }
     .fundamental-topbar-label { display:flex; flex-direction:column; gap:2px; min-width:0; }
-    .fundamental-topbar-label span:first-child { color:#f1d184; font:900 13px Georgia,serif; letter-spacing:1px; text-transform:uppercase; }
+    .fundamental-topbar-label span:first-child { color:#f1d184; font:900 13px Georgia,serif; letter-spacing:0; text-transform:none; }
     .fundamental-topbar-label span:last-child { color:#fff0bf; font:700 14px Georgia,serif; }
     #fundamental-topbar #slider-fundamental { width:100%; min-width:0; height:30px; accent-color:#d5a24b; }
     .fundamental-topbar-presets { display:flex; gap:5px; align-items:center; }
@@ -1552,6 +1568,73 @@ body.neon-visual-mode .palette-mod-width-toggle{color:#62f08a;text-shadow:0 0 5p
   #mobile-current-gear-editor .inspector-duplicate-source-section{display:none!important;}
 }
 </style>
+<style id="rotary-neon-style-fix">
+body.neon-visual-mode .rotary-knob{
+  background:#000!important;
+  border:2px solid #39ff88!important;
+  box-shadow:0 0 7px rgba(57,255,136,.72),inset 0 0 8px rgba(57,255,136,.08)!important;
+}
+body.neon-visual-mode .rotary-knob::before{background:#39ff88!important;box-shadow:0 0 7px rgba(57,255,136,.85)!important;}
+body.neon-visual-mode .rotary-knob::after{border-color:rgba(57,255,136,.5)!important;}
+body.neon-visual-mode .rotary-value{background:#000!important;color:#39ff88!important;text-shadow:0 0 6px rgba(57,255,136,.7)!important;}
+body.neon-visual-mode .rotary-label{color:#39ff88!important;text-shadow:0 0 6px rgba(57,255,136,.45)!important;}
+</style>
+<style id="v102-layout-and-radio-css">
+input[type=radio]{appearance:none;-webkit-appearance:none;width:13px!important;height:13px!important;min-width:13px!important;padding:0!important;margin:0!important;border:1px solid #8e7043!important;border-radius:50%!important;background:#0f0b07!important;box-shadow:inset 0 0 0 2px #0f0b07,0 1px 2px rgba(0,0,0,.55);cursor:pointer;vertical-align:middle;}
+input[type=radio]:checked{border-color:#e3b864!important;background:#e3b864!important;box-shadow:inset 0 0 0 3px #0f0b07,0 0 5px rgba(227,184,100,.42);}
+body.neon-visual-mode input[type=radio]{border-color:#39ff88!important;background:#050505!important;box-shadow:inset 0 0 0 2px #050505,0 0 3px rgba(57,255,136,.28);}
+body.neon-visual-mode input[type=radio]:checked{background:#39ff88!important;border-color:#39ff88!important;box-shadow:inset 0 0 0 3px #050505,0 0 7px rgba(57,255,136,.72);}
+.current-main-teeth-row{display:flex;align-items:center;gap:7px;margin:0 0 6px;padding:5px 7px;border:1px solid #6b4c27;border-radius:7px;background:rgba(0,0,0,.24);}
+.current-main-teeth-label{font:900 .67rem/1 Georgia,serif;letter-spacing:.6px;color:#f1d184;}
+.current-main-teeth-row .harmonic-main-teeth{margin:0!important;display:flex!important;align-items:center;gap:4px;flex:1;}
+.current-main-teeth-row .harmonic-main-teeth input{width:7ch!important;min-width:7ch!important;max-width:7ch!important;height:25px!important;font-size:.68rem!important;text-align:center;}
+.current-main-teeth-row .harmonic-main-teeth select{width:62px!important;height:25px!important;}
+.current-gear-radio-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-items:center;margin-top:6px;padding:4px 5px;border:1px solid #684a28;border-radius:7px;background:rgba(0,0,0,.22);}
+.gear-radio-toggle{display:flex!important;align-items:center!important;justify-content:center!important;gap:4px!important;margin:0!important;padding:3px 2px!important;min-width:0!important;white-space:nowrap!important;font-size:.57rem!important;line-height:1!important;color:#d9c49a!important;cursor:pointer!important;}
+.gear-radio-toggle span{overflow:hidden;text-overflow:ellipsis;}
+.gear-radio-toggle:has(input:checked){color:#f1d184!important;text-shadow:0 0 5px rgba(227,184,100,.22);}
+body.neon-visual-mode .gear-radio-toggle{color:#67ff9c!important;}
+body.neon-visual-mode .gear-radio-toggle:has(input:checked){color:#39ff88!important;text-shadow:0 0 6px rgba(57,255,136,.42);}
+.left-primary-knob-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;width:100%!important;align-items:start!important;}
+.left-primary-knob-row > .control-group,.left-primary-knob-row > #global-acceleration-panel{min-width:0!important;width:100%!important;}
+@media(max-width:900px){
+  #mobile-primary-knob-row{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px!important;width:100%!important;margin:0 0 7px!important;}
+  #mobile-primary-knob-row .control-group,#mobile-primary-knob-row #global-acceleration-panel{min-width:0!important;width:100%!important;margin:0!important;padding:5px 2px!important;border:1px solid #684a28!important;border-radius:7px;background:linear-gradient(145deg,rgba(70,48,25,.78),rgba(24,17,11,.96));}
+  #mobile-primary-knob-row .rotary-host{width:48px!important;min-width:48px!important;height:49px!important;margin:2px auto!important;}
+  #mobile-primary-knob-row .rotary-knob{width:44px!important;height:44px!important;}
+  #mobile-primary-knob-row .rotary-label{font-size:.54rem!important;}
+  #mobile-primary-knob-row .rotary-value{font-size:7px!important;min-width:34px!important;max-width:38px!important;}
+  #mobile-primary-knob-row .panel-title{font-size:.58rem!important;text-align:center!important;margin:0!important;}
+  #mobile-primary-knob-row .panel-title>.val{display:none!important;}
+  #mobile-primary-knob-row label{justify-content:center!important;text-align:center!important;white-space:nowrap!important;font-size:.54rem!important;}
+  .current-gear-radio-row{grid-template-columns:repeat(4,minmax(0,1fr));gap:3px!important;}
+  .gear-radio-toggle{font-size:.47rem!important;padding:3px 0!important;gap:3px!important;}
+  .current-main-teeth-row .harmonic-main-teeth input{height:22px!important;font-size:.62rem!important;}
+  .current-main-teeth-row .harmonic-main-teeth select{height:22px!important;width:50px!important;font-size:.56rem!important;}
+}
+</style>
+<style id="compact-knob-layout-css">
+.left-primary-knob-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:start;}
+.left-primary-knob-row > #global-acceleration-panel{min-width:0;}
+.left-primary-knob-row > .control-group,.left-primary-knob-row > #global-acceleration-panel{margin:0!important;padding:5px 3px!important;border:1px solid #684a28!important;border-radius:7px;background:linear-gradient(145deg,rgba(70,48,25,.78),rgba(24,17,11,.96));box-shadow:inset 0 1px 0 rgba(247,216,145,.08),0 4px 12px rgba(0,0,0,.28);}
+.left-primary-knob-row .panel-title{display:block!important;text-align:center!important;font-size:.62rem!important;margin:0 0 1px!important;}
+.left-primary-knob-row .panel-title > .val{display:none!important;}
+.left-primary-knob-row label{justify-content:center!important;text-align:center!important;font-size:.62rem!important;white-space:nowrap;}
+.left-primary-knob-row .rotary-host{margin-left:auto!important;margin-right:auto!important;}
+.gear-volume-accel-row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;align-items:start;}
+.current-gear-orbit-knob-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-items:start;}
+.current-gear-knob-cell{min-width:0;}
+.current-gear-knob-cell > label{display:flex;justify-content:center!important;text-align:center;font-size:.61rem!important;line-height:1!important;white-space:nowrap;}
+.current-gear-knob-cell input[type=radio],.current-gear-knob-cell button{margin-top:2px;}
+#palette-current-gear-extras .current-gear-orbit-knob-grid > .current-gear-knob-cell > label span:first-child{display:block;}
+@media(max-width:900px){
+  .left-primary-knob-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;}
+  .left-primary-knob-row > .control-group,.left-primary-knob-row > #global-acceleration-panel{padding:5px 2px!important;}
+}
+@media(max-width:520px){
+  .left-primary-knob-row{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+</style>
 <style id="neon-visual-mode-css">
 body.neon-visual-mode,
 #app-container.neon-visual-mode,
@@ -1562,6 +1645,9 @@ body.neon-visual-mode #fundamental-topbar{background:#000!important;border-color
 #app-container.neon-visual-mode #canvas-container canvas{border-radius:0!important;}
 #app-container.neon-visual-mode #hud-top-right,
 #app-container.neon-visual-mode #hud-bottom-left,
+/* The legacy canvas SPEED box is retired from the Steampunk view as well.
+   Keep the DOM/control alive for compatibility, but never display it outside Neon. */
+#app-container:not(.neon-visual-mode) #canvas-crank-control{display:none!important;}
 #app-container.neon-visual-mode #canvas-crank-control,
 #app-container.neon-visual-mode #startup-tooltip{display:none!important;}
 #app-container.neon-visual-mode #mobile-keyboard-dock{background:#000!important;border-top-color:#111!important;}
@@ -1570,7 +1656,9 @@ body.neon-visual-mode #fundamental-topbar{background:#000!important;border-color
 #mobile-visual-mode-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;margin-bottom:6px;border:1px solid #5f4324;border-radius:7px;background:rgba(55,38,21,.34);}
 #mobile-visual-mode-row label{margin:0;color:#f1d184;font-weight:800;font-size:.7rem;}
 #mobile-visual-mode-row label span{display:inline-flex;align-items:center;gap:7px;}
-#mobile-visual-mode-row input{accent-color:#22ffff;}
+.mobile-visual-mode-radios{display:flex;align-items:center;gap:14px;}
+#mobile-visual-mode-row input{appearance:none!important;width:13px!important;height:13px!important;border-radius:50%!important;border:1px solid #5f8!important;background:#090704!important;box-shadow:inset 0 0 0 2px #090704!important;margin:0!important;}
+#mobile-visual-mode-row input:checked{background:#39ff88!important;border-color:#39ff88!important;box-shadow:inset 0 0 0 3px #050505!important,0 0 7px rgba(57,255,136,.65)!important;}
 #app-container.neon-visual-mode #mobile-visual-mode-row{border-color:#174949;background:rgba(0,255,255,.06);}
 #app-container.neon-visual-mode #mobile-visual-mode-row label{color:#7df9ff;}
 </style>
@@ -1589,7 +1677,7 @@ body.neon-visual-mode button,body.neon-visual-mode input,body.neon-visual-mode s
 body.neon-visual-mode button:hover,body.neon-visual-mode button:focus-visible,body.neon-visual-mode input:focus-visible,body.neon-visual-mode select:focus{border-color:var(--neon-border-hot)!important;box-shadow:0 0 13px rgba(71,255,143,.30),inset 0 0 11px rgba(74,255,143,.06)!important;}
 body.neon-visual-mode .panel-title,body.neon-visual-mode .floating-title,body.neon-visual-mode .mobile-one-section-title,body.neon-visual-mode .keyboard-panel-title,body.neon-visual-mode .sidebar-header h1,body.neon-visual-mode .sidebar-header p{color:var(--neon-green-hot)!important;text-shadow:0 0 8px rgba(75,255,145,.30);}
 body.neon-visual-mode .sidebar-header h1 span{font-weight:300!important;letter-spacing:.16em;text-transform:uppercase;}body.neon-visual-mode .sidebar-header p{font-weight:300!important;opacity:.72;letter-spacing:.12em;}
-body.neon-visual-mode input[type=range]{accent-color:var(--neon-green)!important;filter:drop-shadow(0 0 5px rgba(70,255,140,.28));}body.neon-visual-mode input[type=checkbox]{accent-color:var(--neon-green)!important;}
+body.neon-visual-mode input[type=range]{accent-color:var(--neon-green)!important;filter:drop-shadow(0 0 5px rgba(70,255,140,.28));}body.neon-visual-mode input[type=radio]{accent-color:var(--neon-green)!important;}
 body.neon-visual-mode .btn-primary,body.neon-visual-mode .toolbar-button{color:#08150d!important;background:rgba(85,255,143,.82)!important;border-color:#b8ffd0!important;text-shadow:none!important;}
 body.neon-visual-mode .desktop-visual-mode{color:var(--neon-green)!important;font:300 10px/1 "Bahnschrift SemiCondensed","Segoe UI Light",sans-serif!important;letter-spacing:.16em;text-shadow:0 0 8px rgba(70,255,140,.44);}body.neon-visual-mode .desktop-visual-mode input{filter:drop-shadow(0 0 5px rgba(80,255,140,.5));}
 #app-container.neon-visual-mode #mobile-one-screen-drawer{background:rgba(0,5,2,.97)!important;border-color:var(--neon-border)!important;box-shadow:0 0 22px rgba(65,255,133,.17),0 -10px 30px rgba(0,0,0,.9)!important;}
@@ -1647,7 +1735,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 <body>
 
   <div id="fundamental-topbar" aria-label="Fundamental Frequency">
-    <div class="fundamental-topbar-label"><span id="fundamental-label">Fundamental Frequency</span><span id="val-fundamental">440.0 Hz</span></div>
+    <div class="fundamental-topbar-label"><span id="val-fundamental">440.0Hz</span></div>
     <input type="range" id="slider-fundamental" min="-1" max="4.38" step="0.005" value="2.643452676" aria-label="Fundamental Frequency">
     <div class="fundamental-topbar-presets">
       <button class="btn-freq-preset" data-freq="0.5">0.5</button>
@@ -1691,25 +1779,25 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     <div class="toolbar-divider"></div>
 
     <label class="toolbar-check" title="Keep this gear's ratio fixed when the main gear teeth change">
-      <input type="checkbox" id="input-add-ratio-lock">
+      <input type="radio" id="input-add-ratio-lock">
       Ratio Lock
     </label>
     <label class="toolbar-check" title="Keep this gear's tooth count fixed when other gear sizes change">
-      <input type="checkbox" id="input-add-teeth-lock">
+      <input type="radio" id="input-add-teeth-lock">
       Teeth Lock
     </label>
 
     <div class="toolbar-divider"></div>
 
     <label class="toolbar-check" title="Orbit this gear around the main gear/listener">
-      <input type="checkbox" id="input-add-orbit">
+      <input type="radio" id="input-add-orbit">
       Orbit
     </label>
     <label>Orbit time
       <input type="number" id="input-add-orbit-time" min="0.25" max="60" step="0.05" value="8.00">
     </label>
     <label class="toolbar-check" title="Keep the gear's phase relationship fixed while it orbits">
-      <input type="checkbox" id="input-add-preserve-phase" checked>
+      <input type="radio" id="input-add-preserve-phase" checked>
       Preserve Phase
     </label>
 
@@ -1718,7 +1806,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     </label>
 
     <label class="toolbar-check" title="Calculate the teeth count from Num:Den instead of using the typed Teeth value">
-      <input type="checkbox" id="input-solve-teeth-from-ratio" checked>
+      <input type="radio" id="input-solve-teeth-from-ratio" checked>
       Solve Teeth from Ratio
     </label>
 
@@ -1740,13 +1828,16 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       <div class="floating-header" id="ratio-palette-header">
         <div class="floating-title">CURRENT GEAR <span id="rational-palette-count" style="font-weight:400; color:var(--text-muted); font-size:0.62rem;"></span></div>
         <div class="floating-actions">
-          <label class="harmonic-main-teeth" title="Main gear tooth count"><span>MAIN</span><input id="palette-main-teeth" type="number" min="1" max="99999" value="120" aria-label="Main Gear Teeth"><select id="palette-main-teeth-preset" aria-label="Main Gear Teeth Preset"><option value="">Preset</option><option value="60">60</option><option value="120">120</option><option value="154">154</option><option value="210">210</option><option value="420">420</option><option value="504">504</option><option value="720">720</option><option value="1001">1001</option><option value="2310">2310</option><option value="30030">30030</option></select></label>
           <button id="btn-ratio-scroll-left" class="ratio-carousel-nav" title="Scroll harmonic presets left" aria-label="Scroll harmonic presets left">‹</button>
           <button id="btn-ratio-scroll-right" class="ratio-carousel-nav" title="Scroll harmonic presets right" aria-label="Scroll harmonic presets right">›</button>
           <button id="btn-close-ratio-palette" title="Hide palette" style="padding:2px 7px;">×</button>
         </div>
       </div>
       <div class="floating-body">
+        <div class="current-main-teeth-row">
+          <span class="current-main-teeth-label">MAIN</span>
+          <label class="harmonic-main-teeth" title="Main gear tooth count"><input id="palette-main-teeth" type="number" min="1" max="99999" value="120" aria-label="Main Gear Teeth"><select id="palette-main-teeth-preset" aria-label="Main Gear Teeth Preset"><option value="">Preset</option><option value="60">60</option><option value="120">120</option><option value="154">154</option><option value="210">210</option><option value="420">420</option><option value="504">504</option><option value="720">720</option><option value="1001">1001</option><option value="2310">2310</option><option value="30030">30030</option></select></label>
+        </div>
         <div class="shape-generator">
           <div class="palette-shape-row">
             <span class="panel-title palette-gear-shape-label">Gear Shape &amp; Contour</span>
@@ -1774,6 +1865,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <button type="button" class="palette-source-btn" data-source="midi" aria-label="MIDI Output"></button>
             <button type="button" class="palette-source-btn" data-source="audio" aria-label="Audio Sample"></button>
           </div>
+          <input id="slider-palette-tooth-width" type="range" min="0" max="0.98" step="0.0001" value="0.5000" title="Shape Width / Noise Band Shape" aria-label="Shape Width / Noise Band Shape">
           <div class="palette-source-config" id="palette-noise-config" hidden>
             <span>Noise band</span>
             <small>slider: HPF → LPF / Q</small>
@@ -1790,19 +1882,14 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <label>Out <select id="palette-midi-output"><option value="">No MIDI output</option></select></label>
             <label>Note <select id="palette-midi-note"></select></label>
           </div>
-          <input id="slider-palette-tooth-width" type="range" min="0" max="0.98" step="0.0001" value="0.5000" title="Shape Width / Noise Band Shape" aria-label="Shape Width / Noise Band Shape">
           <div id="palette-shape-params" style="margin-top:4px;"></div>
           <div id="palette-shape-description" aria-hidden="true" style="display:none;"></div>
-          <div style="margin-top:6px;">
-            <label style="font-size:.65rem;display:flex;justify-content:space-between"><span>Gear Volume</span><span id="val-palette-volume" style="color:var(--accent-cyan)">20%</span></label>
-            <input type="range" id="slider-palette-volume" min="0" max="1" step="0.01" value="0.20" style="width:100%">
-          </div>
           <div class="gear-adsr-section" style="margin-top:6px; border-top:1px solid var(--border-color); padding-top:5px;">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:7px;">
               <strong style="color:var(--accent-cyan);font-size:.68rem;">GEAR ADSR</strong>
               <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;justify-content:flex-end;">
                 <span class="gear-adsr-caption">A≤2s · D≤2s · R≤10s</span>
-                <label id="palette-mod-width-wrap" class="palette-mod-width-toggle" title="Use this gear's ADSR graph as its shape-width envelope"><input id="chk-palette-mod-width" type="checkbox"><span>MOD WIDTH ADSR</span></label>
+                <label id="palette-mod-width-wrap" class="palette-mod-width-toggle" title="Use this gear's ADSR graph as its shape-width envelope"><input id="chk-palette-mod-width" type="radio"><span>MOD WIDTH ADSR</span></label>
               </span>
             </div>
             <div class="gear-adsr-editor" id="palette-adsr-editor">
@@ -1825,13 +1912,19 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
                Existing Shape / Tooth Shape / Volume / ADSR controls above remain the
                single source of truth. These are the remaining unique per-gear controls. -->
           <div id="palette-current-gear-extras" style="margin-top:8px;border-top:1px solid var(--border-color);padding-top:6px;display:flex;flex-direction:column;gap:7px;">
-            <div style="padding-bottom:2px;">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-                <strong style="color:var(--accent-cyan);" title="Independent per-gear portamento/glissando time for note changes.">Accelleration</strong>
-                <span id="val-palette-acceleration" style="min-width:56px;text-align:right;color:var(--accent-cyan);font-weight:700;">0 ms</span>
+            <div class="gear-volume-accel-phase-row">
+              <div class="current-gear-accel-cell current-gear-knob-cell">
+                <label><span>Gear Volume</span><span id="val-palette-volume" style="color:var(--accent-cyan);font-weight:700;">20%</span></label>
+                <input type="range" id="slider-palette-volume" min="0" max="1" step="0.01" value="0.20" style="width:100%">
               </div>
-              <input id="slider-palette-acceleration" type="range" min="0" max="5000" step="10" value="0"
-                     style="width:100%;margin-top:4px;" aria-label="Accelleration" title="0 ms = immediate pitch change; higher values glide to the new pitch.">
+              <div class="current-gear-accel-cell current-gear-knob-cell">
+                <label><span>Accelleration</span><span id="val-palette-acceleration" style="color:var(--accent-cyan);font-weight:700;">0 ms</span></label>
+                <input id="slider-palette-acceleration" type="range" min="0" max="10000" step="10" value="0" style="width:100%;margin-top:4px;" aria-label="Accelleration" title="0 ms = immediate pitch change; higher values glide to the new pitch.">
+              </div>
+              <div class="current-gear-accel-cell current-gear-knob-cell">
+                <label><span>Phase</span><span id="val-palette-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/1</span></label>
+                <input type="range" id="input-palette-phase-deg-slider" min="0" max="0" step="1" value="0" style="width:100%;" aria-label="Phase tooth">
+              </div>
             </div>
             <div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -1846,26 +1939,31 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 
             <div style="border-top:1px solid var(--border-color);padding-top:6px;">
               <strong style="color:var(--accent-cyan);" title="Orbit this gear around the main gear/listener. Z controls move the source above/below the head plane.">3D Orbit Around Head</strong>
-              <div style="display:flex;align-items:center;gap:7px;margin-top:5px;font-size:.7rem;flex-wrap:wrap;">
-                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="chk-palette-orbit"><span>Orbit</span></label>
-                <input type="range" id="slider-palette-orbit-time" min="0.25" max="60" step="0.05" value="8" style="flex:1;min-width:90px;">
-                <span id="val-palette-orbit-time" style="min-width:58px;text-align:right;color:var(--accent-cyan);">8.00s</span>
-                <button id="btn-palette-orbit-direction" type="button" title="Reverse orbit direction" style="padding:3px 7px;">↻</button>
+              <div class="current-gear-radio-row" role="group" aria-label="Orbit behaviour">
+                <label class="gear-radio-toggle"><input type="radio" id="chk-palette-orbit"><span>ORBIT</span></label>
+                <label class="gear-radio-toggle"><input type="radio" id="chk-palette-hrtf-z-adsr"><span>FOLLOW ADSR</span></label>
+                <label class="gear-radio-toggle"><input type="radio" id="chk-palette-orbit-direction"><span id="palette-orbit-direction-label">DIRECTION ↻</span></label>
+                <label class="gear-radio-toggle"><input type="radio" id="chk-palette-orbit-preserve-phase"><span>PRESERVE PHASE</span></label>
               </div>
-              <div style="display:flex;align-items:center;gap:7px;margin-top:5px;font-size:.7rem;">
-                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;"><input type="checkbox" id="chk-palette-orbit-preserve-phase"><span>Preserve Phase</span></label>
+              <div class="current-gear-orbit-knob-grid" style="margin-top:6px;">
+                <div class="current-gear-knob-cell">
+                  <label><span>Orbit Speed</span><span id="val-palette-orbit-time" style="color:var(--accent-cyan);">8.00s</span></label>
+                  <input type="range" id="slider-palette-orbit-time" min="0.25" max="60" step="0.05" value="8" style="width:100%;">
+                </div>
+                <div class="current-gear-knob-cell">
+                  <label><span>HRTF Height</span><span id="val-palette-hrtf-z" style="color:var(--accent-cyan);">0.000</span></label>
+                  <input type="range" id="slider-palette-hrtf-z" min="-1" max="1" step="0.001" value="0" style="width:100%;">
+                </div>
+                <div class="current-gear-knob-cell">
+                  <label><span>Orbit Angle</span><span id="val-palette-hrtf-z-angle" style="color:var(--accent-cyan);">0°</span></label>
+                  <input type="range" id="slider-palette-hrtf-z-angle" min="0" max="360" step="1" value="0" style="width:100%;">
+                </div>
+                <div class="current-gear-knob-cell">
+                  <label><span>Motion Rate</span><span id="val-palette-hrtf-z-rate" style="color:var(--accent-cyan);">1.00×</span></label>
+                  <input type="range" id="slider-palette-hrtf-z-rate" min="0.1" max="8" step="0.05" value="1" style="width:100%;">
+                </div>
               </div>
-              <div style="margin-top:6px;">
-                <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>HRTF Height / Z <span style="color:var(--text-muted);">below ↔ above</span></span><span id="val-palette-hrtf-z" style="color:var(--accent-cyan);">0.000</span></label>
-                <input type="range" id="slider-palette-hrtf-z" min="-1" max="1" step="0.001" value="0" style="width:100%;">
-                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:3px;font-size:.68rem;"><input type="checkbox" id="chk-palette-hrtf-z-adsr"><span>Follow ADSR height</span></label>
-              </div>
-              <div id="palette-hrtf-z-dynamics" style="margin-top:5px;">
-                <label style="font-size:.68rem;display:flex;justify-content:space-between"><span title="Tilts the orbit plane vertically when ADSR height follow is off.">Z Angle <span style="color:var(--text-muted);">tilt orbital plane</span></span><span id="val-palette-hrtf-z-angle" style="color:var(--accent-cyan);">0°</span></label>
-                <input type="range" id="slider-palette-hrtf-z-angle" min="0" max="360" step="1" value="0" style="width:100%;">
-                <label style="font-size:.68rem;display:flex;justify-content:space-between"><span title="Multiplies the number of vertical sweep cycles per orbit.">Z Motion Rate <span style="color:var(--text-muted);">vertical cycles / orbit</span></span><span id="val-palette-hrtf-z-rate" style="color:var(--accent-cyan);">1.00×</span></label>
-                <input type="range" id="slider-palette-hrtf-z-rate" min="0.1" max="8" step="0.05" value="1" style="width:100%;">
-              </div>
+              <div id="palette-hrtf-z-dynamics" style="display:none"></div>
             </div>
 
             <div style="border-top:1px solid var(--border-color);padding-top:6px;">
@@ -1873,11 +1971,11 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               <div class="phase-control-grid" style="margin-top:5px;">
                 <div>
                   <label style="font-size:.7rem;">Offset (°): <span class="val" id="val-palette-phase-deg">0.0°</span></label>
-                  <input type="range" id="input-palette-phase-deg-slider" min="-360" max="360" step="1" value="0">
+                  <span id="palette-phase-degree-readout" style="display:block;color:var(--accent-cyan);font-size:.68rem;">0.0°</span>
                 </div>
                 <div>
                   <label style="font-size:.7rem;">Offset (Teeth):</label>
-                  <input type="number" id="input-palette-phase-teeth-num" min="-360" max="360" step="0.1" value="0.00">
+                  <input type="number" id="input-palette-phase-teeth-num" min="0" max="0" step="1" value="0">
                 </div>
               </div>
               <div class="phase-btn-group" style="margin-top:5px;">
@@ -1891,7 +1989,16 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             </div>
           </div>
         </div>
-        <div id="rational-gear-palette" class="rational-palette" aria-label="Available rational gears"></div>
+        <div id="harmonic-palette-shell" class="harmonic-palette-shell">
+          <div id="rational-gear-palette" class="rational-palette" aria-label="Available harmonic ratio gears"></div>
+          <button id="btn-subharmonics-toggle" type="button" class="subharmonics-toggle" aria-expanded="false" aria-controls="subharmonics-drawer">
+            <span>SUBHARMONICS</span><span id="subharmonics-toggle-arrow">▲</span><span id="subharmonics-count" class="subharmonics-count"></span>
+          </button>
+          <div id="subharmonics-drawer" class="subharmonics-drawer" hidden>
+            <div class="subharmonics-drawer-title"><span>SUBHARMONICS</span><span id="subharmonics-drawer-count"></span></div>
+            <div id="subharmonic-gear-palette" class="rational-palette" aria-label="Available subharmonic ratio gears"></div>
+          </div>
+        </div>
         <div id="ratio-add-controls" class="ratio-add-controls" aria-label="Add gear ratio controls">
           <div class="ratio-add-row ratio-add-primary">
             <label>Ratio <input id="mobile-ratio-num" type="number" min="1" max="120" step="1" value="2"><span>:</span><input id="mobile-ratio-den" type="number" min="1" max="120" step="1" value="1"></label>
@@ -1899,16 +2006,16 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <label>Phase° <input id="mobile-add-phase" type="number" min="-360" max="360" step="1" value="0"></label>
           </div>
           <div class="ratio-add-row">
-            <label class="ratio-add-check"><input id="mobile-add-orbit" type="checkbox"> Orbit</label>
+            <label class="ratio-add-check"><input id="mobile-add-orbit" type="radio"> Orbit</label>
             <label>Pan RPM <input id="mobile-add-orbit-time" type="number" min="0.25" max="60" step="0.05" value="8.00" aria-label="Pan RPM"></label>
             <label>Dir <select id="mobile-add-orbit-direction"><option value="1">↻</option><option value="-1">↺</option></select></label>
-            <label class="ratio-add-check"><input id="mobile-add-preserve-phase" type="checkbox" checked> Phase Lock</label>
+            <label class="ratio-add-check"><input id="mobile-add-preserve-phase" type="radio" checked> Phase Lock</label>
           </div>
           <div class="ratio-add-row ratio-add-secondary">
-            <label class="ratio-add-check"><input id="mobile-add-ratio-lock" type="checkbox"> Ratio Lock</label>
-            <label class="ratio-add-check"><input id="mobile-add-teeth-lock" type="checkbox"> Teeth Lock</label>
+            <label class="ratio-add-check"><input id="mobile-add-ratio-lock" type="radio"> Ratio Lock</label>
+            <label class="ratio-add-check"><input id="mobile-add-teeth-lock" type="radio"> Teeth Lock</label>
             <label>Vol <input id="mobile-add-volume" type="number" min="0" max="1" step="0.01" value="0.20"></label>
-            <label class="ratio-add-check"><input id="mobile-solve-teeth" type="checkbox"> Solve teeth</label>
+            <label class="ratio-add-check"><input id="mobile-solve-teeth" type="radio"> Solve teeth</label>
             <button id="mobile-add-ratio-gear" class="btn-primary" type="button">ADD GEAR</button>
           </div>
           <div id="mobile-ratio-add-result" class="ratio-add-result"></div>
@@ -1919,7 +2026,10 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     <!-- SIDEBAR -->
     <aside id="sidebar">
       <div class="sidebar-header">
-        <h1><span>DARKFLOWER</span><label class="desktop-visual-mode" title="Switch between the mechanical and Neon visual modes"><input id="chk-visual-mode-desktop" type="checkbox"> NEON</label></h1>
+        <h1><span>DARKFLOWER</span><span class="desktop-visual-mode" role="radiogroup" aria-label="Visual mode">
+  <label class="visual-mode-radio"><input id="radio-visual-mode-steampunk" type="radio" name="visual-mode-desktop" value="steampunk"><span>STEAMPUNK</span></label>
+  <label class="visual-mode-radio"><input id="radio-visual-mode-neon" type="radio" name="visual-mode-desktop" value="neon"><span>NEON</span></label>
+</span></h1>
         <button id="desktop-focus-toggle" type="button" aria-expanded="false" title="Hide the left control panel">FULL SCREEN</button>
         <p>Clockwork  Synthesizer</p>
       </div>
@@ -1976,7 +2086,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
             <div class="keyboard-bloom-wrap" aria-label="Global harmonic bloom">
               <div class="keyboard-bloom-slider-row">
                 <input id="slider-keyboard-bloom" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Global harmonic bloom time and order" title="Bloom: left = high harmonics first; right = fundamental first">
-                <label class="keyboard-bloom-placement"><input id="chk-bloom-placement-order" type="checkbox"><span>Placement order</span></label>
+                <label class="keyboard-bloom-placement"><input id="chk-bloom-placement-order" type="radio"><span>Placement order</span></label>
               </div>
             </div>
           </div>
@@ -2108,15 +2218,15 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
           <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px; display: flex; flex-direction: column; gap: 6px;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-poly" checked>
+                <input type="radio" id="chk-poly" checked>
                 <span>Poly</span>
               </label>
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-continuous">
+                <input type="radio" id="chk-continuous">
                 <span>Continuous</span>
               </label>
               <label style="font-size:0.72rem; display:flex; align-items:center; gap:5px; color:var(--text-muted); cursor:pointer;">
-                <input type="checkbox" id="chk-ji-keyboard" checked>
+                <input type="radio" id="chk-ji-keyboard" checked>
                 <span>JI</span>
               </label>
             </div>
@@ -2137,9 +2247,12 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               <label title="MIDI pitch-bend range. Default is ±2 semitones. Enter any positive value for a wider range.">Pitch Bend Range (±st)
                 <input id="midi-pitch-bend-range" type="number" min="0" step="0.01" value="2" style="width:100%;margin-top:2px;">
               </label>
-              <div title="MIDI CC1. Controls the bandwidth of NOISE gears from narrow at zero to the gear's full width at maximum.">MODWHEEL (CC1)<br><span id="midi-modwheel-value">0%</span></div>
+              <div title="MIDI CC1. Defaults to BLOOM. Right-click any controllable control to reassign MIDI Learn.">MODWHEEL (CC1)<br><span id="midi-modwheel-value">0%</span></div>
               <div title="MIDI CC64 sustain pedal. Note-offs are held while the pedal is down, then released when the pedal is raised.">SUSTAIN (CC64)<br><span id="midi-sustain-value">UP</span></div>
               <div title="Last received MIDI note velocity. Velocity controls note level in the poly engine.">VELOCITY<br><span id="midi-velocity-value">100%</span></div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+              <button id="btn-midi-clear-all-learn" type="button" style="padding:3px 7px;font-size:.62rem;">Clear ALL MIDI Learn</button>
             </div>
             <div id="midi-status" style="font-size:0.68rem; color:var(--text-muted); line-height:1.35; margin-top:6px;">WebMIDI disabled</div>
           </div>
@@ -2153,7 +2266,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
           </div>
           <div class="control-group">
             <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
-              <input type="checkbox" id="chk-spatial-enable" checked>
+              <input type="radio" id="chk-spatial-enable" checked>
               <span style="color: var(--text-main); font-weight: 600;">3D audio on</span>
             </label>
           </div>
@@ -2173,8 +2286,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         </div>
 
         <div class="panel-box" id="global-acceleration-panel">
-          <div class="panel-title"><span>Global Acceleration</span><span id="val-global-acceleration" class="val">0 ms</span></div>
-          <input id="slider-global-acceleration" type="range" min="0" max="5000" step="10" value="0" style="width:100%;" aria-label="Global Acceleration" title="Scales every non-zero per-gear Accelleration setting. The gear with the highest individual setting reaches this global value.">
+          <div class="panel-title"><span>Global Acceleration</span><span id="val-global-acceleration" class="val">100%</span></div>
+          <input id="slider-global-acceleration" type="range" min="0" max="200" step="1" value="100" style="width:100%;" aria-label="Global Acceleration Scale" title="Scales every non-zero per-gear Accelleration setting. 100% = unchanged; 200% = twice the individual time; 0% = no acceleration.">
         </div>
 
         <!-- ACTIVE GEAR NETWORK LIST -->
@@ -2330,7 +2443,11 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       midiPitchBendRange: 2,
       midiLastVelocity: 1,
       midiLearn: { armed: null, mappings: [] },
-      globalAccelerationMs: 0,
+      globalAccelerationPercent: 100,
+      // Legacy field retained for old presets; runtime uses globalAccelerationPercent.
+      globalAccelerationMs: 1000,
+      lastPaletteColorMidi: 60,
+      subharmonicsOpen: false,
       lastNoteDownPerf: 0,
       legato: false,             // Retained internally; Portamento UI is retired in favour of Accelleration
       glissTime: 0.20,           // Glissando glide duration in seconds
@@ -2454,6 +2571,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         this.orbitEnabled = false;
         this.orbitPeriodSec = 8.0;
         this.orbitDirection = 1;
+        this._orbitDirectionToggle = true; // UI toggle state is independent of CW/CCW direction.
         this.orbitAngle = 0;
         this.orbitRadius = 0;
         this.orbitPhase = 0;
@@ -2508,17 +2626,25 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       }
 
       get phaseOffsetTeeth() {
-        return (this.phaseOffsetDeg / 360) * this.teeth;
+        const teeth = Math.max(1, Math.round(this.teeth || 1));
+        const step = Math.round((Number(this.phaseOffsetDeg) || 0) / 360 * teeth);
+        return ((step % teeth) + teeth) % teeth;
       }
 
+      get phaseToothIndex() { return this.phaseOffsetTeeth; }
+
       setPhaseOffsetDeg(deg) {
-        this.phaseOffsetDeg = Math.min(360, Math.max(-360, deg));
+        const teeth = Math.max(1, Math.round(this.teeth || 1));
+        let step = Math.round((Number(deg) || 0) / 360 * teeth);
+        step = ((step % teeth) + teeth) % teeth;
+        this.phaseOffsetDeg = (step / teeth) * 360;
       }
 
       setPhaseOffsetTeeth(teeth) {
-        if (this.teeth > 0) {
-          this.setPhaseOffsetDeg((teeth / this.teeth) * 360);
-        }
+        const count = Math.max(1, Math.round(this.teeth || 1));
+        let step = Math.round(Number(teeth) || 0);
+        step = ((step % count) + count) % count;
+        this.phaseOffsetDeg = (step / count) * 360;
       }
 
       get pitchRadius() {
@@ -4280,7 +4406,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       // hand is at the instant of attachment.
       const computedWithoutOffset = baseVertical + (ratio * state.masterPhase);
       const offsetRad = parent.angle - computedWithoutOffset;
-      child.phaseOffsetDeg = ((offsetRad * 180 / Math.PI + 540) % 360) - 180;
+      child.setPhaseOffsetDeg(((offsetRad * 180 / Math.PI + 540) % 360) - 180);
       child.angle = parent.angle;
     }
 
@@ -4354,6 +4480,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return exact[key] || best[1];
     }
 
+    const RATIO_HARMONIC_PRIORITY = [
+      '1:1','2:1','4:1','8:1',
+      '3:1','5:1','6:1','7:1',
+      '3:2','4:3','5:4','6:5',
+      '16:1','9:1','11:1','13:1'
+    ];
+
     function rationalPaletteCandidates(mainTeeth) {
       const result = [];
       const pushIfInteger = (rawNum, rawDen) => {
@@ -4364,25 +4497,39 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (!Number.isInteger(toothExact) || toothExact < 1 || toothExact > 15015) return;
         result.push({ num, den, teeth: toothExact, ratio: num / den, name: ratioIntervalName(num, den) });
       };
-      pushIfInteger(1, 1);
-      pushIfInteger(1, 2);
-      for (let num = 2; num <= 24; num++) {
-        for (let den = 1; den < num; den++) pushIfInteger(num, den);
+
+      // Generate a useful bounded family.  Ratios whose corresponding gear would
+      // require fractional or out-of-range teeth are simply omitted.
+      for (let num = 1; num <= 32; num++) {
+        for (let den = 1; den <= 32; den++) {
+          if (num === den || num > den) pushIfInteger(num, den);
+          else if (num < den) pushIfInteger(num, den);
+        }
       }
+
       const seen = new Set();
-      return result.filter(c => {
+      const unique = result.filter(c => {
         const key = `${c.num}:${c.den}`;
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      }).sort((a, b) => {
-        // Musical simplicity first: lowest numerator+denominator, then
-        // denominator/numerator order so the palette begins 1:1, 1:2, 2:1,
-        // 3:2, 2:3, 4:3, 3:4, ... rather than sorting by numeric ratio.
-        const ca = a.num + a.den, cb = b.num + b.den;
-        return ca - cb || a.den - b.den || a.num - b.num;
       });
+
+      const priority = new Map(RATIO_HARMONIC_PRIORITY.map((key, i) => [key, i]));
+      const simplicity = c => c.num + c.den;
+      const sortHarmonic = (a,b) => {
+        const pa = priority.has(`${a.num}:${a.den}`) ? priority.get(`${a.num}:${a.den}`) : Infinity;
+        const pb = priority.has(`${b.num}:${b.den}`) ? priority.get(`${b.num}:${b.den}`) : Infinity;
+        if (pa !== pb) return pa - pb;
+        return simplicity(a)-simplicity(b) || a.den-b.den || a.num-b.num;
+      };
+      const sortSubharmonic = (a,b) => simplicity(a)-simplicity(b) || a.den-b.den || a.num-b.num;
+
+      const harmonics = unique.filter(c => c.num >= c.den).sort(sortHarmonic);
+      const subharmonics = unique.filter(c => c.num < c.den).sort(sortSubharmonic);
+      return { harmonics, subharmonics, all: unique };
     }
+
     function getActivePaletteGear(){
       const id=state.activePaletteGearId;
       return (id!=null ? state.gearMap.get(id) : null) || state.gears.find(g=>g.isMain) || state.gears[0] || null;
@@ -4396,6 +4543,76 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       updateInspector();
       renderGearList();
     }
+
+    // These styled radio controls are actually independent ON/OFF toggles. Use
+    // pointerdown/keyboard activation so the browser cannot pre-check a radio before
+    // we decide whether the user's action means ON or OFF. The same handler also
+    // implements orbit direction, so a click always reverses the orbit direction.
+    const TOGGLE_RADIO_IDS = new Set([
+      'chk-orbit','chk-hrtf-z-adsr','chk-orbit-direction','chk-orbit-preserve-phase',
+      'chk-palette-orbit','chk-palette-hrtf-z-adsr','chk-palette-orbit-direction','chk-palette-orbit-preserve-phase'
+    ]);
+    function handleGearToggleRadio(input){
+      if(!input || !TOGGLE_RADIO_IDS.has(input.id) || input.disabled) return false;
+      const id=input.id;
+      const next=!input.checked;
+      input.checked=next;
+      const isPalette=id.startsWith('chk-palette-');
+      const gear=isPalette
+        ? (typeof getActivePaletteGear==='function'?getActivePaletteGear():null)
+        : (state.gears.find(g=>g.id===state.selectedGearId)||state.gears.find(g=>!g.isMain)||state.gears.find(g=>g.isMain));
+      if(!gear) return true;
+      if(id.endsWith('orbit')){
+        gear.orbitEnabled=next;
+        const main=state.gears.find(g=>g.isMain)||state.gears[0];
+        if(next&&main&&!gear.isMain){
+          const dx=gear.x-main.x,dy=gear.y-main.y;
+          gear.orbitRadius=Math.max(main.pitchRadius+gear.pitchRadius+2,Math.hypot(dx,dy));
+          gear.orbitAngle=Math.atan2(dy,dx);
+          gear.orbitPhase=0;
+        }
+      }else if(id.endsWith('hrtf-z-adsr')){
+        gear.hrtfZAdsr=next;
+        const dyn=document.getElementById(isPalette?'palette-hrtf-z-dynamics':'hrtf-z-dynamics');
+        if(dyn) dyn.style.opacity=(gear.hrtfZAdsr||gear.isMain)?'.45':'1';
+      }else if(id.endsWith('orbit-direction')){
+        gear._orbitDirectionToggle=next;
+        gear.orbitDirection=(gear.orbitDirection||1)*-1;
+        const lab=document.getElementById(isPalette?'palette-orbit-direction-label':'orbit-direction-label');
+        if(lab) lab.textContent=`DIRECTION ${gear.orbitDirection<0?'↺':'↻'}`;
+      }else if(id.endsWith('orbit-preserve-phase')){
+        gear.orbitPreservePhase=next;
+        if(next&&gear.orbitEnabled){
+          gear.angle=-Math.PI/2+gear.ratio*state.masterPhase+gear.phaseOffsetRad;
+          if(gear.delayNode&&state.audioCtx){
+            const sourceFreq=Math.max(.1,gear.freq||state.fundamentalFreq||1);
+            const targetDelay=gear.isMain?0.0001:getPhaseAlignedDelaySeconds(gear.phaseOffsetRad,sourceFreq);
+            gear.delayNode.delayTime.setTargetAtTime(targetDelay,state.audioCtx.currentTime,.008);
+          }
+        }
+      }
+      if(isPalette) syncPaletteCurrentGearExtras?.(gear); else updateInspector?.();
+      updateAudioNodes();
+      renderGearList();
+      return true;
+    }
+    function gearTogglePointerTarget(e){
+      const label=e.target?.closest?.('.gear-radio-toggle');
+      return label?.querySelector?.('input[type=radio]') || (e.target?.matches?.('.gear-radio-toggle input[type=radio]')?e.target:null);
+    }
+    document.addEventListener('pointerdown',e=>{
+      const input=gearTogglePointerTarget(e); if(!input)return;
+      if(handleGearToggleRadio(input)){e.preventDefault();e.stopImmediatePropagation();}
+    },true);
+    document.addEventListener('keydown',e=>{
+      if(e.key!==' ' && e.key!=='Enter')return;
+      const input=e.target?.closest?.('.gear-radio-toggle input[type=radio]');
+      if(input && handleGearToggleRadio(input)){e.preventDefault();e.stopImmediatePropagation();}
+    },true);
+    // Cancel the native follow-up click after pointerdown has already handled it.
+    document.addEventListener('click',e=>{
+      const input=gearTogglePointerTarget(e); if(input && TOGGLE_RADIO_IDS.has(input.id)){e.preventDefault();e.stopImmediatePropagation();}
+    },true);
 
     // Single authoritative selection path for editing. Selecting a gear from
     // either the canvas or GEAR NETWORK must recall that exact gear into every
@@ -4435,15 +4652,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(!gear) return;
       const accelSlider=document.getElementById('slider-palette-acceleration');
       const accelValue=document.getElementById('val-palette-acceleration');
-      const accelerationMs=clampGearAccelerationMs(gear.accelerationMs);
-      if(accelSlider) accelSlider.value=String(accelerationMs);
+      const accelerationMs=getEffectiveGearAccelerationMs(gear);
+      if(accelSlider) { accelSlider.max='10000'; accelSlider.value=String(accelerationMs); accelSlider.title=getGlobalAccelerationPercent()===0?'Global Acceleration is 0%: raise it above 0% to edit effective Accelleration.':'Sets effective Accelleration time; the stored per-gear value is automatically scaled by Global Acceleration.'; accelSlider.disabled=(getGlobalAccelerationPercent()===0); }
       if(accelValue) accelValue.textContent=formatGearAcceleration(accelerationMs);
       const teethVal=document.getElementById('palette-teeth-value'); if(teethVal) teethVal.textContent=String(Math.round(gear.teeth||0));
       const orbitChk=document.getElementById('chk-palette-orbit'); if(orbitChk){orbitChk.checked=!!gear.orbitEnabled;orbitChk.disabled=!!gear.isMain;}
       const orbitTime=document.getElementById('slider-palette-orbit-time'); const orbitTimeVal=document.getElementById('val-palette-orbit-time');
       if(orbitTime){orbitTime.value=Math.min(60,Math.max(.25,Number(gear.orbitPeriodSec)||8));orbitTime.disabled=!!gear.isMain;}
       if(orbitTimeVal) orbitTimeVal.textContent=`${(Number(gear.orbitPeriodSec)||8).toFixed(2)}s`;
-      const orbitDir=document.getElementById('btn-palette-orbit-direction'); if(orbitDir){orbitDir.textContent=(gear.orbitDirection||1)<0?'↺':'↻';orbitDir.disabled=!!gear.isMain;}
+      const orbitDir=document.getElementById('chk-palette-orbit-direction'); const orbitDirLabel=document.getElementById('palette-orbit-direction-label'); if(orbitDir){if(typeof gear._orbitDirectionToggle!=='boolean') gear._orbitDirectionToggle=true; orbitDir.checked=gear._orbitDirectionToggle;orbitDir.disabled=!!gear.isMain;} if(orbitDirLabel)orbitDirLabel.textContent=`DIRECTION ${(gear.orbitDirection||1)<0?'↺':'↻'}`;
       const preserve=document.getElementById('chk-palette-orbit-preserve-phase'); if(preserve){preserve.checked=gear.orbitPreservePhase!==false;preserve.disabled=!!gear.isMain;}
       const z=Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0)); const zSlider=document.getElementById('slider-palette-hrtf-z'); const zVal=document.getElementById('val-palette-hrtf-z');
       if(zSlider){zSlider.value=z;zSlider.disabled=!!gear.isMain;} if(zVal) zVal.textContent=z.toFixed(3);
@@ -4454,8 +4671,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const zRate=document.getElementById('slider-palette-hrtf-z-rate'); const zRateVal=document.getElementById('val-palette-hrtf-z-rate'); const rate=Math.max(.1,Math.min(8,Number(gear.hrtfZRate)||1));
       if(zRate){zRate.value=rate;zRate.disabled=dynamicsDisabled;} if(zRateVal)zRateVal.textContent=`${rate.toFixed(2)}×`;
       const deg=document.getElementById('input-palette-phase-deg-slider'); const degVal=document.getElementById('val-palette-phase-deg'); const teeth=document.getElementById('input-palette-phase-teeth-num');
-      const offsetDeg=Number(gear.phaseOffsetDeg)||0, offsetTeeth=Number(gear.phaseOffsetTeeth)||0;
-      if(deg)deg.value=offsetDeg; if(degVal)degVal.textContent=`${offsetDeg.toFixed(1)}°`; if(teeth)teeth.value=offsetTeeth.toFixed(2);
+      const offsetDeg=Number(gear.phaseOffsetDeg)||0, offsetTeeth=Math.round(Number(gear.phaseOffsetTeeth)||0), toothCount=Math.max(1,Math.round(gear.teeth||1));
+      if(deg){deg.min='0';deg.max=String(Math.max(0,toothCount-1));deg.step='1';deg.value=String(offsetTeeth);}
+      if(degVal)degVal.textContent=`${offsetDeg.toFixed(1)}°`;
+      const palettePhaseKnob=document.getElementById('val-palette-phase-knob'); if(palettePhaseKnob)palettePhaseKnob.textContent=`${offsetTeeth}/${toothCount}`;
+      const degreeReadout=document.getElementById('palette-phase-degree-readout'); if(degreeReadout)degreeReadout.textContent=`${offsetDeg.toFixed(1)}°`;
+      if(teeth){teeth.min='0';teeth.max=String(Math.max(0,toothCount-1));teeth.step='1';teeth.value=String(offsetTeeth);}
     }
     function syncPaletteGearEditor(){
       const gear=getActivePaletteGear(); if(!gear) return;
@@ -4484,53 +4705,116 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       syncPaletteCurrentGearExtras(gear);
     }
 
-    function renderRationalGearPalette() {
-      const wrap = document.getElementById('rational-gear-palette');
-      const countEl = document.getElementById('rational-palette-count');
-      if (!wrap) return;
-      const main = state.gears.find(g => g.isMain);
-      const mainTeeth = Math.max(1, Number(main?.teeth || state.mainTeeth || 120));
-      const candidates = rationalPaletteCandidates(mainTeeth);
-      wrap.innerHTML = '';
-      if (countEl) countEl.textContent = `(${candidates.length} · ${mainTeeth}T main)`;
-      if (!candidates.length) { wrap.innerHTML = '<div class="rational-empty">No integer-tooth rational gears are available for this MAIN wheel.</div>'; return; }
-      const previewTooth = window.__paletteToothWaveform || 'sawtooth';
-      const previewToothWidth = normalizeToothWidth(document.getElementById('slider-palette-tooth-width')?.value ?? window.__paletteToothWidth ?? 0.50);
-      window.__paletteToothWaveform = previewTooth; window.__paletteToothWidth = previewToothWidth;
-      for (const c of candidates) {
-        const card = document.createElement('div');
-        card.className = 'rational-gear-thumb';
-        card.draggable = true;
-        card.dataset.teeth = String(c.teeth);
-        card.dataset.ratioNum = String(c.num);
-        card.dataset.ratioDen = String(c.den);
-        card.title = `Drag ${c.num}:${c.den} (${c.name}) - ${c.teeth} teeth - harmonic ${c.num}`;
-        card.innerHTML = `<div class="thumb-ratio">${c.num}:${c.den}</div><div class="thumb-name">${c.name}</div><div class="thumb-meta">${c.teeth}T • H${c.num}</div>`;
-        card.addEventListener('dragstart', e => {
-          e.dataTransfer.setData('text/plain', JSON.stringify({ teeth: c.teeth, num: c.num, den: c.den, shape: paletteShapeSelect?.value || 'circular', shapeParams: { ...PALETTE_SHAPE_PARAMS }, volume: PALETTE_GEAR_VOLUME, toothWaveform: previewTooth, sourceMode: window.__paletteSourceMode || previewTooth, toothWidth: previewToothWidth }));
-          e.dataTransfer.effectAllowed = 'copy';
+    function ratioPaletteColorForCandidate(candidate){
+      const rootMidi = Number(state.lastPaletteColorMidi);
+      const safeRoot = Number.isFinite(rootMidi) ? rootMidi : 60;
+      // Ratio colour follows the nearest musical pitch class. This keeps exact
+      // octave ratios identical to the root while 3:2 resolves to the fifth
+      // colour, 5:4 to the major-third colour, etc., rather than interpolating
+      // into an unintended hue for fractional MIDI values.
+      const harmonicMidi = Math.round(safeRoot + 12*Math.log2(Math.max(0.000001, candidate.ratio)));
+      return neonColorForPitch(harmonicMidi);
+    }
+
+    function buildRatioPaletteCards(wrap, candidates, previewTooth, previewToothWidth, isSubharmonic=false){
+      if(!wrap) return;
+      wrap.innerHTML='';
+      if(!candidates.length){
+        wrap.innerHTML='<div class="rational-empty">No integer-tooth ratios are available with this MAIN wheel.</div>';
+        return;
+      }
+      for(const c of candidates){
+        const card=document.createElement('button');
+        card.type='button';
+        card.className='rational-gear-thumb'+(isSubharmonic?' subharmonic-ratio-thumb':'');
+        card.draggable=true;
+        card.dataset.teeth=String(c.teeth);
+        card.dataset.ratioNum=String(c.num);
+        card.dataset.ratioDen=String(c.den);
+        card.dataset.ratio=`${c.num}:${c.den}`;
+        const color=ratioPaletteColorForCandidate(c);
+        card.style.setProperty('--harmonic-color',color);
+        card.style.borderColor=color;
+        card.title=`Drag ${c.num}:${c.den} (${c.name}) - ${c.teeth} teeth${isSubharmonic?' - subharmonic':''}`;
+        card.innerHTML=`<div class="thumb-ratio">${c.num}:${c.den}</div><div class="thumb-name">${c.name}</div><div class="thumb-meta">${c.teeth}T${isSubharmonic?' • Sub':''}</div>`;
+        const ratioLabel=card.querySelector('.thumb-ratio');
+        if(ratioLabel) ratioLabel.style.color=color;
+        card.addEventListener('dragstart',e=>{
+          e.dataTransfer.setData('text/plain',JSON.stringify({teeth:c.teeth,num:c.num,den:c.den,shape:paletteShapeSelect?.value||'circular',shapeParams:{...PALETTE_SHAPE_PARAMS},volume:PALETTE_GEAR_VOLUME,toothWaveform:previewTooth,sourceMode:window.__paletteSourceMode||previewTooth,toothWidth:previewToothWidth}));
+          e.dataTransfer.effectAllowed='copy';
         });
-        card.addEventListener('pointerdown', () => { card.style.opacity = '.65'; });
-        card.addEventListener('pointerup', () => { card.style.opacity = ''; });
-        card.addEventListener('click', () => {
-          const gear = addGear(c.teeth);
+        card.addEventListener('pointerdown',()=>{card.style.opacity='.65';});
+        card.addEventListener('pointerup',()=>{card.style.opacity='';});
+        card.addEventListener('pointercancel',()=>{card.style.opacity='';});
+        card.addEventListener('click',()=>{
+          const gear=addGear(c.teeth);
           setActivePaletteGear(gear);
-          gear.ratioLock = true;
-          gear.teethLock = false;
-          gear.shape = paletteShapeSelect?.value || 'circular';
-          gear.shapeParams = normalizedShapeParams(PALETTE_SHAPE_PARAMS);
-          gear.volume = PALETTE_GEAR_VOLUME;
-          gear.toothWaveform = previewTooth;
-          gear.toothWidth = previewToothWidth;
-          gear.adsr = { ...(getActivePaletteGear()?.adsr || state.adsr) };
+          gear.ratioLock=true;
+          gear.teethLock=false;
+          gear.shape=paletteShapeSelect?.value||'circular';
+          gear.shapeParams=normalizedShapeParams(PALETTE_SHAPE_PARAMS);
+          gear.volume=PALETTE_GEAR_VOLUME;
+          gear.toothWaveform=previewTooth;
+          gear.toothWidth=previewToothWidth;
+          gear.adsr={...(getActivePaletteGear()?.adsr||state.adsr)};
           setActivePaletteGear(gear);
           document.getElementById('startup-tooltip')?.remove();
-              forceGearMod0Sync('palette-click-add');
+          forceGearMod0Sync('palette-click-add');
           setActivePaletteGear(gear);
-          updateInspector(); renderGearList();
+          updateInspector();
+          renderGearList();
         });
         wrap.appendChild(card);
       }
+    }
+
+    function syncSubharmonicsDrawer(){
+      const drawer=document.getElementById('subharmonics-drawer');
+      const toggle=document.getElementById('btn-subharmonics-toggle');
+      const arrow=document.getElementById('subharmonics-toggle-arrow');
+      if(!drawer||!toggle) return;
+      const open=!!state.subharmonicsOpen;
+      drawer.hidden=!open;
+      drawer.classList.toggle('is-open',open);
+      toggle.setAttribute('aria-expanded',String(open));
+      if(arrow) arrow.textContent=open?'▼':'▲';
+    }
+
+    function queueRatioPaletteRecolor(){
+      if(state._ratioPaletteRecolorQueued) return;
+      state._ratioPaletteRecolorQueued=true;
+      requestAnimationFrame(()=>{
+        state._ratioPaletteRecolorQueued=false;
+        try{renderRationalGearPalette();}catch(err){console.warn('[DARKFLOWER] ratio palette recolor skipped',err);}
+      });
+    }
+
+    function renderRationalGearPalette() {
+      const wrap=document.getElementById('rational-gear-palette');
+      const subWrap=document.getElementById('subharmonic-gear-palette');
+      const countEl=document.getElementById('rational-palette-count');
+      const subCount=document.getElementById('subharmonics-count');
+      const subDrawerCount=document.getElementById('subharmonics-drawer-count');
+      if(!wrap) return;
+      const main=state.gears.find(g=>g.isMain);
+      const mainTeeth=Math.max(1,Number(main?.teeth||state.mainTeeth||120));
+      const sets=rationalPaletteCandidates(mainTeeth);
+      if(countEl) countEl.textContent=`(${sets.harmonics.length} · ${mainTeeth}T main)`;
+      if(subCount) subCount.textContent=sets.subharmonics.length?`(${sets.subharmonics.length})`:'';
+      if(subDrawerCount) subDrawerCount.textContent=sets.subharmonics.length?`(${sets.subharmonics.length} available)`:'none available';
+      const previewTooth=window.__paletteToothWaveform||'sawtooth';
+      const previewToothWidth=normalizeToothWidth(document.getElementById('slider-palette-tooth-width')?.value??window.__paletteToothWidth??0.50);
+      window.__paletteToothWaveform=previewTooth;
+      window.__paletteToothWidth=previewToothWidth;
+      buildRatioPaletteCards(wrap,sets.harmonics,previewTooth,previewToothWidth,false);
+      if(subWrap) buildRatioPaletteCards(subWrap,sets.subharmonics,previewTooth,previewToothWidth,true);
+      const toggle=document.getElementById('btn-subharmonics-toggle');
+      if(toggle){
+        const available=sets.subharmonics.length>0;
+        toggle.disabled=!available;
+        if(!available) state.subharmonicsOpen=false;
+      }
+      syncSubharmonicsDrawer();
     }
 
     const GEAR_SHAPE_DESCRIPTIONS = {
@@ -5437,7 +5721,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       ctx.fill();
       ctx.shadowBlur=0;
       ctx.fillStyle=gear.isMain?'#f5d07a':'#f0d39b';
-      ctx.font=`900 ${Math.max(10,baseFont).toFixed(1)}px Georgia, serif`;
+      ctx.font=`900 ${Math.max(10,baseFont).toFixed(1)}px Arial, sans-serif`;
       ctx.fillText(labelText,0,0);
       ctx.restore();
     }
@@ -6452,7 +6736,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const sameParent = phaseParent && originalParents.has(phaseParent.id);
         if (sameParent) {
           const savedOffset = state.dragState.phaseOffsets?.get(gear.id);
-          if (Number.isFinite(savedOffset)) gear.phaseOffsetDeg = savedOffset;
+          if (Number.isFinite(savedOffset)) gear.setPhaseOffsetDeg(savedOffset);
           alignGearPhaseToParent(phaseParent, gear);
         } else if (phaseParent) {
           gear.setPhaseOffsetDeg(0);
@@ -6670,7 +6954,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       let nx=main.x+Math.cos(a+Math.PI)*radius, ny=main.y+Math.sin(a+Math.PI)*radius;
       if(!source.orbitEnabled && Math.hypot(dx,dy)<1){nx=main.x+radius;ny=main.y;}
       const copy=addGear(source.teeth,nx,ny,false); if(!copy)return null;
-      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,accelerationMs:Math.max(0,Math.min(5000,Number(source.accelerationMs)||0)),shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,phaseOffsetDeg:-Number(source.phaseOffsetDeg||0),adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
+      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,accelerationMs:Math.max(0,Math.min(5000,Number(source.accelerationMs)||0)),shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
+      copy.setPhaseOffsetDeg(-Number(source.phaseOffsetDeg||0));
       if(source.audioBuffer){copy.audioBuffer=source.audioBuffer;copy.audioFileName=source.audioFileName;copy.audioLoopStart=source.audioLoopStart;copy.audioLoopEnd=source.audioLoopEnd;}
       if(source.sourceMode==='midi'){copy.midiOutput=source.midiOutput;copy.midiNote=source.midiNote;}
       if(copy.orbitEnabled){copy.x=main.x+Math.cos(copy.orbitAngle)*radius;copy.y=main.y+Math.sin(copy.orbitAngle)*radius;}
@@ -6757,8 +7042,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const nyquist = getNyquist();
       const slider = document.getElementById('slider-fundamental');
       const numInput = document.getElementById('input-fundamental');
-      document.getElementById('fundamental-label').textContent = 'Fundamental Frequency';
-      document.getElementById('fundamental-unit').textContent = 'Hz';
+            document.getElementById('fundamental-unit').textContent = 'Hz';
       slider.min = -1;
       slider.max = Math.log10(nyquist).toFixed(3);
       numInput.min = 0;
@@ -6818,33 +7102,59 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return Math.max(0, Math.min(5000, Number(value) || 0));
     }
 
-    function getGlobalAccelerationMs() {
-      return clampGearAccelerationMs(state.globalAccelerationMs);
+    function clampGlobalAccelerationPercent(value) {
+      return Math.max(0, Math.min(200, Number(value) || 0));
+    }
+
+    function getGlobalAccelerationPercent() {
+      const modern = Number(state.globalAccelerationPercent);
+      if (Number.isFinite(modern)) return clampGlobalAccelerationPercent(modern);
+      const legacyMs = Number(state.globalAccelerationMs);
+      if (Number.isFinite(legacyMs)) return clampGlobalAccelerationPercent((legacyMs / 1000) * 100);
+      return 100;
     }
 
     function getEffectiveGearAccelerationMs(gear) {
       const raw = clampGearAccelerationMs(gear?.accelerationMs);
-      if (raw <= 0) return 0;
-      const global = getGlobalAccelerationMs();
-      if (global <= 0) return 0;
-      const maxRaw = state.gears.reduce((max, g) => Math.max(max, clampGearAccelerationMs(g?.accelerationMs)), 0);
-      if (maxRaw <= 0) return 0;
-      return Math.min(5000, global * (raw / maxRaw));
+      const scale = getGlobalAccelerationPercent() / 100;
+      return Math.max(0, Math.min(10000, raw * scale));
     }
 
     function syncGlobalAccelerationUI() {
       const slider=document.getElementById('slider-global-acceleration');
       const value=document.getElementById('val-global-acceleration');
-      const v=getGlobalAccelerationMs();
+      const v=getGlobalAccelerationPercent();
       if(slider) slider.value=String(v);
-      if(value) value.textContent=formatGearAcceleration(v);
+      if(value) value.textContent=`${Math.round(v)}%`;
+      const active=getActivePaletteGear?.();
+      if(active) syncPaletteCurrentGearExtras(active);
+      updateInspector?.();
     }
 
     function formatGearAcceleration(ms) {
-      const v = clampGearAccelerationMs(ms);
+      const v = Math.max(0, Math.min(10000, Number(ms) || 0));
       if (v >= 1000 && Math.abs(v % 1000) < 0.001) return `${(v / 1000).toFixed(v >= 2000 ? 0 : 1)} s`;
       if (v >= 1000) return `${(v / 1000).toFixed(2)} s`;
       return `${Math.round(v)} ms`;
+    }
+
+    function refreshRotaryDisplayForInput(input){
+      if(!input) return;
+      const host=input.parentElement?.querySelector?.('.rotary-knob');
+      if(!host) return;
+      const value=host.querySelector('.rotary-value');
+      if(value) value.textContent=rotaryDisplayValue(input);
+      const min=Number(input.min||0), max=Number(input.max||1), v=Number(input.value);
+      const unit=max>min?(v-min)/(max-min):0;
+      const isPhaseKnob=input.id.includes('phase-deg-slider');
+      const deg=isPhaseKnob?(360*Math.max(0,Math.min(1,unit))):(-135+270*Math.max(0,Math.min(1,unit)));
+      host.classList.toggle('phase-rotary-knob',isPhaseKnob);
+      host.style.setProperty('--knob-angle',`${deg}deg`);
+      host.setAttribute('aria-valuenow',input.value);
+    }
+
+    function refreshAllRotaryDisplays(){
+      document.querySelectorAll('input[type="range"][data-rotary-done="1"]').forEach(refreshRotaryDisplayForInput);
     }
 
     // Smooth S-curve interpolation for per-gear pitch motion. Unlike a linear ramp,
@@ -7008,9 +7318,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       numInput.max = nyquist;
       numInput.value = freq >= 10 ? freq.toFixed(1) : freq.toFixed(2);
 
-      const freqLabel = freq >= 1000 ? `${(freq / 1000).toFixed(2)} kHz` : `${freq.toFixed(1)} Hz`;
-      document.getElementById('fundamental-label').textContent = 'Fundamental Frequency';
-      document.getElementById('fundamental-unit').textContent = 'Hz';
+      const freqLabel = freq >= 1000 ? `${(freq / 1000).toFixed(2)}kHz` : `${freq.toFixed(1)}Hz`;
+            document.getElementById('fundamental-unit').textContent = 'Hz';
       document.getElementById('val-fundamental').textContent = freqLabel;
       syncCanvasCrankControl();
 
@@ -7625,10 +7934,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             state.gears.forEach(g=>g.accelerationMs=v*1000);
             return v;
           },
-          setGlobalAcceleration: seconds => {
-            state.globalAccelerationMs=clampGearAccelerationMs((Number(seconds)||0)*1000);
+          setGlobalAcceleration: percent => {
+            state.globalAccelerationPercent=clampGlobalAccelerationPercent(percent);
+            state.globalAccelerationMs=state.globalAccelerationPercent*10;
             syncGlobalAccelerationUI();
-            return state.globalAccelerationMs/1000;
+            return state.globalAccelerationPercent;
+          },
+          setGlobalAccelerationPercent: percent => {
+            state.globalAccelerationPercent=clampGlobalAccelerationPercent(percent);
+            state.globalAccelerationMs=state.globalAccelerationPercent*10;
+            syncGlobalAccelerationUI();
+            return state.globalAccelerationPercent;
           },
           getEffectiveAccelerations: () => Object.fromEntries(state.gears.map(g=>[g.id,getEffectiveGearAccelerationMs(g)])),
           setAllDecay: seconds => {
@@ -8667,6 +8983,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function playSemitone(semitone, keyId = `note-${semitone}`, velocity=1) {
       if (!state.audioRunning) initAudio();
       state.lastNoteDownPerf=performance.now();
+      state.lastPaletteColorMidi=69 + Number(semitone||0) + Number(state.octaveShift||0)*12;
+      queueRatioPaletteRecolor();
       const totalSemitones = semitone + (state.octaveShift * 12);
       const ratio = Math.pow(2, totalSemitones / 12);
       const wasNoteActive = state.activeSemitone !== null;
@@ -9053,6 +9371,107 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
     }
 
+
+    // ROTARY KNOB CONTROLS ----------------------------------------------------
+    function rotaryDisplayValue(input){
+      if(input.id==='slider-global-acceleration') return `${Math.round(Number(input.value)||0)}%`;
+      if(input.id.includes('phase-deg-slider')){
+        const gear=input.id.startsWith('input-palette-') ? (typeof getActivePaletteGear==='function'?getActivePaletteGear():null) : (state.gearMap.get(state.selectedGearId)||null);
+        const teeth=Math.max(1,Math.round(gear?.teeth||Number(input.max||0)+1||1));
+        const step=Math.max(0,Math.min(teeth-1,Math.round(Number(input.value)||0)));
+        return `${step}/${teeth}`;
+      }
+      if(input.id==='slider-keyboard-bloom') return '';
+      if(input.id==='slider-palette-acceleration' || input.id==='slider-inspector-acceleration') return formatGearAcceleration(Number(input.value)||0);
+      if(input.id==='slider-fundamental') return `${Math.max(0,Number(state.fundamentalFreq)||0).toFixed(2)} Hz`;
+      const step=Number(input.step); const v=Number(input.value);
+      if(input.id.includes('volume')||input.id==='input-master-vol'||input.id==='slider-spatial-scale') return `${Math.round(v*100)}%`;
+      if(Number.isFinite(step) && step>0 && step<1) return v<1?String(v.toFixed(Math.max(2,Math.min(4,Math.ceil(-Math.log10(step)))))):String(v.toFixed(Math.max(1,Math.min(3,Math.ceil(-Math.log10(step))))));
+      if(input.id.includes('hrtf-z-rate')) return `${v.toFixed(2)}×`;
+      if(input.id.includes('hrtf-z-angle')||input.id.includes('phase-deg-slider')) return `${Math.round(v)}°`;
+      if(input.id.includes('orbit-time')) return `${v.toFixed(2)}s`;
+      if(input.id.includes('acceleration')) return formatGearAcceleration(v);
+      if(input.id==='slider-clockwork-width') return `${v.toFixed(1)} ms`;
+      if(input.id==='slider-palette-tooth-width'||input.id==='slider-inspector-tooth-width') return v.toFixed(4);
+      return String(Number.isFinite(v)?v:input.value);
+    }
+    function rotaryStepFactor(input){
+      const min=Number(input.min||0), max=Number(input.max||1), step=Math.abs(Number(input.step)||((max-min)/100));
+      return step;
+    }
+    function getRotaryLabel(input){
+      const id=input.id;
+      const explicit=input.getAttribute('aria-label'); if(explicit) return explicit;
+      const label=input.closest('.control-group')?.querySelector('label');
+      if(label) return (label.textContent||'').replace(/\s+/g,' ').replace(/\b(?:[+-]?\d+(?:\.\d+)?|normal|UP|DOWN)\b.*$/,'').trim() || id;
+      const wrap=input.parentElement;
+      const s=wrap?.querySelector('label, strong'); if(s) return (s.textContent||'').replace(/\s+/g,' ').trim().replace(/\s+$/,'');
+      return id||'CONTROL';
+    }
+    function enhanceRangeAsRotary(input){
+      if(!input || input.type!=='range' || input.dataset.rotaryDone==='1') return;
+      if(input.id==='slider-fundamental'||input.id==='slider-keyboard-bloom'||input.id==='slider-palette-tooth-width'||input.id==='slider-inspector-tooth-width') return;
+      input.dataset.rotaryDone='1';
+      const host=document.createElement('div'); host.className='rotary-host'; host.dataset.rotaryFor=input.id; host.title=input.title||input.getAttribute('aria-label')||getRotaryLabel(input);
+      const knob=document.createElement('div'); knob.className='rotary-knob'; knob.setAttribute('role','slider'); knob.tabIndex=0;
+      const val=document.createElement('div'); val.className='rotary-value';
+      const sync=()=>{
+        val.textContent=rotaryDisplayValue(input);
+        const min=Number(input.min||0),max=Number(input.max||1),v=Number(input.value);
+        const unit=max>min?(v-min)/(max-min):0;
+        const isPhaseKnob=input.id.includes('phase-deg-slider');
+        const deg=isPhaseKnob ? (360*Math.max(0,Math.min(1,unit))) : (-135+270*Math.max(0,Math.min(1,unit)));
+        knob.classList.toggle('phase-rotary-knob',isPhaseKnob);
+        knob.style.setProperty('--knob-angle', `${deg}deg`);
+        knob.dataset.value=input.value;
+        const disabled=input.disabled; host.classList.toggle('rotary-disabled',disabled); knob.setAttribute('aria-valuemin',input.min||'0'); knob.setAttribute('aria-valuemax',input.max||'1'); knob.setAttribute('aria-valuenow',input.value); knob.setAttribute('aria-label',getRotaryLabel(input));
+      };
+      knob.appendChild(val); host.appendChild(knob);
+      const parent=input.parentNode; parent.insertBefore(host,input); host.appendChild(input);
+      input.style.display='none';
+      const prevLabel=host.parentElement?.querySelector(':scope > label'); if(prevLabel) prevLabel.classList.add('rotary-label');
+      const commit=(v)=>{
+        if(input.disabled)return;
+        const min=Number(input.min||0),max=Number(input.max||1),step=rotaryStepFactor(input);
+        let nv=Math.max(min,Math.min(max,v)); nv=Math.round((nv-min)/step)*step+min;
+        const digits=Math.max(0,Math.min(6,String(step).includes('.')?String(step).split('.')[1].length:0));
+        input.value=String(Number(nv.toFixed(digits)));
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        sync();
+      };
+      let drag=null;
+      knob.addEventListener('pointerdown',e=>{if(input.disabled)return;e.preventDefault();drag={y:e.clientY,v:Number(input.value)||0,id:e.pointerId};try{knob.setPointerCapture(e.pointerId)}catch(_){} });
+      knob.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;e.preventDefault();const min=Number(input.min||0),max=Number(input.max||1),span=max-min;const delta=drag.y-e.clientY;commit(drag.v+delta*(span/220));});
+      const end=e=>{if(drag&&drag.id===e.pointerId)drag=null;try{knob.releasePointerCapture(e.pointerId)}catch(_){}}; knob.addEventListener('pointerup',end); knob.addEventListener('pointercancel',end);
+      knob.addEventListener('wheel',e=>{if(input.disabled)return;e.preventDefault();const step=rotaryStepFactor(input);commit(Number(input.value)+(e.deltaY<0?step:-step)*10);},{passive:false});
+      knob.addEventListener('dblclick',()=>{const min=Number(input.min||0);commit(min);});
+      knob.addEventListener('keydown',e=>{if(input.disabled)return;if(e.key==='ArrowUp'||e.key==='ArrowRight'){e.preventDefault();commit(Number(input.value)+rotaryStepFactor(input)*10);}else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){e.preventDefault();commit(Number(input.value)-rotaryStepFactor(input)*10);}else if(e.key==='Home'){e.preventDefault();commit(Number(input.min||0));}else if(e.key==='End'){e.preventDefault();commit(Number(input.max||1));}});
+      input.addEventListener('input',sync); input.addEventListener('change',sync);
+      sync();
+    }
+    function enhanceAllRangeControls(){
+      document.querySelectorAll('input[type="range"]').forEach(enhanceRangeAsRotary);
+    }
+    const rotaryObserver=new MutationObserver(()=>{try{enhanceAllRangeControls();}catch(_){}});
+    rotaryObserver.observe(document.body,{childList:true,subtree:true});
+    setTimeout(()=>enhanceAllRangeControls(),0);
+
+
+    function syncInspectorPhaseAndAccelerationUi(gear){
+      if(!gear) return;
+      const phase=document.getElementById('input-phase-deg-slider');
+      if(phase){
+        const teeth=Math.max(1,Math.round(gear.teeth||1));
+        phase.min='0'; phase.max=String(Math.max(0,teeth-1)); phase.step='1'; phase.value=String(Math.round(gear.phaseOffsetTeeth||0));
+      }
+      const phaseRead=document.getElementById('phase-degree-readout'); if(phaseRead) phaseRead.textContent=`${(Number(gear.phaseOffsetDeg)||0).toFixed(1)}°`;
+      const phaseVal=document.getElementById('val-inspector-phase-knob'); if(phaseVal) phaseVal.textContent=`${Math.round(gear.phaseOffsetTeeth||0)}/${Math.max(1,Math.round(gear.teeth||1))}`;
+      const accel=document.getElementById('slider-inspector-acceleration'); const accelVal=document.getElementById('val-inspector-acceleration');
+      const effective=getEffectiveGearAccelerationMs(gear);
+      if(accel){accel.max='10000';accel.value=String(effective);accel.disabled=getGlobalAccelerationPercent()===0;}
+      if(accelVal) accelVal.textContent=formatGearAcceleration(effective);
+    }
+
     // MIDI LEARN -------------------------------------------------------------
     // Mappings are semantic rather than tied to transient inspector DOM nodes.
     // This is important because CURRENT GEAR is rebuilt whenever the selection changes.
@@ -9084,8 +9503,22 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       try{const x=JSON.parse(localStorage.getItem('darkflower.midiLearn.v1')||'null'); if(x&&Array.isArray(x.mappings)) state.midiLearn={armed:null,mappings:x.mappings};}catch(_){ }
       state.midiLearn=state.midiLearn||{armed:null,mappings:[]};
     }
+    function hasActiveNotesForMidiLearn(){
+      return (state.midiHeldNotes?.size||0)>0 ||
+        (state.pressedKeys?.size||0)>0 ||
+        (state.keyboardPointerHeldKeys?.size||0)>0 ||
+        (state.polyVoices?.size||0)>0 ||
+        state.keyboardAudioActive===true ||
+        state.activeSemitone!==null && state.activeSemitone!==undefined;
+    }
     function armMidiLearn(el){
       const target=getMidiLearnTarget(el); if(!target) return false;
+      if(hasActiveNotesForMidiLearn()){
+        state.midiLearn.armed=null;
+        document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+        setMidiStatus('MIDI LEARN unavailable while notes are held. Release all notes first.',false);
+        return false;
+      }
       state.midiLearn.armed={target};
       document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
       el.classList.add('midi-learn-armed');
@@ -9100,6 +9533,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(state.midiLearn.armed?.target && midiLearnKey(state.midiLearn.armed.target)===midiLearnKey(target)) state.midiLearn.armed=null;
       setMidiStatus('MIDI LEARN cleared',true);
     }
+    function clearAllMidiLearn(){
+      if(!state.midiLearn) state.midiLearn={armed:null,mappings:[]};
+      state.midiLearn.armed=null;
+      state.midiLearn.mappings=[];
+      try{localStorage.removeItem('darkflower.midiLearn.v1');}catch(_){}
+      document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+      setMidiStatus('All MIDI Learn mappings cleared',true);
+    }
+    document.getElementById('btn-midi-clear-all-learn')?.addEventListener('click',clearAllMidiLearn);
+
     function showMidiLearnMenu(el,x,y){
       let menu=document.getElementById('midi-learn-menu');
       if(!menu){
@@ -9123,7 +9566,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       menu.classList.add('is-open');
     }
     document.addEventListener('contextmenu',e=>{
-      const el=e.target.closest?.('input[type="range"],button,[role="button"]');
+      let el=e.target.closest?.('.rotary-host,input[type="range"],button,[role="button"]');
+      if(el?.classList?.contains('rotary-host')) el=el.querySelector('input[type="range"]')||el;
       if(!el || el.closest('#midi-learn-menu') || el===canvas || el.closest('canvas')) return;
       const target=getMidiLearnTarget(el); if(!target) return;
       e.preventDefault(); e.stopPropagation();
@@ -9355,18 +9799,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           scheduleMidiUiSync();
         } else if(cc===1){
           state.midiModWheel=value/127; scheduleMidiUiSync();
-          // Default CC1 destination: SHAPE WIDTH of the currently selected gear.
-          // The configured tooth width remains the upper limit; zero is the narrowest
-          // useful width and full wheel restores the gear's configured width.
-          const selected=state.gearMap.get(state.selectedGearId);
-          if(selected && selected.sourceMode!=='noise'){
-            selected._midiWidth=value/127;
-            selected._midiWidthActive=true;
-            applyMidiShapeWidth(selected,state.audioCtx?.currentTime||0);
+          // CC1 defaults to BLOOM unless the user has explicitly MIDI-learned CC1
+          // to another destination.
+          const cc1Mapped=(state.midiLearn?.mappings||[]).some(m=>m.kind==='cc' && Number(m.number)===1 && (Number(m.channel)===channel || Number(m.channel)===255));
+          if(!cc1Mapped){
+            const bloom=document.getElementById('slider-keyboard-bloom');
+            if(bloom){
+              const min=Number(bloom.min||-5), max=Number(bloom.max||5);
+              bloom.value=String(min+(max-min)*(value/127));
+              bloom.dispatchEvent(new Event('input',{bubbles:true}));
+            }
           }
-          // NOISE keeps its traditional CC1 filter-band response as well.
-          state.gears.forEach(g=>{ if(g.sourceMode==='noise') configureNoiseFilters(g,null,state.audioCtx?.currentTime||0); });
-          updateDynamicGearWidthModulation(state.audioCtx?.currentTime||0); updateDynamicPolyWidthModulation(state.audioCtx?.currentTime||0);
         } else if(cc===123){
           const ids=[...state.midiHeldNotes.keys()];
           ids.forEach(id=>{ const keyId=`midi-${id}`; state.midiHeldNotes.delete(id); if(state.polyMode) stopPolyVoice(keyId); else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId); });
@@ -9415,6 +9858,41 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       syncMidiControllerUI();
     });
     syncMidiControllerUI();
+
+    // All former checkbox-style controls are visually radio buttons but remain
+    // independently toggleable. Native radios cannot uncheck themselves, so a
+    // second activation is converted into an explicit OFF state. Named visual
+    // mode radios and shape-choice radios retain true exclusive-radio behaviour.
+    if (!window.__toggleableRadioHandlerInstalled) {
+      window.__toggleableRadioHandlerInstalled = true;
+      const isToggleRadio = el => !!el && el.matches?.('input[type="radio"]') && !el.disabled && !el.name && !el.matches('[data-shape-choice]');
+      document.addEventListener('mousedown', e => {
+        const el = e.target?.closest?.('input[type="radio"]');
+        if (!isToggleRadio(el)) return;
+        el.dataset.radioWasChecked = el.checked ? '1' : '0';
+      }, true);
+      document.addEventListener('click', e => {
+        const el = e.target?.closest?.('input[type="radio"]');
+        if (!isToggleRadio(el)) return;
+        if (el.dataset.radioWasChecked === '1') {
+          // Let the native click finish first, then force the explicit OFF state.
+          setTimeout(() => {
+            if (!isToggleRadio(el)) return;
+            el.checked = false;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }, 0);
+        }
+        setTimeout(() => { try { delete el.dataset.radioWasChecked; } catch (_) {} }, 0);
+      }, true);
+      document.addEventListener('keydown', e => {
+        if (e.key !== ' ' && e.key !== 'Spacebar') return;
+        const el = e.target?.closest?.('input[type="radio"]');
+        if (!isToggleRadio(el) || !el.checked) return;
+        e.preventDefault(); e.stopPropagation();
+        el.checked = false;
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, true);
+    }
 
     // Keyboard is a carousel slide in mobile portrait; no separate pinning is required.
     // Fundamental Frequency / Audio Driver RPM Slider
@@ -9680,10 +10158,18 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <button id="btn-inspector-teeth-up" type="button" style="padding:3px 9px; font-size:0.9rem; line-height:1;">+</button>
           </div>
         </div>
-        <div>
-          <div style="margin-top:6px;">
-            <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>Gear Volume</span><span id="val-inspector-volume" style="color:var(--accent-cyan)">${Math.round(Math.max(0,Math.min(1,gear.volume))*100)}%</span></label>
+        <div class="inspector-volume-accel-phase-row">
+          <div class="current-gear-knob-cell">
+            <label><span>Gear Volume</span><span id="val-inspector-volume" style="color:var(--accent-cyan);font-weight:700;">${Math.round(Math.max(0,Math.min(1,gear.volume))*100)}%</span></label>
             <input type="range" id="slider-inspector-volume" min="0" max="1" step="0.01" value="${Math.max(0,Math.min(1,gear.volume))}" style="width:100%;">
+          </div>
+          <div class="current-gear-knob-cell">
+            <label><span>Accelleration</span><span id="val-inspector-acceleration" style="color:var(--accent-cyan);font-weight:700;">${formatGearAcceleration(getEffectiveGearAccelerationMs(gear))}</span></label>
+            <input type="range" id="slider-inspector-acceleration" min="0" max="10000" step="10" value="${getEffectiveGearAccelerationMs(gear)}" style="width:100%;">
+          </div>
+          <div class="current-gear-knob-cell">
+            <label><span>Phase</span><span id="val-inspector-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/${Math.max(1,Math.round(gear.teeth||1))}</span></label>
+            <input type="range" id="input-phase-deg-slider" min="0" max="${Math.max(0,Math.round(gear.teeth||1)-1)}" step="1" value="${Math.max(0,Math.min(Math.max(0,Math.round(gear.teeth||1)-1),Math.round(gear.phaseOffsetTeeth||0)))}" style="width:100%;">
           </div>
         </div>
         <div class="gear-adsr-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
@@ -9699,7 +10185,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         <div class="gear-adsr-section width-mod-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
           <label style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;font-size:.7rem;">
             <span style="font-weight:700;color:#62f08a;" title="When enabled, this gear uses the same ADSR graph to modulate shape width. The graph turns green.">MOD WIDTH</span>
-            <span style="display:flex;align-items:center;gap:5px;"><span class="gear-adsr-caption">USE ADSR GRAPH</span><input id="chk-inspector-mod-width" type="checkbox" ${gear.widthModEnabled?'checked':''}></span>
+            <span style="display:flex;align-items:center;gap:5px;"><span class="gear-adsr-caption">USE ADSR GRAPH</span><input id="chk-inspector-mod-width" type="radio" ${gear.widthModEnabled?'checked':''}></span>
           </label>
 
         </div>
@@ -9721,8 +10207,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         <div style="margin-top: 8px; border-top: 1px solid var(--border-color); padding-top: 6px;">
           <strong style="color: var(--accent-cyan);" title="Ratio Lock preserves this gear’s ratio when the main gear changes. Teeth Lock preserves its tooth count when other gear sizes change.">Gear Locks</strong>
           <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:5px; font-size:0.7rem;">
-            <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="chk-ratio-lock" ${gear.isMain ? 'disabled' : ''} ${gear.ratioLock ? 'checked' : ''}><span>Ratio Lock</span></label>
-            <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="checkbox" id="chk-teeth-lock" ${gear.isMain ? 'disabled' : ''} ${gear.teethLock ? 'checked' : ''}><span>Teeth Lock</span></label>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="radio" id="chk-ratio-lock" ${gear.isMain ? 'disabled' : ''} ${gear.ratioLock ? 'checked' : ''}><span>Ratio Lock</span></label>
+            <label style="display:flex; align-items:center; gap:5px; cursor:pointer;"><input type="radio" id="chk-teeth-lock" ${gear.isMain ? 'disabled' : ''} ${gear.teethLock ? 'checked' : ''}><span>Teeth Lock</span></label>
           </div>
 
         </div>
@@ -9742,21 +10228,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           <div id="inspector-shape-description" style="font-size:.62rem;color:var(--text-muted);line-height:1.35;margin-top:4px;"></div>
           <div id="inspector-shape-params"></div>
         </div>
+        
         <div style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
           <strong style="color: var(--accent-cyan);" title="The gear can orbit the main hub/listener. Orbiting gears may pass through one another.">3D Orbit Around Head</strong>
-          <div style="display:flex; align-items:center; gap:7px; margin-top:5px; font-size:0.7rem;">
-            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;"><input type="checkbox" id="chk-orbit" ${gear.isMain ? 'disabled' : ''} ${gear.orbitEnabled ? 'checked' : ''}><span>Orbit</span></label>
-            <input type="range" id="slider-orbit-time" min="0.25" max="60" step="0.05" value="${Math.min(60, Math.max(0.25, gear.orbitPeriodSec || 8))}" ${gear.isMain ? 'disabled' : ''} style="flex:1; min-width:0;">
-            <span id="val-orbit-time" style="min-width:58px; text-align:right; color:var(--accent-cyan);">${(gear.orbitPeriodSec || 8).toFixed(2)}s</span>
-            <button id="btn-orbit-direction" type="button" ${gear.isMain ? 'disabled' : ''} title="Reverse orbit direction" style="padding:3px 7px;">${gear.orbitDirection < 0 ? '↺' : '↻'}</button>
+          <div class="current-gear-radio-row inspector-orbit-radio-row" role="group" aria-label="Orbit behaviour">
+            <label class="gear-radio-toggle"><input type="radio" id="chk-orbit" ${gear.isMain ? 'disabled' : ''} ${gear.orbitEnabled ? 'checked' : ''}><span>ORBIT</span></label>
+            <label class="gear-radio-toggle"><input type="radio" id="chk-hrtf-z-adsr" ${gear.isMain ? 'disabled' : ''} ${gear.hrtfZAdsr ? 'checked' : ''}><span>FOLLOW ADSR</span></label>
+            <label class="gear-radio-toggle"><input type="radio" id="chk-orbit-direction" ${gear.isMain ? 'disabled' : ''} ${gear._orbitDirectionToggle !== false ? 'checked' : ''}><span id="orbit-direction-label">DIRECTION ${gear.orbitDirection < 0 ? '↺' : '↻'}</span></label>
+            <label class="gear-radio-toggle"><input type="radio" id="chk-orbit-preserve-phase" ${gear.isMain ? 'disabled' : ''} ${gear.orbitPreservePhase !== false ? 'checked' : ''}><span>PRESERVE PHASE</span></label>
           </div>
-          <div style="display:flex; align-items:center; gap:7px; margin-top:5px; font-size:0.7rem;">
-            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;"><input type="checkbox" id="chk-orbit-preserve-phase" ${gear.isMain ? 'disabled' : ''} ${gear.orbitPreservePhase !== false ? 'checked' : ''}><span>Preserve Phase</span></label>
+          <div class="inspector-orbit-time-row" style="margin-top:6px;display:flex;align-items:center;gap:7px;font-size:.7rem;">
+            <label style="display:flex;align-items:center;gap:5px;white-space:nowrap;">Orbit Speed</label>
+            <input type="range" id="slider-orbit-time" min="0.25" max="60" step="0.05" value="${Math.min(60, Math.max(0.25, gear.orbitPeriodSec || 8))}" ${gear.isMain ? 'disabled' : ''} style="flex:1;min-width:0;">
+            <span id="val-orbit-time" style="min-width:58px;text-align:right;color:var(--accent-cyan);">${(gear.orbitPeriodSec || 8).toFixed(2)}s</span>
           </div>
           <div style="margin-top:6px;">
             <label style="font-size:.7rem;display:flex;justify-content:space-between"><span>HRTF Height / Z <span style="color:var(--text-muted);">below ↔ above</span></span><span id="val-hrtf-z" style="color:var(--accent-cyan)">${(Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))).toFixed(3)}</span></label>
             <input type="range" id="slider-hrtf-z" min="-1" max="1" step="0.001" value="${Math.max(-1,Math.min(1,Number(gear.hrtfZ)||0))}" ${gear.isMain ? 'disabled' : ''} style="width:100%;">
-            <label style="display:flex; align-items:center; gap:5px; cursor:pointer; margin-top:3px; font-size:.68rem;"><input type="checkbox" id="chk-hrtf-z-adsr" ${gear.isMain ? 'disabled' : ''} ${gear.hrtfZAdsr ? 'checked' : ''}><span>Follow ADSR height</span></label>
           </div>
           <div id="hrtf-z-dynamics" style="margin-top:5px; opacity:${gear.hrtfZAdsr ? '.45' : '1'};">
             <label style="font-size:.68rem;display:flex;justify-content:space-between"><span title="Tilts the orbit plane vertically when ADSR height follow is off.">Z Angle <span style="color:var(--text-muted);">tilt orbital plane</span></span><span id="val-hrtf-z-angle" style="color:var(--accent-cyan)">${Math.round(((Number(gear.hrtfZAngleDeg)||0)+360)%360)}°</span></label>
@@ -9771,11 +10259,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           <div class="phase-control-grid">
             <div>
               <label style="font-size:0.7rem;">Offset (°): <span class="val" id="val-phase-deg">${offsetDeg}°</span></label>
-              <input type="range" id="input-phase-deg-slider" min="-360" max="360" step="1" value="${gear.phaseOffsetDeg}">
+              <span id="phase-degree-readout" style="display:block;color:var(--accent-cyan);font-size:.68rem;">${gear.phaseOffsetDeg.toFixed(1)}°</span>
             </div>
             <div>
               <label style="font-size:0.7rem;">Offset (Teeth):</label>
-              <input type="number" id="input-phase-teeth-num" min="-360" max="360" step="0.1" value="${offsetTeeth}">
+              <input type="number" id="input-phase-teeth-num" min="0" max="${Math.max(0,Math.round(gear.teeth||1)-1)}" step="1" value="${Math.round(offsetTeeth)}">
             </div>
           </div>
 
@@ -9973,6 +10461,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (state.polyMode) updatePolyVoices();
         renderGearList();
       });
+      const inspectorAccelSlider=document.getElementById('slider-inspector-acceleration');
+      const inspectorAccelValue=document.getElementById('val-inspector-acceleration');
+      inspectorAccelSlider?.addEventListener('input',e=>{
+        const effective=Math.max(0,Math.min(10000,Number(e.target.value)||0));
+        const pct=getGlobalAccelerationPercent();
+        const maxRaw=Math.max(0,...state.gears.map(g=>clampGearAccelerationMs(g?.accelerationMs)));
+        const raw=pct<=0?0:(maxRaw>0?Math.round(effective/(pct/100)):0);
+        gear.accelerationMs=Math.max(0,Math.min(5000,raw));
+        if(inspectorAccelValue)inspectorAccelValue.textContent=formatGearAcceleration(getEffectiveGearAccelerationMs(gear));
+        updateAudioNodes();
+        if(state.polyMode) updatePolyVoices();
+        renderGearList();
+      });
 
       const ratioLockChk = document.getElementById('chk-ratio-lock');
       const teethLockChk = document.getElementById('chk-teeth-lock');
@@ -9997,10 +10498,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         gear.orbitPeriodSec = Math.max(0.25, Math.min(60, Number(e.target.value) || 8));
         if (orbitVal) orbitVal.textContent = `${gear.orbitPeriodSec.toFixed(2)}s`;
       });
-      const orbitDirectionBtn = document.getElementById('btn-orbit-direction');
-      orbitDirectionBtn?.addEventListener('click', () => {
+      const orbitDirectionRadio = document.getElementById('chk-orbit-direction');
+      orbitDirectionRadio?.addEventListener('change', () => {
+        gear._orbitDirectionToggle = !!orbitDirectionRadio.checked;
         gear.orbitDirection = (gear.orbitDirection || 1) * -1;
-        orbitDirectionBtn.textContent = gear.orbitDirection < 0 ? '↺' : '↻';
+        const lab = document.getElementById('orbit-direction-label');
+        if(lab) lab.textContent = `DIRECTION ${gear.orbitDirection < 0 ? '↺' : '↻'}`;
+        updateAudioNodes();
+        renderGearList();
       });
       orbitPreserveChk?.addEventListener('change', e => {
         gear.orbitPreservePhase = !!e.target.checked;
@@ -10055,26 +10560,35 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const degSlider = document.getElementById('input-phase-deg-slider');
       const teethNum = document.getElementById('input-phase-teeth-num');
 
-      degSlider.addEventListener('input', (e) => {
-        const val = parseFloat(e.target.value);
-        gear.setPhaseOffsetDeg(val);
-        document.getElementById('val-phase-deg').textContent = `${gear.phaseOffsetDeg.toFixed(1)}°`;
-        teethNum.value = gear.phaseOffsetTeeth.toFixed(2);
-        updateAudioNodes();
-        renderGearList();
-      });
+      if(degSlider){
+        degSlider.min='0';degSlider.max=String(Math.max(0,Math.round(gear.teeth||1)-1));degSlider.step='1';degSlider.value=String(Math.round(gear.phaseOffsetTeeth||0));
+        degSlider.addEventListener('input', (e) => {
+          const val = Math.round(Number(e.target.value)||0);
+          gear.setPhaseOffsetTeeth(val);
+          const degreeText=`${gear.phaseOffsetDeg.toFixed(1)}°`;
+          document.getElementById('val-phase-deg').textContent=degreeText;
+          document.getElementById('phase-degree-readout')?.replaceChildren(document.createTextNode(degreeText));
+          document.getElementById('val-inspector-phase-knob').textContent=`${gear.phaseOffsetTeeth}/${Math.max(1,Math.round(gear.teeth||1))}`;
+          if(teethNum) teethNum.value=String(gear.phaseOffsetTeeth);
+          updateAudioNodes();
+          renderGearList();
+        });
+      }
 
       teethNum.addEventListener('input', (e) => {
         const val = parseFloat(e.target.value);
         if (!isNaN(val)) {
-          gear.setPhaseOffsetTeeth(val);
-          degSlider.value = gear.phaseOffsetDeg;
-          document.getElementById('val-phase-deg').textContent = `${gear.phaseOffsetDeg.toFixed(1)}°`;
+          gear.setPhaseOffsetTeeth(Math.round(val));
+          if(degSlider)degSlider.value=String(gear.phaseOffsetTeeth);
+          document.getElementById('val-phase-deg').textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`;
+          document.getElementById('phase-degree-readout')?.replaceChildren(document.createTextNode(`${gear.phaseOffsetDeg.toFixed(1)}°`));
+          document.getElementById('val-inspector-phase-knob').textContent=`${gear.phaseOffsetTeeth}/${Math.max(1,Math.round(gear.teeth||1))}`;
           updateAudioNodes();
           renderGearList();
         }
       });
 
+      syncInspectorPhaseAndAccelerationUi(gear);
       bindWheelControls(document.getElementById('inspector-content') || document);
 
       content.querySelectorAll('.btn-phase-quick').forEach(btn => {
@@ -10513,6 +11027,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     });
 
     // Dynamic rational-gear palette. A palette item may be clicked or dragged onto the machine.
+    document.getElementById('btn-subharmonics-toggle')?.addEventListener('click',()=>{
+      state.subharmonicsOpen=!state.subharmonicsOpen;
+      syncSubharmonicsDrawer();
+    });
     renderRationalGearPalette();
     canvas.addEventListener('dragover', e => { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
     canvas.addEventListener('drop', e => {
@@ -10610,7 +11128,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const key=def[0], label=def[1], type=def[4];
         if(type==='choice'){
           const choices=def[3];
-          return `<div class="shape-param-choice" data-shape-param-group="${key}" style="margin-top:5px;"><label style="font-size:.65rem;display:block;margin-bottom:2px;"><span>${label}</span></label><div style="display:flex;gap:8px;flex-wrap:wrap;">${choices.map(v=>`<label style="display:flex;align-items:center;gap:3px;font-size:.62rem;justify-content:flex-start;"><input type="checkbox" data-shape-choice="${key}" value="${v}" ${safe[key]===v?'checked':''}>${v[0].toUpperCase()+v.slice(1)}</label>`).join('')}</div></div>`;
+          return `<div class="shape-param-choice" data-shape-param-group="${key}" style="margin-top:5px;"><label style="font-size:.65rem;display:block;margin-bottom:2px;"><span>${label}</span></label><div style="display:flex;gap:8px;flex-wrap:wrap;">${choices.map(v=>`<label style="display:flex;align-items:center;gap:3px;font-size:.62rem;justify-content:flex-start;"><input type="radio" data-shape-choice="${key}" value="${v}" ${safe[key]===v?'checked':''}>${v[0].toUpperCase()+v.slice(1)}</label>`).join('')}</div></div>`;
         }
         const min=def[2], max=def[3], pos=logToUnit(safe[key],min,max)*100;
         return `<div style="margin-top:5px;"><label style="font-size:.65rem;display:flex;justify-content:space-between"><span>${label}</span><span style="color:var(--accent-cyan)" data-param-value="${key}">${formatShapeParam(key,safe[key])}</span></label><input type="range" data-shape-param="${key}" min="0" max="1000" step="1" value="${(pos*10).toFixed(0)}" aria-label="${label}" title="Logarithmic scale"></div>`;
@@ -10761,8 +11279,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('btn-palette-teeth-up')?.addEventListener('click',()=>paletteTeethChange(1));
 
     document.getElementById('slider-global-acceleration')?.addEventListener('input', e => {
-      state.globalAccelerationMs = clampGearAccelerationMs(e.target.value);
+      state.globalAccelerationPercent = clampGlobalAccelerationPercent(e.target.value);
+      state.globalAccelerationMs = state.globalAccelerationPercent * 10; // legacy mirror for old diagnostics/presets
       syncGlobalAccelerationUI();
+      refreshAllRotaryDisplays();
       if(state.audioRunning){
         const now=state.audioCtx?.currentTime||0;
         state.gears.forEach(g=>{
@@ -10780,9 +11300,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     document.getElementById('slider-palette-acceleration')?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return;
-      gear.accelerationMs=clampGearAccelerationMs(e.target.value);
+      const scale=getGlobalAccelerationPercent()/100;
+      if(scale<=0){ syncPaletteCurrentGearExtras(gear); return; }
+      const effective=Math.max(0,Math.min(10000,Number(e.target.value)||0));
+      gear.accelerationMs=clampGearAccelerationMs(effective/scale);
       const value=document.getElementById('val-palette-acceleration');
-      if(value)value.textContent=formatGearAcceleration(gear.accelerationMs);
+      if(value)value.textContent=formatGearAcceleration(effective);
       // Changing the setting while a glide is in progress immediately reapplies the
       // new time from the pitch currently being heard to the gear's present target.
       const now=state.audioCtx?.currentTime||0;
@@ -10812,8 +11335,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       gear.orbitPeriodSec=Math.max(.25,Math.min(60,Number(e.target.value)||8));
       const v=document.getElementById('val-palette-orbit-time'); if(v)v.textContent=`${gear.orbitPeriodSec.toFixed(2)}s`;
     });
-    document.getElementById('btn-palette-orbit-direction')?.addEventListener('click',()=>{
-      const gear=getActivePaletteGear(); if(!gear)return; gear.orbitDirection=(gear.orbitDirection||1)*-1; syncPaletteGearEditor();
+    document.getElementById('chk-palette-orbit-direction')?.addEventListener('change',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return; gear._orbitDirectionToggle=!!e.target.checked; gear.orbitDirection=(gear.orbitDirection||1)*-1; syncPaletteGearEditor(); updateAudioNodes(); renderGearList();
     });
     document.getElementById('chk-palette-orbit-preserve-phase')?.addEventListener('change',e=>{
       const gear=getActivePaletteGear(); if(!gear)return; gear.orbitPreservePhase=!!e.target.checked;
@@ -10840,12 +11363,12 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     const palettePhaseDegValue=document.getElementById('val-palette-phase-deg');
     const palettePhaseTeeth=document.getElementById('input-palette-phase-teeth-num');
     palettePhaseDeg?.addEventListener('input',e=>{
-      const gear=getActivePaletteGear(); if(!gear)return; const val=parseFloat(e.target.value); if(!Number.isFinite(val))return;
-      gear.setPhaseOffsetDeg(val); if(palettePhaseDegValue)palettePhaseDegValue.textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`; if(palettePhaseTeeth)palettePhaseTeeth.value=gear.phaseOffsetTeeth.toFixed(2); updateAudioNodes(); renderGearList();
+      const gear=getActivePaletteGear(); if(!gear)return; const val=Math.round(Number(e.target.value)||0);
+      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); updateAudioNodes(); renderGearList();
     });
     palettePhaseTeeth?.addEventListener('input',e=>{
-      const gear=getActivePaletteGear(); if(!gear)return; const val=parseFloat(e.target.value); if(!Number.isFinite(val))return;
-      gear.setPhaseOffsetTeeth(val); if(palettePhaseDeg)palettePhaseDeg.value=gear.phaseOffsetDeg; if(palettePhaseDegValue)palettePhaseDegValue.textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`; updateAudioNodes(); renderGearList();
+      const gear=getActivePaletteGear(); if(!gear)return; const val=Math.round(Number(e.target.value)||0);
+      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); updateAudioNodes(); renderGearList();
     });
     document.querySelectorAll('.btn-palette-phase-quick').forEach(btn=>btn.addEventListener('click',()=>{
       const gear=getActivePaletteGear(); if(!gear)return;
@@ -11337,8 +11860,13 @@ body.neon-visual-mode #desktop-focus-toggle{
 }
 </style>
 <style id="desktop-neon-mode-control-css">
-.desktop-visual-mode{display:inline-flex;align-items:center;gap:5px;margin-left:auto!important;margin-bottom:0!important;font-size:.68rem!important;font-weight:800;color:#9ff!important;white-space:nowrap;cursor:pointer;}
-.desktop-visual-mode input{margin:0;width:auto!important;min-width:0!important;accent-color:#00eaff;}
+.desktop-visual-mode{display:inline-flex;align-items:center;gap:8px;margin-left:auto!important;margin-bottom:0!important;font-size:.62rem!important;font-weight:600;color:#9ff!important;white-space:nowrap;}
+.visual-mode-radio{display:inline-flex!important;align-items:center!important;justify-content:flex-start!important;gap:4px!important;margin:0!important;cursor:pointer!important;color:#d8d2c3!important;font-size:.60rem!important;text-transform:uppercase!important;letter-spacing:.06em!important;}
+.visual-mode-radio input{appearance:none!important;width:12px!important;height:12px!important;min-width:12px!important;margin:0!important;border:1px solid #8a6230!important;border-radius:50%!important;background:#090704!important;position:relative!important;box-shadow:inset 0 0 0 2px #090704!important;}
+.visual-mode-radio input:checked{border-color:#e1b866!important;background:#e1b866!important;box-shadow:inset 0 0 0 3px #120e09!important,0 0 6px rgba(225,184,102,.35)!important;}
+body.neon-visual-mode .visual-mode-radio{color:#8bffb7!important;}
+body.neon-visual-mode .visual-mode-radio input{border-color:#39ff88!important;background:#000!important;}
+body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!important;box-shadow:inset 0 0 0 3px #000!important,0 0 7px rgba(57,255,136,.65)!important;}
 @media (max-width:900px){.desktop-visual-mode{display:none!important;}}
 </style>
 <style id="selected-gear-retired-ui">#selected-gear-detail{display:none!important;}
@@ -11461,7 +11989,7 @@ body.neon-visual-mode #desktop-focus-toggle{
 
   #mobile-one-screen-scroll #mobile-keyboard-options{background:rgba(55,38,21,.34);border:1px solid #5f4324;border-radius:7px;padding:7px;}
   #mobile-one-screen-scroll #mobile-keyboard-options>div{display:flex!important;}
-  #mobile-one-screen-scroll #mobile-keyboard-options input[type=checkbox]{display:inline-block!important;visibility:visible!important;opacity:1!important;}
+  #mobile-one-screen-scroll #mobile-keyboard-options input[type=radio]{display:inline-block!important;visibility:visible!important;opacity:1!important;}
   #mobile-one-screen-scroll #keyboard-bloom-drawer{background:rgba(55,38,21,.34);border:1px solid #5f4324;border-radius:7px;padding:7px;margin-bottom:6px;}
   #mobile-one-screen-scroll #keyboard-bloom-drawer .keyboard-bloom-wrap{display:flex!important;max-width:none!important;min-width:0!important;}
 
@@ -11473,6 +12001,47 @@ body.neon-visual-mode #desktop-focus-toggle{
 </style>
 
 
+<script id="compact-left-knob-layout-js">
+(function(){
+  function arrange(){
+    if(window.innerWidth<=900)return;
+    const scroll=document.querySelector('#sidebar .sidebar-scroll');
+    if(!scroll||document.querySelector('.left-primary-knob-row'))return;
+    const master=document.getElementById('input-master-vol')?.closest('.control-group');
+    const spatial=document.getElementById('slider-spatial-scale')?.closest('.control-group');
+    const global=document.getElementById('global-acceleration-panel');
+    if(!master||!spatial||!global)return;
+    const row=document.createElement('div');row.className='left-primary-knob-row';row.id='left-primary-knob-row';
+    row.setAttribute('aria-label','Primary controls');
+    scroll.insertBefore(row,scroll.firstElementChild?.nextSibling||scroll.firstChild);
+    row.append(master,spatial,global);
+    const ml=master.querySelector('label'); if(ml&&ml.firstChild)ml.firstChild.textContent='MASTER VOL ';
+    const dl=spatial.querySelector('label'); if(dl&&dl.firstChild)dl.firstChild.textContent='DISTANCE ';
+    const gl=global.querySelector('.panel-title > span:first-child'); if(gl)gl.textContent='ACCELLERATION';
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arrange,{once:true});else arrange();
+  window.addEventListener('resize',arrange,{passive:true});
+  setTimeout(arrange,80);setTimeout(arrange,300);
+  new MutationObserver(()=>{try{arrange();}catch(_){}}).observe(document.querySelector('#sidebar')||document.body,{childList:true,subtree:true});
+})();
+</script>
+<script id="compact-palette-knob-layout-js">
+(function(){
+  function arrange(){
+    const vol=document.getElementById('slider-palette-volume')?.closest('.gear-volume-cell');
+    const acc=document.getElementById('slider-palette-acceleration')?.closest('.current-gear-accel-cell');
+    const parent=vol?.parentNode;
+    if(!vol||!acc||!parent)return;
+    if(vol.parentNode?.classList?.contains('gear-volume-accel-row')) return;
+    const row=document.createElement('div');row.className='gear-volume-accel-row';
+    parent.insertBefore(row,vol);
+    row.append(vol,acc);
+  }
+  arrange();
+  const target=document.getElementById('ratio-palette-modal')||document.body;
+  new MutationObserver(()=>{try{arrange()}catch(_){}}).observe(target,{childList:true,subtree:true});
+})();
+</script>
 <script id="visual-mode-controller">
 (function(){
   window.setSteamWhistleVisualMode=function(mode){
@@ -11512,8 +12081,16 @@ body.neon-visual-mode #desktop-focus-toggle{
     state.neonPathCache?.clear?.();
     const desktop=document.getElementById('chk-visual-mode-desktop');
     if(desktop)desktop.checked=neon;
+    const radioSteampunk=document.getElementById('radio-visual-mode-steampunk');
+    const radioNeon=document.getElementById('radio-visual-mode-neon');
+    if(radioSteampunk)radioSteampunk.checked=!neon;
+    if(radioNeon)radioNeon.checked=neon;
     const mobile=document.getElementById('chk-visual-mode');
     if(mobile)mobile.checked=neon;
+    const mobileSteam=document.getElementById('radio-visual-mode-steampunk-mobile');
+    const mobileNeon=document.getElementById('radio-visual-mode-neon-mobile');
+    if(mobileSteam)mobileSteam.checked=!neon;
+    if(mobileNeon)mobileNeon.checked=neon;
     // Neon ignores the crank in the fit calculation and uses a tighter pad so
     // the gear machine fills the viewport. Mechanical mode restores normal fit.
     // Restore the exact frequency state after crank visibility changes. This is
@@ -11540,9 +12117,8 @@ body.neon-visual-mode #desktop-focus-toggle{
           numInput.min=0; numInput.max=nyq;
           numInput.value=preservedFrequency>=10?preservedFrequency.toFixed(1):preservedFrequency.toFixed(2);
         }
-        const freqLabel=preservedFrequency===null?'0.0 Hz':preservedFrequency>=1000?`${(preservedFrequency/1000).toFixed(2)} kHz`:`${preservedFrequency.toFixed(1)} Hz`;
-        document.getElementById('fundamental-label')?.setAttribute('data-visual-mode-preserved','1');
-        if(document.getElementById('fundamental-unit'))document.getElementById('fundamental-unit').textContent='Hz';
+        const freqLabel=preservedFrequency===null?'0.0Hz':preservedFrequency>=1000?`${(preservedFrequency/1000).toFixed(2)}kHz`:`${preservedFrequency.toFixed(1)}Hz`;
+                if(document.getElementById('fundamental-unit'))document.getElementById('fundamental-unit').textContent='Hz';
         if(document.getElementById('val-fundamental'))document.getElementById('val-fundamental').textContent=freqLabel;
         syncCanvasCrankControl?.();
         if(!state.legato) updateKinematicNetwork();
@@ -11553,10 +12129,11 @@ body.neon-visual-mode #desktop-focus-toggle{
     try{requestAnimationFrame(()=>drawNeonMachine?.());}catch(_){ }
   };
   const desktop=document.getElementById('chk-visual-mode-desktop');
-  if(desktop){
-    desktop.checked=state.visualMode==='neon';
-    desktop.addEventListener('change',()=>window.setSteamWhistleVisualMode(desktop.checked?'neon':'default'));
-  }
+  if(desktop){ desktop.checked=state.visualMode==='neon'; desktop.addEventListener('change',()=>window.setSteamWhistleVisualMode(desktop.checked?'neon':'default')); }
+  const radioSteampunk=document.getElementById('radio-visual-mode-steampunk');
+  const radioNeon=document.getElementById('radio-visual-mode-neon');
+  if(radioSteampunk){radioSteampunk.checked=state.visualMode!=='neon';radioSteampunk.addEventListener('change',()=>{if(radioSteampunk.checked)window.setSteamWhistleVisualMode('default');});}
+  if(radioNeon){radioNeon.checked=state.visualMode==='neon';radioNeon.addEventListener('change',()=>{if(radioNeon.checked)window.setSteamWhistleVisualMode('neon');});}
   const app=document.getElementById('app-container');
   app?.classList.toggle('neon-visual-mode',state.visualMode==='neon');
   document.body.classList.toggle('neon-visual-mode',state.visualMode==='neon');
@@ -11593,7 +12170,8 @@ body.neon-visual-mode #desktop-focus-toggle{
     keyboardChildren:Array.from(keyboardPanel.children),
     keyboardPanelParent:keyboardPanel.parentNode||null,
     keyboardPanelNext:keyboardPanel.nextSibling||null,
-    movable:new Map()
+    movable:new Map(),
+    mobilePrimary:new Map()
   };
   [nodes.master,nodes.midi,nodes.spatial,nodes.globalAcceleration,nodes.gearNetwork,nodes.ratioModal,nodes.detail].filter(Boolean).forEach(node=>{
     original.movable.set(node,{parent:node.parentNode,next:node.nextSibling,display:node.style.display});
@@ -11624,15 +12202,34 @@ body.neon-visual-mode #desktop-focus-toggle{
 
     const visualRow=document.createElement('div');
     visualRow.id='mobile-visual-mode-row';
-    visualRow.innerHTML='<label><span><input id="chk-visual-mode" type="checkbox"> VISUAL MODE - NEON</span></label>';
-    const visualChk=visualRow.querySelector('#chk-visual-mode');
-    visualChk.checked=state.visualMode==='neon';
-    visualChk.addEventListener('change',()=>window.setSteamWhistleVisualMode?.(visualChk.checked?'neon':'default'));
+    visualRow.innerHTML='<div class="mobile-visual-mode-radios" role="radiogroup" aria-label="Visual mode"><label class="visual-mode-radio"><input id="radio-visual-mode-steampunk-mobile" type="radio" name="visual-mode-mobile" value="steampunk"><span>STEAMPUNK</span></label><label class="visual-mode-radio"><input id="radio-visual-mode-neon-mobile" type="radio" name="visual-mode-mobile" value="neon"><span>NEON</span></label></div>';
+    const visualSteam=visualRow.querySelector('#radio-visual-mode-steampunk-mobile');
+    const visualNeon=visualRow.querySelector('#radio-visual-mode-neon-mobile');
+    visualSteam.checked=state.visualMode!=='neon';
+    visualNeon.checked=state.visualMode==='neon';
+    visualSteam.addEventListener('change',()=>{if(visualSteam.checked)window.setSteamWhistleVisualMode?.('default');});
+    visualNeon.addEventListener('change',()=>{if(visualNeon.checked)window.setSteamWhistleVisualMode?.('neon');});
 
     drawerScroll=document.createElement('div');drawerScroll.id='mobile-one-screen-scroll';drawerScroll.appendChild(visualRow);drawer.appendChild(drawerScroll);app.appendChild(drawer);
 
+    const mobilePrimaryRow=document.createElement('div');
+    mobilePrimaryRow.id='mobile-primary-knob-row';
+    mobilePrimaryRow.setAttribute('aria-label','Primary controls');
+    const mobileMasterControl=nodes.master?.querySelector('#input-master-vol')?.closest('.control-group');
+    const mobileDistanceControl=nodes.spatial?.querySelector('#slider-spatial-scale')?.closest('.control-group');
+    if(mobileMasterControl&&mobileDistanceControl&&nodes.globalAcceleration){
+      original.mobilePrimary.set(mobileMasterControl,{parent:mobileMasterControl.parentNode,next:mobileMasterControl.nextSibling});
+      original.mobilePrimary.set(mobileDistanceControl,{parent:mobileDistanceControl.parentNode,next:mobileDistanceControl.nextSibling});
+      original.mobilePrimary.set(nodes.globalAcceleration,{parent:nodes.globalAcceleration.parentNode,next:nodes.globalAcceleration.nextSibling});
+      mobilePrimaryRow.append(mobileMasterControl,mobileDistanceControl,nodes.globalAcceleration);
+      const ml=mobileMasterControl.querySelector('label'); if(ml&&ml.firstChild)ml.firstChild.textContent='MASTER VOL ';
+      const dl=mobileDistanceControl.querySelector('label'); if(dl&&dl.firstChild)dl.firstChild.textContent='DISTANCE ';
+      const gl=nodes.globalAcceleration.querySelector('.panel-title > span:first-child'); if(gl)gl.textContent='ACCELLERATION';
+      drawerScroll.appendChild(mobilePrimaryRow);
+    }
+
     // Master, MIDI, spatial and legacy driver controls.
-    [nodes.master,nodes.midi,nodes.spatial,nodes.globalAcceleration].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
+    [nodes.master,nodes.midi,nodes.spatial].filter(Boolean).forEach(n=>drawerScroll.appendChild(n));
 
     // Harmonic presets + complete Current Gear editor remain in the controls drawer on portrait phones.
     if(nodes.ratioModal){
@@ -11711,6 +12308,12 @@ body.neon-visual-mode #desktop-focus-toggle{
       if(pos.next&&pos.next.parentNode===pos.parent) pos.parent.insertBefore(node,pos.next);
       else pos.parent.appendChild(node);
     });
+    original.mobilePrimary.forEach((pos,node)=>{
+      if(!pos.parent)return;
+      if(pos.next&&pos.next.parentNode===pos.parent) pos.parent.insertBefore(node,pos.next);
+      else pos.parent.appendChild(node);
+    });
+    original.mobilePrimary.clear();
     if(nodes.ratioModal) nodes.ratioModal.style.display='';
     dock?.remove();dock=null;
     drawer?.remove();drawer=null;drawerScroll=null;keyboardOptions=null;bloomDrawer=null;
@@ -11763,7 +12366,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
       volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
       midiWidthActive:!!g._midiWidthActive,midiWidth:safeNumber(g._midiWidth,1),
-      orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
+      orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitDirectionToggle:g._orbitDirectionToggle!==false,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
       shape:g.shape,toothWaveform:g.toothWaveform,toothWidth:safeNumber(g.toothWidth,.5),widthModEnabled:!!g.widthModEnabled,widthMod:g.widthMod?cloneJSON(g.widthMod):null,sourceMode:g.sourceMode,accelerationMs:Math.max(0,Math.min(5000,safeNumber(g.accelerationMs,0))),adsr:g.adsr?cloneJSON(g.adsr):cloneJSON(state.adsr),adsrLinks:g.adsrLinks?cloneJSON(g.adsrLinks):{attack:true,decay:true,sustain:true,release:true},
       audioFileName:g.audioFileName||'',audioLoopStart:g.audioLoopStart||0,audioLoopEnd:g.audioLoopEnd||0,midiNote:g.midiNote||60,magneticMesh:g.magneticMesh!==false,
       shapeParams:g.shapeParams?cloneJSON(g.shapeParams):{},neighbors:Array.from(g.neighbors||[]),audioWav:audio
@@ -11774,7 +12377,7 @@ body.neon-visual-mode #desktop-focus-toggle{
       waveform:state.waveform,clockworkTickWidthMs:state.clockworkTickWidthMs,masterVolume:state.masterVolume,spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:state.spatialScale,
       fundamentalFreq:state.fundamentalFreq,targetFundamentalFreq:state.targetFundamentalFreq,baseFundamentalFreq:state.baseFundamentalFreq,octaveShift:state.octaveShift,releaseOnKeyup:!!state.releaseOnKeyup,legato:!!state.legato,glissTime:state.glissTime,
       adsr:cloneJSON(state.adsr),bloom:cloneJSON(state.bloom),mainTeeth:state.mainTeeth,camera:cloneJSON(state.camera),driveDirection:state.driveDirection,pitchModule:state.pitchModule,polyMode:!!state.polyMode,jiKeyboard:!!state.jiKeyboard,visualMode:state.visualMode,
-      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,globalAccelerationMs:clampGearAccelerationMs(state.globalAccelerationMs),midiLearn:cloneJSON(state.midiLearn||{armed:null,mappings:[]}),crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
+      selectedGearId:state.selectedGearId,activePaletteGearId:state.activePaletteGearId,nextGearId:state.nextGearId,globalAccelerationPercent:clampGlobalAccelerationPercent(state.globalAccelerationPercent),globalAccelerationMs:state.globalAccelerationPercent*10,midiLearn:cloneJSON(state.midiLearn||{armed:null,mappings:[]}),crankTool:cloneJSON({...state.crankTool,angularSamples:[],dragAngle:null,hovered:false,deleteHovered:false}),gears:state.gears.map(gearSnapshot)
     }};
   }
   let presets=[];
@@ -11896,7 +12499,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     state.fundamentalFreq=Math.max(0,safeNumber(st.fundamentalFreq,state.fundamentalFreq));state.targetFundamentalFreq=safeNumber(st.targetFundamentalFreq,state.fundamentalFreq);state.baseFundamentalFreq=Math.max(.001,safeNumber(st.baseFundamentalFreq,state.baseFundamentalFreq));state.octaveShift=Math.max(-3,Math.min(3,Math.round(safeNumber(st.octaveShift,state.octaveShift))));
     state.releaseOnKeyup=!!st.releaseOnKeyup;state.legato=!!st.legato;state.glissTime=Math.max(0,safeNumber(st.glissTime,state.glissTime));if(st.adsr)state.adsr={...state.adsr,...cloneJSON(st.adsr)};if(st.bloom)state.bloom={...state.bloom,...cloneJSON(st.bloom)};
     state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
-    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.globalAccelerationMs=clampGearAccelerationMs(st.globalAccelerationMs);state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
+    state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.globalAccelerationPercent=Number.isFinite(Number(st.globalAccelerationPercent))?clampGlobalAccelerationPercent(st.globalAccelerationPercent):clampGlobalAccelerationPercent((Number(st.globalAccelerationMs)||1000)/10);state.globalAccelerationMs=state.globalAccelerationPercent*10;state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
   }
   async function loadPreset(p){
     if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
@@ -11907,7 +12510,8 @@ body.neon-visual-mode #desktop-focus-toggle{
     const snapshots=Array.isArray(p.state.gears)?p.state.gears:[];
     for(const sg of snapshots){
       const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
-      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,_orbitDirectionToggle:sg.orbitDirectionToggle!==false,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      g.setPhaseOffsetDeg(safeNumber(sg.phaseOffsetDeg,0));
       g.widthModEnabled=!!sg.widthModEnabled;
       if(sg.widthMod) g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
       else g.widthMod={...g.adsr};
@@ -11925,7 +12529,7 @@ body.neon-visual-mode #desktop-focus-toggle{
     ui.forEach(([id,val])=>{const x=el(id);if(x){x.value=String(val);x.dispatchEvent(new Event('input',{bubbles:true}));x.dispatchEvent(new Event('change',{bubbles:true}));}});
     const checks=[['chk-poly',state.polyMode],['chk-continuous',!state.releaseOnKeyup],['chk-ji-keyboard',state.jiKeyboard]];checks.forEach(([id,val])=>{const x=el(id);if(x){x.checked=!!val;}});
     if(typeof window.setSteamWhistleVisualMode==='function')window.setSteamWhistleVisualMode(state.visualMode);
-    const loadedBloomAmount=Number(state.bloom?.amount)||0;const loadedBloomSlider=el('slider-keyboard-bloom'),loadedBloomPlacement=el('chk-bloom-placement-order'),loadedBloomValue=el('keyboard-bloom-value');if(loadedBloomSlider)loadedBloomSlider.value=loadedBloomAmount;if(loadedBloomPlacement)loadedBloomPlacement.checked=!!state.bloom?.placementOrder;if(loadedBloomValue){const label=Math.abs(loadedBloomAmount)<.005?'normal':loadedBloomAmount<0?'high → fundamental':'fundamental → high';loadedBloomValue.textContent=`${loadedBloomAmount>0?'+':''}${loadedBloomAmount.toFixed(2)}s · ${label}`;}renderRationalGearPalette?.();window.updateInspector?.();window.renderGearList?.();
+    const loadedBloomAmount=Number(state.bloom?.amount)||0;const loadedBloomSlider=el('slider-keyboard-bloom'),loadedBloomPlacement=el('chk-bloom-placement-order'),loadedBloomValue=el('keyboard-bloom-value');if(loadedBloomSlider)loadedBloomSlider.value=loadedBloomAmount;if(loadedBloomPlacement)loadedBloomPlacement.checked=!!state.bloom?.placementOrder;if(loadedBloomValue){const label=Math.abs(loadedBloomAmount)<.005?'normal':loadedBloomAmount<0?'high → fundamental':'fundamental → high';loadedBloomValue.textContent=`${loadedBloomAmount>0?'+':''}${loadedBloomAmount.toFixed(2)}s · ${label}`;}syncGlobalAccelerationUI();renderRationalGearPalette?.();window.updateInspector?.();window.renderGearList?.();
     setStatus('Loaded '+(p.name||'preset'));
     if(wasRunning){try{initAudio();}catch(_){}}
     setTimeout(()=>{snapshots.forEach(async sg=>{const g=byId.get(sg.id);if(!g||!sg.audioWav)return;const b=await wavBase64ToAudioBuffer(sg.audioWav,state.audioCtx);if(b){g.audioBuffer=b;g.audioLoopEnd=Math.min(g.audioLoopEnd||b.duration,b.duration);g.audioSource=null;updateAudioNodes();renderRationalGearPalette?.();window.updateInspector?.();}});},0);
@@ -12248,5 +12852,275 @@ body.neon-visual-mode #desktop-focus-toggle{
 }
 </style>
 
+<style id="v106-final-visual-style-fixes">
+/* Neon: absolutely no brown gradients anywhere in the UI. Remove every inherited background image. */
+body.neon-visual-mode * { background-image:none!important; }
+/* Neon controls use flat black/green surfaces with the existing green glow shadows. */
+body.neon-visual-mode button,
+body.neon-visual-mode input,
+body.neon-visual-mode select,
+body.neon-visual-mode textarea { background-image:none!important; }
+
+/* Neon: absolutely no brown gradients anywhere in the UI. */
+body.neon-visual-mode #sidebar,
+body.neon-visual-mode .sidebar-header,
+body.neon-visual-mode #gear-add-toolbar,
+body.neon-visual-mode #ratio-palette-modal,
+body.neon-visual-mode #ratio-palette-modal .floating-header,
+body.neon-visual-mode #ratio-palette-modal .floating-body,
+body.neon-visual-mode .panel-box,
+body.neon-visual-mode .control-group,
+body.neon-visual-mode .hud-panel,
+body.neon-visual-mode .current-main-teeth-row,
+body.neon-visual-mode #palette-current-gear-extras,
+body.neon-visual-mode .current-gear-knob-cell,
+body.neon-visual-mode .gear-adsr-section,
+body.neon-visual-mode .gear-volume-accel-phase-row,
+body.neon-visual-mode .inspector-volume-accel-phase-row,
+body.neon-visual-mode .current-gear-radio-row {
+  background:#000!important;
+  background-image:none!important;
+}
+body.neon-visual-mode #sidebar,
+body.neon-visual-mode .sidebar-header,
+body.neon-visual-mode #gear-add-toolbar,
+body.neon-visual-mode #ratio-palette-modal,
+body.neon-visual-mode #ratio-palette-modal .floating-header,
+body.neon-visual-mode .panel-box,
+body.neon-visual-mode .control-group,
+body.neon-visual-mode .hud-panel,
+body.neon-visual-mode .current-main-teeth-row,
+body.neon-visual-mode .current-gear-knob-cell,
+body.neon-visual-mode .gear-adsr-section,
+body.neon-visual-mode .gear-volume-accel-phase-row,
+body.neon-visual-mode .inspector-volume-accel-phase-row,
+body.neon-visual-mode .current-gear-radio-row {
+  border-color:rgba(57,255,136,.56)!important;
+}
+body.neon-visual-mode #ratio-palette-modal .floating-header,
+body.neon-visual-mode #ratio-palette-modal .floating-body {
+  box-shadow:none!important;
+}
+
+/* Steampunk UI typography is sans-serif. */
+body:not(.neon-visual-mode) * {
+  font-family:Arial,Helvetica,sans-serif!important;
+}
+
+/* Phase is a full-circle 0…359-ish tooth-step knob, never an old 240° arc. */
+.rotary-knob.phase-rotary-knob::before {
+  transform:translateX(-50%) rotate(var(--knob-angle,0deg));
+}
+</style>
+
 </body>
+
+
+<style id="v106-neon-phase-and-font-fixes">
+/* Neon is strictly black + green: no inherited Steampunk brown gradients/panels. */
+body.neon-visual-mode .panel-box,
+body.neon-visual-mode .control-group,
+body.neon-visual-mode #global-acceleration-panel,
+body.neon-visual-mode .current-gear-knob-cell,
+body.neon-visual-mode .current-main-teeth-row,
+body.neon-visual-mode .current-gear-radio-row,
+body.neon-visual-mode .gear-adsr-section,
+body.neon-visual-mode #palette-current-gear-extras,
+body.neon-visual-mode .inspector-volume-accel-phase-row,
+body.neon-visual-mode #inspector-panel{
+  background:#000!important;
+  background-image:none!important;
+  border-color:rgba(57,255,136,.60)!important;
+  box-shadow:0 0 8px rgba(57,255,136,.17),inset 0 0 10px rgba(57,255,136,.035)!important;
+}
+body.neon-visual-mode .current-main-teeth-label,
+body.neon-visual-mode .current-gear-knob-cell > label,
+body.neon-visual-mode .current-gear-knob-cell > label span,
+body.neon-visual-mode .current-main-teeth-row strong,
+body.neon-visual-mode .gear-adsr-caption{color:#63ff9a!important;text-shadow:0 0 6px rgba(57,255,136,.35);}
+body.neon-visual-mode #palette-current-gear-extras{border-top-color:rgba(57,255,136,.45)!important;}
+body.neon-visual-mode .palette-source-config,
+body.neon-visual-mode .phase-btn-group button,
+body.neon-visual-mode .current-main-teeth-row select,
+body.neon-visual-mode .current-main-teeth-row input,
+body.neon-visual-mode .gear-volume-accel-phase-row,
+body.neon-visual-mode .inspector-volume-accel-phase-row{
+  background:#000!important;background-image:none!important;color:#b8ffd0!important;border-color:rgba(57,255,136,.52)!important;
+}
+
+/* Shape Width: full-width slider immediately beneath the source buttons. */
+#ratio-palette-modal .shape-generator #slider-palette-tooth-width{
+  display:block!important;width:100%!important;min-width:0!important;max-width:none!important;height:20px!important;margin:5px 0 2px!important;
+}
+#ratio-palette-modal .palette-source-buttons + #slider-palette-tooth-width{order:4!important;}
+
+/* Gear Volume + Accelleration + Phase occupy one compact row. */
+.gear-volume-accel-phase-row,.inspector-volume-accel-phase-row{
+  display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;align-items:start;
+}
+.gear-volume-accel-phase-row .current-gear-knob-cell,.inspector-volume-accel-phase-row .current-gear-knob-cell{min-width:0;}
+.gear-volume-accel-phase-row .rotary-label,.inspector-volume-accel-phase-row .rotary-label{justify-content:center!important;text-align:center!important;color:inherit;}
+
+/* Phase knob uses the entire circle rather than the old 240° arc. */
+.rotary-knob.phase-rotary-knob{--phase-rotary:1;}
+
+/* Steampunk UI is now sans-serif. Canvas-drawn mechanical lettering is left alone. */
+html:not(:has(body.neon-visual-mode)),
+html:not(:has(body.neon-visual-mode)) body,
+html:not(:has(body.neon-visual-mode)) button,
+html:not(:has(body.neon-visual-mode)) input,
+html:not(:has(body.neon-visual-mode)) select,
+html:not(:has(body.neon-visual-mode)) textarea{font-family:Arial,Helvetica,sans-serif!important;}
+
+@media(max-width:900px){
+  .gear-volume-accel-phase-row,.inspector-volume-accel-phase-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;}
+  .gear-volume-accel-phase-row .rotary-host,.inspector-volume-accel-phase-row .rotary-host{width:48px!important;min-width:48px!important;height:49px!important;margin:2px auto!important;}
+  .gear-volume-accel-phase-row .rotary-knob,.inspector-volume-accel-phase-row .rotary-knob{width:44px!important;height:44px!important;}
+  .gear-volume-accel-phase-row .rotary-label,.inspector-volume-accel-phase-row .rotary-label{font-size:.54rem!important;}
+  .gear-volume-accel-phase-row .rotary-value,.inspector-volume-accel-phase-row .rotary-value{font-size:7px!important;min-width:34px!important;max-width:38px!important;}
+  body.neon-visual-mode .gear-volume-accel-phase-row,body.neon-visual-mode .inspector-volume-accel-phase-row{background:#000!important;background-image:none!important;}
+}
+</style>
+
+<style id="v105-final-mobile-fixes">
+@media (max-width:900px) and (orientation:portrait){
+  body.neon-visual-mode #mobile-primary-knob-row .control-group,
+  body.neon-visual-mode #mobile-primary-knob-row #global-acceleration-panel{
+    background:#000!important;
+    border-color:#39ff88!important;
+    box-shadow:0 0 9px rgba(57,255,136,.24),inset 0 0 12px rgba(57,255,136,.035)!important;
+  }
+  body.neon-visual-mode #mobile-primary-knob-row .rotary-label,
+  body.neon-visual-mode #mobile-primary-knob-row #global-acceleration-panel .panel-title{
+    color:#39ff88!important;
+    text-shadow:0 0 6px rgba(57,255,136,.45)!important;
+    text-align:center!important;
+    justify-content:center!important;
+  }
+
+  /* Shape Width is a full-width horizontal slider directly beneath the sound-source buttons. */
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator{
+    display:flex!important;
+    flex-direction:column!important;
+    align-items:stretch!important;
+  }
+  #mobile-one-screen-scroll #ratio-palette-modal #slider-palette-tooth-width{
+    display:block!important;
+    width:100%!important;
+    min-width:0!important;
+    max-width:none!important;
+    flex:0 0 100%!important;
+    height:20px!important;
+    margin:5px 0 1px!important;
+  }
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator .palette-shape-row{order:1!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #palette-active-gear-title{order:2!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator > div[style*="Tooth Shape / Sound Source"]{order:3!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #palette-source-buttons{order:4!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #palette-noise-config,
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #palette-audio-config,
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #palette-midi-config{order:5!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .shape-generator #slider-palette-tooth-width{order:6!important;}
+
+  /* Move the gear icon down into line with the BLOOM header/label. */
+  #mobile-keyboard-dock #mobile-keyboard-settings-button{top:35px!important;}
+
+  /* Controls-open state: preserve the top quarter of the viewport for the visual. */
+  #app-container.mobile-one-screen-mode.mobile-controls-open #canvas-container{
+    display:block!important;
+    inset:0 0 75vh 0!important;
+    z-index:1!important;
+  }
+  #app-container.mobile-one-screen-mode.mobile-controls-open #canvas-container canvas{display:block!important;}
+  #app-container.mobile-one-screen-mode.mobile-controls-open #mobile-one-screen-drawer{
+    display:flex!important;
+    top:max(0px,calc(25vh - 44px))!important;
+    bottom:190px!important;
+    z-index:10500!important;
+  }
+}
+</style>
+
+<style id="v107-ratio-palette-final">
+/* Four-column harmonic palette on desktop and mobile. */
+.harmonic-palette-shell{position:relative;width:100%;min-width:0;}
+.harmonic-palette-shell > .rational-palette{
+  display:grid!important;
+  grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  grid-auto-flow:row;
+  gap:6px!important;
+  width:100%!important;
+  max-width:100%!important;
+  height:auto!important;
+  max-height:320px!important;
+  overflow-y:auto!important;
+  overflow-x:hidden!important;
+  padding:3px!important;
+  touch-action:pan-y!important;
+}
+.harmonic-palette-shell .rational-gear-thumb{
+  width:auto!important;
+  min-width:0!important;
+  max-width:none!important;
+  min-height:66px!important;
+  height:66px!important;
+  flex:none!important;
+  padding:4px 2px!important;
+  scroll-snap-align:none!important;
+  background:radial-gradient(circle at 50% 45%, color-mix(in srgb,var(--harmonic-color,#38bdf8) 13%, transparent), rgba(0,0,0,.20) 72%)!important;
+  border-width:1px!important;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--harmonic-color,#38bdf8) 10%, transparent),0 0 5px color-mix(in srgb,var(--harmonic-color,#38bdf8) 13%, transparent)!important;
+}
+.harmonic-palette-shell .rational-gear-thumb .thumb-ratio{font-size:.82rem!important;color:var(--harmonic-color,var(--accent-cyan));}
+.harmonic-palette-shell .rational-gear-thumb .thumb-name{font-size:.55rem!important;}
+.harmonic-palette-shell .rational-gear-thumb .thumb-meta{font-size:.50rem!important;}
+.harmonic-palette-shell .subharmonics-toggle{
+  width:100%;height:26px;margin-top:4px;padding:3px 8px!important;
+  border:1px solid rgba(255,255,255,.16);border-radius:5px;
+  background:rgba(0,0,0,.32);color:var(--text-muted);font-size:.59rem!important;letter-spacing:.08em;
+}
+.harmonic-palette-shell .subharmonics-toggle:not(:disabled):hover{color:var(--text-main);border-color:var(--accent-cyan);}
+.harmonic-palette-shell .subharmonics-toggle:disabled{opacity:.38;cursor:default;}
+.harmonic-palette-shell .subharmonics-count{margin-left:auto;font-size:.50rem;opacity:.75;}
+.harmonic-palette-shell .subharmonics-drawer{
+  position:absolute;left:0;right:0;bottom:30px;
+  max-height:calc(100% - 30px);
+  padding:5px;
+  overflow:auto;
+  z-index:50;
+  border:1px solid var(--border-color);border-radius:7px;
+  background:var(--bg-card);
+  box-shadow:0 -10px 28px rgba(0,0,0,.60);
+}
+.harmonic-palette-shell .subharmonics-drawer[hidden]{display:none!important;}
+.subharmonics-drawer-title{display:flex;justify-content:space-between;align-items:center;color:var(--accent-cyan);font-size:.57rem;font-weight:800;letter-spacing:.08em;margin-bottom:3px;}
+.harmonic-palette-shell .subharmonics-drawer .rational-palette{
+  display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+  max-height:260px!important;height:auto!important;overflow:auto!important;
+}
+.harmonic-palette-shell .subharmonic-ratio-thumb{opacity:.88;}
+.harmonic-palette-shell .subharmonic-ratio-thumb .thumb-ratio{font-size:.76rem!important;}
+
+/* Keep the new four-column palette compact on portrait mobile too. */
+@media(max-width:900px){
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell > .rational-palette{
+    display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    height:auto!important;max-height:190px!important;overflow-x:hidden!important;overflow-y:auto!important;
+    gap:3px!important;padding:2px!important;touch-action:pan-y!important;
+  }
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .rational-gear-thumb{
+    min-height:48px!important;height:48px!important;padding:2px!important;
+  }
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .rational-gear-thumb .thumb-ratio{font-size:.65rem!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .rational-gear-thumb .thumb-name,
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .rational-gear-thumb .thumb-meta{font-size:.44rem!important;}
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .subharmonics-drawer{
+    bottom:30px;max-height:calc(100% - 30px);padding:3px;
+  }
+  #mobile-one-screen-scroll #ratio-palette-modal .harmonic-palette-shell .subharmonics-drawer .rational-palette{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;max-height:180px!important;
+  }
+}
+</style>
+
 </html>
