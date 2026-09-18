@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JI Gear Synth v107</title>
+  <title>JI Gear Synth v109</title>
   <style>
     :root {
       --bg-dark: #070605;
@@ -312,62 +312,6 @@
       #ratio-palette-scale-handle { display:none !important; }
     }
 
-    /* Canvas-mounted steampunk frequency control. */
-    #canvas-crank-control {
-      position:absolute;
-      z-index:25;
-      width:132px;
-      min-height:64px;
-      padding:5px 7px 6px;
-      border:1px solid #705021;
-      border-radius:8px;
-      background:linear-gradient(145deg,rgba(64,43,19,.96),rgba(18,14,10,.96));
-      box-shadow:0 7px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,222,143,.35);
-      color:#f1d184;
-      pointer-events:auto;
-      user-select:none;
-      cursor:grab;
-      touch-action:none;
-      transform:none;
-      display:none;
-    }
-    #canvas-crank-control.is-visible { display:block; }
-    .crank-control-title {
-      display:flex; align-items:center; justify-content:center; gap:5px;
-      font:900 11px Georgia,serif; letter-spacing:2px; color:#f4d17d;
-      text-shadow:0 1px 2px #000;
-      margin-bottom:3px;
-    }
-    .crank-control-screw {
-      width:5px; height:5px; border-radius:50%;
-      background:radial-gradient(circle at 30% 30%,#fff0b0,#a77529 58%,#2b1808);
-      box-shadow:0 0 0 1px #6e481b;
-    }
-    .crank-control-body { display:flex; align-items:center; gap:5px; }
-    .crank-control-cog {
-      font-size:17px; line-height:1; color:#d3a64e;
-      text-shadow:0 1px 2px #000;
-    }
-    #canvas-crank-slider {
-      flex:1; width:auto; min-width:0; margin:0;
-      accent-color:#c99a43; cursor:pointer;
-    }
-    #canvas-crank-slider::-webkit-slider-runnable-track {
-      height:5px; border-radius:4px;
-      background:linear-gradient(90deg,#3a260f,#c79b43,#5b3a15);
-      border:1px solid #8b642a;
-    }
-    #canvas-crank-slider::-webkit-slider-thumb {
-      appearance:none; width:15px; height:15px; margin-top:-6px;
-      border-radius:50%; border:1px solid #f5d78b;
-      background:radial-gradient(circle at 30% 25%,#fff0b0,#c9983d 42%,#5a3610 78%,#1b0e04);
-      box-shadow:0 2px 4px rgba(0,0,0,.6);
-    }
-    #canvas-crank-value {
-      text-align:center; margin-top:2px;
-      font:700 9px system-ui,sans-serif; color:#d7c4a0;
-    }
-
     .ratio-carousel-nav {
       display:none; min-width:28px; min-height:28px; padding:0;
       font-size:1.15rem; line-height:1; border:1px solid #705021;
@@ -442,7 +386,6 @@
       .rational-gear-thumb .thumb-ratio { font-size:.68rem; line-height:.9; }
       .rational-gear-thumb .thumb-name, .rational-gear-thumb .thumb-meta { display:none; }
       #ratio-palette-modal .shape-generator { margin-top:6px; margin-bottom:0; padding-top:2px; }
-      #canvas-crank-control { width:122px; min-height:60px; }
       #sidebar {
         order: 3;
         width: 100%;
@@ -1100,9 +1043,7 @@
     #ratio-palette-modal .floating-header { background:linear-gradient(180deg,rgba(84,57,28,.36),rgba(18,12,7,.25)); border-color:#674927; }
     .badge-ultrasonic { background:rgba(177,57,37,.22); color:#ff8165; border-color:#c94a34; }
     /* Lower the canvas CRANK control so the handle can rotate without colliding with it. */
-    #canvas-crank-control { transform:none; }
     @media (max-width:900px) and (orientation:portrait) {
-      #canvas-crank-control { width:122px; min-height:60px; }
       #hud-bottom-left button, #hud-top-right button { font-family:Georgia,'Times New Roman',serif; }
     }
 
@@ -1244,12 +1185,6 @@
       }
       /* Audio Driver gets enough room for RECORD/Import, waveform, DRIVE/Clear and status. */
 
-      /* Keep the canvas CRANK control above the bottom canvas buttons on phones.
-         Its position is calculated by JS, so this class only controls its mobile size. */
-      #canvas-crank-control {
-        width:122px !important;
-        min-height:60px !important;
-      }
     }
 
     /* Final mobile ratio-palette compaction: thumbnails always get their own
@@ -1463,7 +1398,6 @@
     #app-container { padding-top:80px !important; padding-bottom:0 !important; height:100vh; min-height:100vh; box-sizing:border-box; }
     #canvas-container, #sidebar { min-height:0; }
     #hud-bottom-left { bottom:8px !important; }
-    #canvas-crank-control { bottom:auto; }
     @media (max-width:900px) and (orientation:portrait) {
       #app-container { height:100dvh !important; min-height:100dvh !important; padding:80px 0 0 !important; gap:0 !important; }
       #fundamental-topbar { height:80px; grid-template-columns:minmax(86px, .65fr) minmax(0, 1.8fr) minmax(0, 2.4fr); gap:5px; padding:5px 6px; }
@@ -1479,7 +1413,6 @@
       .main-drive-tooth-row { display:grid; grid-template-columns:auto minmax(0,1fr) minmax(36px,1.1fr) 3.5ch; }
       .main-drive-tooth-row > select { width:auto; min-width:0; }
       .main-drive-tooth-row > input[type="range"] { min-width:25px; }
-      #canvas-crank-control { display:none !important; }
       #hud-bottom-left { bottom:4px !important; left:4px !important; right:4px !important; }
       #hud-bottom-left button { padding:5px 6px !important; font-size:.62rem !important; }
     }
@@ -1621,7 +1554,6 @@ body.neon-visual-mode .gear-radio-toggle:has(input:checked){color:#39ff88!import
 .left-primary-knob-row .panel-title > .val{display:none!important;}
 .left-primary-knob-row label{justify-content:center!important;text-align:center!important;font-size:.62rem!important;white-space:nowrap;}
 .left-primary-knob-row .rotary-host{margin-left:auto!important;margin-right:auto!important;}
-.gear-volume-accel-row{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;align-items:start;}
 .current-gear-orbit-knob-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;align-items:start;}
 .current-gear-knob-cell{min-width:0;}
 .current-gear-knob-cell > label{display:flex;justify-content:center!important;text-align:center;font-size:.61rem!important;line-height:1!important;white-space:nowrap;}
@@ -1644,11 +1576,7 @@ body.neon-visual-mode #fundamental-topbar{background:#000!important;border-color
 #app-container.neon-visual-mode #canvas-container{border:0!important;border-radius:0!important;}
 #app-container.neon-visual-mode #canvas-container canvas{border-radius:0!important;}
 #app-container.neon-visual-mode #hud-top-right,
-#app-container.neon-visual-mode #hud-bottom-left,
-/* The legacy canvas SPEED box is retired from the Steampunk view as well.
-   Keep the DOM/control alive for compatibility, but never display it outside Neon. */
-#app-container:not(.neon-visual-mode) #canvas-crank-control{display:none!important;}
-#app-container.neon-visual-mode #canvas-crank-control,
+#app-container.neon-visual-mode #hud-bottom-left{display:none!important;}
 #app-container.neon-visual-mode #startup-tooltip{display:none!important;}
 #app-container.neon-visual-mode #mobile-keyboard-dock{background:#000!important;border-top-color:#111!important;}
 #app-container.neon-visual-mode #mobile-one-screen-drawer{background:#050505!important;border-color:#161616!important;}
@@ -1730,6 +1658,143 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     #mobile-keyboard-dock .keyboard-octave[data-octave="6"] .key:not(:first-child){display:none!important;}
     #mobile-keyboard-dock .keyboard-octave[data-octave="6"] .key:first-child{position:relative!important;flex:1 1 0!important;width:auto!important;min-width:0!important;height:100%!important;}
   }
+</style>
+<style id="mobile-layout-stability">
+@media (max-width:900px) and (orientation:portrait){
+  html,body{height:100dvh!important;min-height:100dvh!important;overflow:hidden!important;}
+  body{touch-action:none!important;}
+  #fundamental-topbar{position:fixed!important;top:0!important;left:0!important;right:0!important;height:44px!important;min-height:44px!important;z-index:12000!important;}
+  #app-container{position:fixed!important;left:0!important;right:0!important;top:44px!important;bottom:0!important;width:100vw!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;display:block!important;overflow:hidden!important;}
+  #app-container #canvas-container{position:absolute!important;left:0!important;right:0!important;top:0!important;bottom:210px!important;width:100%!important;height:auto!important;min-height:0!important;display:block!important;}
+  #app-container #canvas-container canvas{width:100%!important;height:100%!important;display:block!important;}
+  #app-container #sidebar{display:none!important;}
+}
+</style>
+
+<style id="v110-desktop-keyboard-layout">
+/* v110: desktop keyboard becomes a true bottom edge control, with no dead/footer area beneath it. */
+@media (min-width:901px){
+  :root{
+    --frame-top:40px;
+    --frame-footer:0px;
+  }
+  #fundamental-topbar{
+    height:40px!important;
+    min-height:40px!important;
+    padding:4px 7px!important;
+    gap:7px!important;
+  }
+  #fundamental-topbar #slider-fundamental{height:24px!important;}
+  .fundamental-topbar-presets button{height:28px!important;padding:3px 6px!important;}
+  .fundamental-topbar-number input{padding:3px 5px!important;}
+
+  #app-container{
+    top:40px!important;
+    bottom:0!important;
+    padding-top:0!important;
+    height:auto!important;
+    min-height:0!important;
+  }
+  #canvas-container,
+  #sidebar,
+  #ratio-palette-modal{
+    bottom:0!important;
+  }
+
+  /* Compact bottom keyboard: the panel itself ends exactly at the viewport edge. */
+  #sidebar .keyboard-panel-box{
+    position:fixed!important;
+    left:0!important;
+    right:0!important;
+    bottom:0!important;
+    width:100vw!important;
+    height:113px!important;
+    min-height:113px!important;
+    max-height:113px!important;
+    margin:0!important;
+    padding:3px 7px 0!important;
+    border-radius:8px 8px 0 0!important;
+    overflow:hidden!important;
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr)!important;
+    grid-template-rows:24px 65px 21px!important;
+    column-gap:10px!important;
+    row-gap:0!important;
+    align-items:center!important;
+    box-sizing:border-box!important;
+  }
+  #sidebar .keyboard-panel-title{
+    grid-column:1 / -1!important;
+    grid-row:1!important;
+    min-height:24px!important;
+    height:24px!important;
+    padding-right:90px!important;
+    margin:0!important;
+  }
+  #sidebar .keyboard-container{
+    grid-column:1 / -1!important;
+    grid-row:2!important;
+    width:100%!important;
+    height:65px!important;
+    min-height:65px!important;
+    margin:0!important;
+    padding:2px!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{
+    grid-column:1!important;
+    grid-row:3!important;
+    height:21px!important;
+    min-height:21px!important;
+    margin:0!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:7px!important;
+    white-space:nowrap!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"] > div:first-child{
+    display:flex!important;
+    align-items:center!important;
+    gap:4px!important;
+    flex:0 0 auto!important;
+  }
+  #sidebar #btn-reset-pitch{margin-left:3px!important;}
+
+  /* The performance radios were historically a separate vertical block.
+     Make that block a real grid item beside the octave controls. */
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{
+    grid-column:2!important;
+    grid-row:3!important;
+    display:block!important;
+    margin:0!important;
+    padding:0!important;
+    min-height:21px!important;
+    height:21px!important;
+    border-top:0!important;
+    overflow:visible!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] > div:first-child{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    flex-wrap:nowrap!important;
+    gap:12px!important;
+    width:100%!important;
+    height:21px!important;
+    min-height:21px!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] label{
+    display:inline-flex!important;
+    align-items:center!important;
+    gap:4px!important;
+    margin:0!important;
+    white-space:nowrap!important;
+    font-size:.68rem!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] input[type="radio"]{
+    margin:0!important;
+  }
+}
 </style>
 </head>
 <body>
@@ -1925,6 +1990,10 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
                 <label><span>Phase</span><span id="val-palette-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/1</span></label>
                 <input type="range" id="input-palette-phase-deg-slider" min="0" max="0" step="1" value="0" style="width:100%;" aria-label="Phase tooth">
               </div>
+              <div class="current-gear-accel-cell current-gear-knob-cell">
+                <label><span>Offcenter</span><span id="val-palette-offcenter" style="color:var(--accent-cyan);font-weight:700;">0%</span></label>
+                <input type="range" id="slider-palette-offcenter" min="0" max="100" step="1" value="0" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
+              </div>
             </div>
             <div>
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
@@ -2038,14 +2107,25 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         <!-- AUDIO MASTER CONTROL -->
         <div class="panel-box">
           <button id="btn-toggle-audio" class="btn-main">▶ START AUDIO</button>
-          <div class="control-group" style="margin-top: 12px;">
-            <label>Master Volume <span id="val-master-vol" class="val">30%</span></label>
-            <input type="range" id="input-master-vol" min="0" max="1" step="0.01" value="0.3">
-          </div>
           <div id="clockwork-controls" class="control-group" style="display:none; margin-top:8px; border-top:1px solid var(--border-color); padding-top:7px;">
             <label>Clockwork Tick Width <span id="val-clockwork-width" class="val">4 ms</span></label>
             <input type="range" id="slider-clockwork-width" min="0.4" max="18" step="0.1" value="4">
             <div style="font-size:0.66rem;color:var(--text-muted);margin-top:2px;">Short = sharp metallic escapement tick. Wide = more body.</div>
+          </div>
+        </div>
+
+        <div class="left-primary-knob-row" id="left-primary-knob-row" aria-label="Primary controls">
+          <div class="control-group" style="margin:0;">
+            <label>MASTER VOL <span id="val-master-vol" class="val">30%</span></label>
+            <input type="range" id="input-master-vol" min="0" max="1" step="0.01" value="0.3">
+          </div>
+          <div class="control-group" style="margin:0;">
+            <label>DISTANCE <span id="val-spatial-scale" class="val">0.2x</span></label>
+            <input type="range" id="slider-spatial-scale" min="0.01" max="0.15" step="0.001" value="0.01">
+          </div>
+          <div class="panel-box" id="global-acceleration-panel">
+            <div class="panel-title"><span>ACCELLERATION</span><span id="val-global-acceleration" class="val">100%</span></div>
+            <input id="slider-global-acceleration" type="range" min="0" max="200" step="1" value="100" style="width:100%;" aria-label="Global Acceleration Scale" title="Scales every non-zero per-gear Accelleration setting. 100% = unchanged; 200% = twice the individual time; 0% = no acceleration.">
           </div>
         </div>
 
@@ -2277,18 +2357,10 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               <option value="equalpower">2D Standard Stereo EqualPower</option>
             </select>
           </div>
-          <div class="control-group">
-            <label>Soundfield Distance Scale <span id="val-spatial-scale" class="val">0.2x</span></label>
-            <input type="range" id="slider-spatial-scale" min="0.01" max="0.15" step="0.001" value="0.01">
-          </div>
           <div style="font-size: 0.68rem; color: var(--text-muted); line-height: 1.3; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 4px;">
  </div>
         </div>
 
-        <div class="panel-box" id="global-acceleration-panel">
-          <div class="panel-title"><span>Global Acceleration</span><span id="val-global-acceleration" class="val">100%</span></div>
-          <input id="slider-global-acceleration" type="range" min="0" max="200" step="1" value="100" style="width:100%;" aria-label="Global Acceleration Scale" title="Scales every non-zero per-gear Accelleration setting. 100% = unchanged; 200% = twice the individual time; 0% = no acceleration.">
-        </div>
 
         <!-- ACTIVE GEAR NETWORK LIST -->
         <div class="panel-box">
@@ -2305,15 +2377,6 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
     <main id="canvas-container">
       <canvas id="synthCanvas"></canvas>
       <div id="startup-tooltip">Drag the cog to the drive wheel to listen to the ratio</div>
-      <div id="canvas-crank-control" aria-label="Speed control">
-        <div class="crank-control-title"><span class="crank-control-screw"></span><span>SPEED</span><span class="crank-control-screw"></span></div>
-        <div class="crank-control-body">
-          <div class="crank-control-cog" aria-hidden="true">⚙</div>
-          <input id="canvas-crank-slider" type="range" min="-1" max="4.38" step="0.005" value="0" aria-label="Crank frequency">
-        </div>
-        <div id="canvas-crank-value">1.0 Hz</div>
-      </div>
-
       <!-- HUD BOTTOM LEFT: CONTROLS -->
       <div id="hud-bottom-left" class="hud-panel">
         <button id="btn-reset-view">Reset View</button>
@@ -2492,8 +2555,6 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         angularAccum: 0,
         lastSpeedUpdateTime: 0,
         savedFrequency: 1.0,
-        controlX: null,
-        controlY: null,
         savedDriverRPM: 33.3,
         beltTargetId: null
       },
@@ -2593,6 +2654,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
         // separately and is never persisted.
         this.accelerationMs = 0;
         this._accelTargetAudioFreq = null;
+        // Eccentric axle position: 0% = centred, 100% = axle reaches the outer tooth radius.
+        this.offcenter = 0;
         this._accelLastDurationSec = null;
         // MOD WIDTH is an alternate use for this gear's ADSR graph. When enabled,
         // the selected gear's graph edits drive width morphing instead of volume.
@@ -2671,11 +2734,13 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       }
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       state.gears.forEach(g => {
-        const outer = g.outerRadius;
-        minX = Math.min(minX, g.x - outer);
-        maxX = Math.max(maxX, g.x + outer);
-        minY = Math.min(minY, g.y - outer);
-        maxY = Math.max(maxY, g.y + outer);
+        const outer=Math.max(0,Number(g.outerRadius)||0);
+        const center=getGearVisualCenter(g,g.angle);
+        const minRadius=Math.max(outer,getGearOffcenterRadius(g));
+        minX=Math.min(minX,center.x-minRadius,g.x-minRadius);
+        maxX=Math.max(maxX,center.x+minRadius,g.x+minRadius);
+        minY=Math.min(minY,center.y-minRadius,g.y-minRadius);
+        maxY=Math.max(maxY,center.y+minRadius,g.y+minRadius);
       });
       return { minX, maxX, minY, maxY };
     }
@@ -3459,6 +3524,7 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
       this.generation=Number(m.generation)||0;
       this.gears=m.gears||[]; this.gears.forEach(g=>{
         g.phase=Number.isFinite(Number(g.phase))?Number(g.phase):0;
+        g.offcenter=Math.max(0,Math.min(100,Number(g.offcenter)||0));
         g.accelerationSec=Math.max(0,Number(g.accelerationSec)||0);
         g.currentFreq=Math.max(.001,(Number(m.masterFreq)||1)*Math.abs(Number(g.ratio)||0));
         g.targetFreq=g.currentFreq;
@@ -3540,6 +3606,12 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
     }
   }
   curve(t,c){ t=Math.max(0,Math.min(1,t)); const x=Math.max(-1,Math.min(1,Number(c)||0)); if(Math.abs(x)<.001)return t; const k=1+6*Math.abs(x); return x>0?1-Math.pow(1-t,k):Math.pow(t,k); }
+  offcenterRate(percent,phase){
+    const pct=Math.max(0,Math.min(100,Number(percent)||0)); if(pct<=0)return 1;
+    const e=Math.min(.94,(pct/100)*0.94);
+    const denom=Math.max(1-e,1+e*Math.cos(Number(phase)||0));
+    return Math.max(.08,Math.min(6,Math.sqrt(Math.max(.001,1-e*e))/denom));
+  }
   shapeRate(shape,t,p){
     p=p||{};
     if(shape==='ellipse'){const aspect=Math.max(.35,Math.min(1,Number(p.ellipseA)||1));const e=Math.max(0,Math.min(.95,Number(p.ellipseEccentricity)||0));const flatten=(1-aspect)*.9+e*.9;return Math.max(.05,1+.95*flatten*Math.cos(2*t));}
@@ -3613,7 +3685,8 @@ class GearPolyCompositeProcessor extends AudioWorkletProcessor {
           g.currentFreq=targetFreq;
         }
         const baseFreq=Math.max(.001,g.currentFreq);
-        const rate=this.shapeRate(g.shape,g.phase+(Number(g.phaseOffset)||0),g.shapeParams||{});
+        const phaseForMotion=g.phase+(Number(g.phaseOffset)||0);
+        const rate=this.shapeRate(g.shape,phaseForMotion,g.shapeParams||{}) * this.offcenterRate(g.offcenter,phaseForMotion);
         const freq=baseFreq*rate;
         g.phase=(g.phase||0)+2*Math.PI*freq/sampleRate;
         g.phase=((g.phase%(Math.PI*2))+(Math.PI*2))%(Math.PI*2);
@@ -3691,7 +3764,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return state.gears.filter(g=>!g.muted && Math.abs(g.ratio)>0).map(g=>{
         const coeff=getPolyWaveCoefficients(getGearToothWaveform(g),getGearToothWidth(g),64);
         const harmonics=[];for(let h=1;h<64;h++)harmonics.push({re:coeff.real[h]||0,im:coeff.imag[h]||0});
-        return {id:g.id,ratio:Number(g.ratio)||0,accelerationSec:getEffectiveGearAccelerationMs(g)/1000,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
+        return {id:g.id,ratio:Number(g.ratio)||0,offcenter:getGearOffcenterPercent(g),accelerationSec:getEffectiveGearAccelerationMs(g)/1000,phaseOffset:(Number(g.phaseOffsetDeg)||0)*Math.PI/180,shape:g.shape||'circular',shapeParams:g.shapeParams||{},phase:(state.masterPhase*masterFreq/Math.max(.001,state.baseFundamentalFreq||1)*(Number(g.ratio)||0))%(Math.PI*2),volume:(anySolo&&!g.solo)?0:Math.max(0,Number(g.volume)||0)*Math.max(.0001,Math.min(1,Number(velocity)||1)),attack:getBloomAttackForGear(g),decay:Number(g.adsr?.decay)||0,sustain:Number(g.adsr?.sustain??.8),release:Number(g.adsr?.release)||0,attackCurve:Number(g.adsr?.attackCurve)||0,decayCurve:Number(g.adsr?.decayCurve)||0,releaseCurve:Number(g.adsr?.releaseCurve)||0,harmonics,phase:0,releaseFrame:null,releaseStart:0};
       });
     }
 
@@ -4413,46 +4486,21 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     /* CANVAS PROCEDURAL GEAR RENDERER */
     const canvas = document.getElementById('synthCanvas');
     const ctx = canvas.getContext('2d');
-    // Canvas CSS geometry is needed only when the layout changes. Reading
-    // getBoundingClientRect() from the animation loop forces synchronous layout
-    // and can starve the main thread during dense POLY/release passages.
-    state._canvasClientSize = state._canvasClientSize || { width: 1, height: 1 };
-    state._canvasClientSizeDirty = true;
-
-    function refreshCanvasClientSize() {
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      state._canvasClientSize.width = Math.max(1, rect.width);
-      state._canvasClientSize.height = Math.max(1, rect.height);
-      state._canvasClientSizeDirty = false;
-    }
-
-    function resizeCanvas() {
-      if (!canvas || !canvas.parentElement) return;
-      const parent = canvas.parentElement;
-      const width = Math.max(1, Math.round(parent.clientWidth));
-      const height = Math.max(1, Math.round(parent.clientHeight));
-      // Keep the backing canvas in lockstep with its grid/flex panel. Closing the
-      // ratio palette changes the panel width without necessarily firing a window
-      // resize event; if the backing bitmap is left at the old size, the browser
-      // stretches it into the new panel and circular gears become elliptical.
+    // The backing bitmap follows the native canvas container size. ResizeObserver
+    // catches sidebar/palette/orientation changes without window-level geometry reads.
+    function syncCanvasBitmapSize() {
+      const parent = canvas?.parentElement;
+      if (!parent) return;
+      const width = Math.max(1, parent.clientWidth | 0);
+      const height = Math.max(1, parent.clientHeight | 0);
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
       }
-      refreshCanvasClientSize();
     }
-    window.addEventListener('resize', resizeCanvas);
-    const canvasParentResizeObserver = new ResizeObserver(() => {
-      resizeCanvas();
-      // Reposition the floating crank control once after layout settles instead
-      // of measuring the canvas on every animation frame.
-      requestAnimationFrame(() => {
-        try { positionCanvasCrankControl(); } catch (_) {}
-      });
-    });
+    const canvasParentResizeObserver = new ResizeObserver(syncCanvasBitmapSize);
     canvasParentResizeObserver.observe(canvas.parentElement);
-    resizeCanvas();
+    syncCanvasBitmapSize();
 
     function ratioIntervalName(num, den) {
       const cents = 1200 * Math.log2(num / den);
@@ -4675,6 +4723,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(deg){deg.min='0';deg.max=String(Math.max(0,toothCount-1));deg.step='1';deg.value=String(offsetTeeth);}
       if(degVal)degVal.textContent=`${offsetDeg.toFixed(1)}°`;
       const palettePhaseKnob=document.getElementById('val-palette-phase-knob'); if(palettePhaseKnob)palettePhaseKnob.textContent=`${offsetTeeth}/${toothCount}`;
+      const offSlider=document.getElementById('slider-palette-offcenter'); const offVal=document.getElementById('val-palette-offcenter');
+      const off=getGearOffcenterPercent(gear);
+      if(offSlider){offSlider.value=String(Math.round(off));offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
+      if(offVal)offVal.textContent=`${Math.round(off)}%`;
       const degreeReadout=document.getElementById('palette-phase-degree-readout'); if(degreeReadout)degreeReadout.textContent=`${offsetDeg.toFixed(1)}°`;
       if(teeth){teeth.min='0';teeth.max=String(Math.max(0,toothCount-1));teeth.step='1';teeth.value=String(offsetTeeth);}
     }
@@ -4923,6 +4975,34 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return null;
     }
 
+    // Offcenter / eccentric-axle motion. gear.x/y remains the physical axle anchor
+    // used by the existing mesh and spatial audio model. The visible tooth centre
+    // moves around that fixed axle, while angular rate is modulated for eccentric FM.
+    function getGearOffcenterPercent(gear){
+      return Math.max(0, Math.min(100, Number(gear?.offcenter)||0));
+    }
+    function getGearOffcenterRadius(gear){
+      if(!gear) return 0;
+      const outer=Math.max(1,Number(gear.outerRadius)||Number(gear.pitchRadius)||1);
+      return outer*(getGearOffcenterPercent(gear)/100);
+    }
+    function getGearOffcenterRate(gear, phase){
+      const pct=getGearOffcenterPercent(gear);
+      if(pct<=0) return 1;
+      // Visual eccentricity can reach 100%, but audio stays just below the singularity.
+      const e=Math.min(0.94,(pct/100)*0.94);
+      const c=Math.cos(Number(phase)||0);
+      const denom=Math.max(1-e,1+e*c);
+      const meanNorm=Math.sqrt(Math.max(0.001,1-e*e));
+      return Math.max(0.08,Math.min(6,meanNorm/denom));
+    }
+    function getGearVisualCenter(gear, rotation){
+      if(!gear) return {x:0,y:0};
+      const rot=Number.isFinite(Number(rotation))?Number(rotation):Number(gear.angle)||0;
+      const off=getGearOffcenterRadius(gear);
+      return {x:(Number(gear.x)||0)-Math.cos(rot)*off,y:(Number(gear.y)||0)-Math.sin(rot)*off};
+    }
+
     // Mechanical motion is transmitted through the gear graph. A shaped parent
     // deforms the phase trajectory received by every downstream gear; the
     // child's own contour is then applied on top of that transmitted trajectory.
@@ -4942,18 +5022,26 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function getGearMechanicalMotionAtPhase(gear, rootPhase, visited = new Set()) {
       if (!gear || gear.ratio === 0) return { phase: 0, rate: 1 };
-      if (visited.has(gear.id)) return { phase: gear.ratio * rootPhase + gear.phaseOffsetRad, rate: 1 };
+      if (visited.has(gear.id)) {
+        const fallbackPhase=gear.ratio*rootPhase+gear.phaseOffsetRad;
+        return { phase:fallbackPhase, rate:getGearOffcenterRate(gear,fallbackPhase) };
+      }
       visited.add(gear.id);
-      if (gear.isMain) return shapePhaseAndRate(gear.shape, rootPhase, gear.shapeParams || {});
+      if (gear.isMain) {
+        const motion=shapePhaseAndRate(gear.shape, rootPhase, gear.shapeParams || {});
+        return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,rootPhase)) };
+      }
       const parent = getGearParent(gear);
       if (!parent || parent.ratio === 0) {
-        return shapePhaseAndRate(gear.shape, gear.ratio * rootPhase + gear.phaseOffsetRad, gear.shapeParams || {});
+        const transmittedPhase=gear.ratio*rootPhase+gear.phaseOffsetRad;
+        const motion=shapePhaseAndRate(gear.shape, transmittedPhase, gear.shapeParams || {});
+        return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,transmittedPhase)) };
       }
       const parentMotion = getGearMechanicalMotionAtPhase(parent, rootPhase, visited);
       const relativeRatio = gear.ratio / parent.ratio;
       const transmittedPhase = parentMotion.phase * relativeRatio + gear.phaseOffsetRad;
       const ownMotion = shapePhaseAndRate(gear.shape, transmittedPhase, gear.shapeParams || {});
-      return { phase: ownMotion.phase, rate: Math.max(0.001, parentMotion.rate * ownMotion.rate) };
+      return { phase: ownMotion.phase, rate: Math.max(0.001, parentMotion.rate * ownMotion.rate * getGearOffcenterRate(gear,transmittedPhase)) };
     }
 
     function enforceMagneticMesh() {
@@ -5147,13 +5235,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const t = heat.hotT;
         const r = Math.max(12, gear.pitchRadius || 12);
         const spread = r * (2.8 + 4.8 * t);
-        const light = ctx.createRadialGradient(gear.x, gear.y, r * .1, gear.x, gear.y, spread);
+        const center=getGearVisualCenter(gear,gear.angle);
+        const light = ctx.createRadialGradient(center.x, center.y, r * .1, center.x, center.y, spread);
         light.addColorStop(0, `rgba(255,255,255,${.12 + .24*t})`);
         light.addColorStop(.14, `rgba(${Math.round(20+235*t)},${Math.round(100+155*t)},255,${.10+.18*t})`);
         light.addColorStop(.42, `rgba(${Math.round(20+55*t)},${Math.round(90+130*t)},255,${.05+.10*t})`);
         light.addColorStop(1, 'rgba(120,180,255,0)');
         ctx.fillStyle = light;
-        ctx.beginPath(); ctx.arc(gear.x, gear.y, spread, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(center.x, center.y, spread, 0, TAU); ctx.fill();
       }
       ctx.restore();
     }
@@ -5540,7 +5629,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const widthMorph=visual.widthMorph==null?getGearWidthModLevel(gear,now):visual.widthMorph;
       const path=getNeonGearPath(gear,toothCount,widthMorph);
       if(!path) return;
-      ctx.save();ctx.translate(gear.x,gear.y);ctx.scale(scale,scale);
+      const visualCenter=getGearVisualCenter(gear,rotation);
+      const offcenterRadius=getGearOffcenterRadius(gear);
+      ctx.save();ctx.translate(visualCenter.x,visualCenter.y);ctx.scale(scale,scale);
       const bloomT=Math.max(0,(intensity-.18)/.82);
       if(bloomT>.01){const fieldR=Math.max(canvas.width,canvas.height)*(.24+.42*bloomT),grad=ctx.createRadialGradient(0,0,0,0,0,fieldR),colorHue=(String(color).match(/hsl\(([-0-9.]+)/i)||[])[1]||neonHueForPitch(Number(gear.harmonicSemitone??gear.frequency??0));grad.addColorStop(0,`hsla(${colorHue},100%,60%,${.075*bloomT*scale})`);grad.addColorStop(.28,`hsla(${colorHue},100%,55%,${.028*bloomT})`);grad.addColorStop(1,'rgba(0,0,0,0)');ctx.globalCompositeOperation='lighter';ctx.fillStyle=grad;ctx.beginPath();ctx.arc(0,0,fieldR,0,TAU);ctx.fill();}
       const trace=(lineWidth,alpha,blur,rotAdd=0)=>{ctx.save();ctx.rotate(rotation+rotAdd);ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.max(0,alpha);ctx.strokeStyle=color;ctx.shadowColor=color;ctx.shadowBlur=blur;ctx.lineWidth=lineWidth;ctx.lineJoin='round';ctx.lineCap='round';ctx.stroke(path);ctx.restore();};
@@ -5552,7 +5643,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       trace(Math.max(3,pitch*.045)*boost,intensity*.47,pitch*(1.35+1.8*bloomT));
       trace(Math.max(1.8,pitch*.022)*boost,Math.min(1,intensity*.86),pitch*(.54+.72*bloomT));
       trace(Math.max(1,pitch*.010)*boost,Math.min(1,intensity*1.08),pitch*(.22+.24*bloomT));
-      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,intensity*.34);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=pitch*(1+1.4*bloomT);ctx.beginPath();ctx.arc(0,0,Math.max(1.4,pitch*.02),0,TAU);ctx.fill();ctx.restore();
+      ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(1,intensity*.34);ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=pitch*(1+1.4*bloomT);ctx.beginPath();ctx.arc(0,0,Math.max(1.4,pitch*.02),0,TAU);ctx.fill();
+      if(offcenterRadius>0){
+        ctx.save();ctx.rotate(rotation);ctx.globalAlpha=Math.min(1,intensity*.72);ctx.strokeStyle=color;ctx.lineWidth=Math.max(1.5,pitch*.018);
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(offcenterRadius,0);ctx.stroke();
+        ctx.beginPath();ctx.arc(offcenterRadius,0,Math.max(2.5,pitch*.045),0,TAU);ctx.stroke();
+        ctx.globalAlpha=1;ctx.restore();
+      }
+      ctx.restore();
     }
 
     function drawNeonPolyTrains(toothCounts){
@@ -5612,6 +5710,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const rInner = Math.max(2, rPitch - dedendum);
       const isSelected = gear.id === state.selectedGearId;
       const isHovered = gear.id === state.hoveredGearId;
+      const offcenterRadius=getGearOffcenterRadius(gear);
+      const drawCenter=getGearVisualCenter(gear,gear.angle);
       const mat = gearVisualStyle(gear);
       const heat = gearHeatIntensity(gear);
 
@@ -5620,20 +5720,20 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       ctx.strokeStyle = isHovered || isSelected ? mat.light : 'rgba(226,180,84,.78)';
       ctx.lineWidth = isHovered || isSelected ? 2.5 : 1.5;
       ctx.beginPath();
-      ctx.moveTo(gear.x, gear.y - rInner);
-      ctx.lineTo(gear.x, gear.y - rOuter - 6);
+      ctx.moveTo(drawCenter.x, drawCenter.y - rInner);
+      ctx.lineTo(drawCenter.x, drawCenter.y - rOuter - 6);
       ctx.stroke();
       const normalizedAngle = (gear.angle + Math.PI / 2) % TAU;
       const isVertical = Math.abs(Math.sin(normalizedAngle)) < 0.08 && Math.cos(normalizedAngle) > 0.9;
       if (isVertical) {
         ctx.fillStyle = '#ffd166';
         ctx.shadowColor = '#ffcf5a'; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.arc(gear.x, gear.y - rOuter - 6, 3.5, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(drawCenter.x, drawCenter.y - rOuter - 6, 3.5, 0, TAU); ctx.fill();
       }
       ctx.restore();
 
       ctx.save();
-      ctx.translate(gear.x, gear.y);
+      ctx.translate(drawCenter.x, drawCenter.y);
       drawUltrasonicSteam(ctx, gear, rOuter);
       ctx.rotate(gear.angle);
       drawGearHeatGlow(ctx, gear, rOuter);
@@ -5667,13 +5767,25 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       drawSteampunkOrnament(ctx, gear, rOuter, rInner, mat);
 
       const rHub = Math.min(rPitch * 0.35, 24);
-      drawSteampunkHub(ctx, gear, rHub, mat, isSelected);
+      if(offcenterRadius>0){
+        ctx.save();
+        ctx.strokeStyle=mat.light;ctx.globalAlpha=.58;ctx.lineWidth=Math.max(1.2,rOuter*.014);
+        ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(offcenterRadius,0);ctx.stroke();
+        ctx.globalAlpha=1;
+        ctx.translate(offcenterRadius,0);
+        drawSteampunkHub(ctx, gear, rHub, mat, isSelected);
+        ctx.strokeStyle=mat.light;ctx.globalAlpha=.9;ctx.lineWidth=Math.max(1,rOuter*.012);
+        ctx.beginPath();ctx.arc(0,0,Math.max(3,rHub*.72),0,TAU);ctx.stroke();
+        ctx.globalAlpha=1;ctx.restore();
+      } else {
+        drawSteampunkHub(ctx, gear, rHub, mat, isSelected);
+      }
 
       // Functional rotation indicator, now made from a narrow polished pointer.
       ctx.strokeStyle = mat.light;
       ctx.globalAlpha=.9;
       ctx.lineWidth=Math.max(1.5,rOuter*.018);
-      ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(rPitch*.78,0);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(offcenterRadius,0);ctx.lineTo(offcenterRadius+rPitch*.78,0);ctx.stroke();
       ctx.globalAlpha=1;
 
       // Teeth-edge tick accents add visual life without changing the mechanical geometry.
@@ -5711,7 +5823,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const boxH = baseFont * 1.9;
       const labelScale = Math.max(0.0001, state.camera.zoom);
       ctx.save();
-      ctx.translate(gear.x, gear.y);
+      const labelCenter=getGearVisualCenter(gear,gear.angle);
+      ctx.translate(labelCenter.x, labelCenter.y);
       ctx.scale(1/labelScale,1/labelScale);
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.shadowColor='rgba(0,0,0,.9)'; ctx.shadowBlur=7;
@@ -6416,9 +6529,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function getGearAtPosition(wx, wy) {
       for (let i = state.gears.length - 1; i >= 0; i--) {
         const g = state.gears[i];
-        if (Math.hypot(wx - g.x, wy - g.y) <= g.outerRadius) {
-          return g;
-        }
+        const center=getGearVisualCenter(g,g.angle);
+        const hitRadius=Math.max(0,Number(g.outerRadius)||0);
+        const axleHitRadius=Math.max(14,Math.min(28,hitRadius*.24));
+        if (Math.hypot(wx-center.x,wy-center.y)<=hitRadius || Math.hypot(wx-g.x,wy-g.y)<=axleHitRadius) return g;
       }
       return null;
     }
@@ -6682,7 +6796,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if (!wasMoved) removeCrankTool();
         else {
           fitMachineToView(!!state.crankTool.enabled);
-          positionCanvasCrankControl();
         }
       } else if (state.dragState.mode === 'belt') {
         const candidate = state.dragState.beltTargetId ? state.gearMap.get(state.dragState.beltTargetId) : null;
@@ -6954,7 +7067,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       let nx=main.x+Math.cos(a+Math.PI)*radius, ny=main.y+Math.sin(a+Math.PI)*radius;
       if(!source.orbitEnabled && Math.hypot(dx,dy)<1){nx=main.x+radius;ny=main.y;}
       const copy=addGear(source.teeth,nx,ny,false); if(!copy)return null;
-      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,accelerationMs:Math.max(0,Math.min(5000,Number(source.accelerationMs)||0)),shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
+      Object.assign(copy,{ratio:source.ratio,freq:source.freq,ratioLock:source.ratioLock,teethLock:source.teethLock,accelerationMs:Math.max(0,Math.min(5000,Number(source.accelerationMs)||0)),offcenter:getGearOffcenterPercent(source),shape:source.shape,shapeParams:normalizedShapeParams({...source.shapeParams}),toothWaveform:source.toothWaveform,toothWidth:getGearToothWidth(source),sourceMode:source.sourceMode,volume:source.volume,muted:source.muted,solo:source.solo,orbitEnabled:source.orbitEnabled,orbitPeriodSec:source.orbitPeriodSec,orbitDirection:source.orbitDirection,orbitPreservePhase:source.orbitPreservePhase,orbitRadius:radius,orbitAngle:a+Math.PI,orbitPhase:source.orbitPhase||0,hrtfZ:Math.max(-1,Math.min(1,-Number(source.hrtfZ||0))),hrtfZAdsr:source.hrtfZAdsr,hrtfZAngleDeg:source.hrtfZAngleDeg,hrtfZRate:source.hrtfZRate,adsr:{...(source.adsr||state.adsr)},adsrLinks:{...(ensureAdsrLinks(source))},widthModEnabled:!!source.widthModEnabled,widthMod:{...(source.widthMod||source.adsr||state.adsr)}});
       copy.setPhaseOffsetDeg(-Number(source.phaseOffsetDeg||0));
       if(source.audioBuffer){copy.audioBuffer=source.audioBuffer;copy.audioFileName=source.audioFileName;copy.audioLoopStart=source.audioLoopStart;copy.audioLoopEnd=source.audioLoopEnd;}
       if(source.sourceMode==='midi'){copy.midiOutput=source.midiOutput;copy.midiNote=source.midiNote;}
@@ -7025,7 +7138,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       label.textContent = 'Audio Driver Speed';
       unit.textContent = 'RPM';
       value.textContent = `${rpm < 100 ? rpm.toFixed(1) : rpm.toFixed(0)} RPM`;
-      syncCanvasCrankControl();
 
       if (state.audioRunning && d.playing) {
         const now = state.audioCtx.currentTime;
@@ -7047,55 +7159,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       slider.max = Math.log10(nyquist).toFixed(3);
       numInput.min = 0;
       numInput.max = nyquist;
-    }
-
-    function syncCanvasCrankControl() {
-      if (!canvasCrankSlider) return;
-      if (state.audioDriver.buffer) {
-        const rpm = Math.max(DRIVER_RPM_MIN, Number(state.audioDriver.driverRPM) || DRIVER_NOMINAL_RPM);
-        canvasCrankSlider.min = Math.log10(DRIVER_RPM_MIN);
-        canvasCrankSlider.max = Math.log10(DRIVER_RPM_MAX);
-        canvasCrankSlider.value = Math.log10(rpm);
-        if (canvasCrankValue) canvasCrankValue.textContent = `${rpm < 100 ? rpm.toFixed(1) : rpm.toFixed(0)} RPM`;
-      } else {
-        const nyquist = getNyquist();
-        const freq = Math.max(0, Number(state.fundamentalFreq) || 0);
-        canvasCrankSlider.min = -1;
-        canvasCrankSlider.max = Math.log10(nyquist);
-        canvasCrankSlider.value = freq <= 0 ? -1 : Math.log10(Math.min(nyquist, freq));
-        if (canvasCrankValue) canvasCrankValue.textContent = freq >= 1000 ? `${(freq/1000).toFixed(2)} kHz` : `${freq.toFixed(freq < 10 ? 1 : 0)} Hz`;
-      }
-    }
-
-    function positionCanvasCrankControl() {
-      if (!canvasCrankControl || !canvas || !state.crankTool.enabled) {
-        canvasCrankControl?.classList.remove('is-visible');
-        return;
-      }
-      const geo = getCrankToolGeometry();
-      if (!geo) { canvasCrankControl.classList.remove('is-visible'); return; }
-      if (state._canvasClientSizeDirty) refreshCanvasClientSize();
-      const rect = state._canvasClientSize || { width: canvas.clientWidth || canvas.width, height: canvas.clientHeight || canvas.height };
-      const w = canvasCrankControl.offsetWidth || 122;
-      const h = canvasCrankControl.offsetHeight || 64;
-      let x = Number.isFinite(state.crankTool.controlX)
-        ? state.crankTool.controlX
-        : 4;
-      let y = Number.isFinite(state.crankTool.controlY)
-        ? state.crankTool.controlY
-        : 4;
-      x = Math.max(4, Math.min(rect.width - w - 4, x));
-      if (isMobilePortraitLayout()) {
-        // Three canvas action buttons occupy the bottom strip. Keep SPEED fully above them.
-        const safeBottom = 8;
-        y = Math.max(4, Math.min(rect.height - h - safeBottom, y));
-      } else {
-        y = Math.max(4, Math.min(rect.height - h - 8, y));
-      }
-      canvasCrankControl.style.left = `${x}px`;
-      canvasCrankControl.style.top = `${y}px`;
-      canvasCrankControl.classList.add('is-visible');
-      syncCanvasCrankControl();
     }
 
     function clampGearAccelerationMs(value) {
@@ -7321,7 +7384,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const freqLabel = freq >= 1000 ? `${(freq / 1000).toFixed(2)}kHz` : `${freq.toFixed(1)}Hz`;
             document.getElementById('fundamental-unit').textContent = 'Hz';
       document.getElementById('val-fundamental').textContent = freqLabel;
-      syncCanvasCrankControl();
 
       if (fastKeyboard && !state.polyMode) {
         if (state.audioRunning) retuneVisibleKeyboardAudio(freq);
@@ -9383,6 +9445,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       if(input.id==='slider-keyboard-bloom') return '';
       if(input.id==='slider-palette-acceleration' || input.id==='slider-inspector-acceleration') return formatGearAcceleration(Number(input.value)||0);
+      if(input.id==='slider-palette-offcenter' || input.id==='slider-inspector-offcenter') return `${Math.round(Number(input.value)||0)}%`;
       if(input.id==='slider-fundamental') return `${Math.max(0,Number(state.fundamentalFreq)||0).toFixed(2)} Hz`;
       const step=Number(input.step); const v=Number(input.value);
       if(input.id.includes('volume')||input.id==='input-master-vol'||input.id==='slider-spatial-scale') return `${Math.round(v*100)}%`;
@@ -9466,6 +9529,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       const phaseRead=document.getElementById('phase-degree-readout'); if(phaseRead) phaseRead.textContent=`${(Number(gear.phaseOffsetDeg)||0).toFixed(1)}°`;
       const phaseVal=document.getElementById('val-inspector-phase-knob'); if(phaseVal) phaseVal.textContent=`${Math.round(gear.phaseOffsetTeeth||0)}/${Math.max(1,Math.round(gear.teeth||1))}`;
+      const offSlider=document.getElementById('slider-inspector-offcenter'); const offVal=document.getElementById('val-inspector-offcenter');
+      const off=getGearOffcenterPercent(gear);
+      if(offSlider){offSlider.value=String(Math.round(off));offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
+      if(offVal)offVal.textContent=`${Math.round(off)}%`;
       const accel=document.getElementById('slider-inspector-acceleration'); const accelVal=document.getElementById('val-inspector-acceleration');
       const effective=getEffectiveGearAccelerationMs(gear);
       if(accel){accel.max='10000';accel.value=String(effective);accel.disabled=getGlobalAccelerationPercent()===0;}
@@ -9482,7 +9549,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(id==='slider-inspector-volume') return {scope:'gear',gearId:selectedId,property:'volume',kind:'slider'};
       if(id==='slider-inspector-tooth-width') return {scope:'gear',gearId:selectedId,property:'toothWidth',kind:'slider'};
       if(id==='slider-inspector-ratio') return {scope:'gear',gearId:selectedId,property:'ratio',kind:'slider'};
+      if(id==='slider-inspector-offcenter') return {scope:'gear',gearId:selectedId,property:'offcenter',kind:'slider'};
       if(id==='slider-palette-volume') return {scope:'gear',gearId:state.activePaletteGearId||selectedId,property:'volume',kind:'slider'};
+      if(id==='slider-palette-offcenter') return {scope:'gear',gearId:state.activePaletteGearId||selectedId,property:'offcenter',kind:'slider'};
       if(el.matches('input[type="range"]')) return {scope:'dom',elementId:id,kind:'slider'};
       if(el.matches('button,[role="button"]')) return {scope:'dom',elementId:id,kind:'button'};
       return null;
@@ -9588,14 +9657,21 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         if(t.property==='volume') v=Math.max(0,Math.min(1,value));
         else if(t.property==='toothWidth') v=normalizeToothWidth(value*0.98);
         else if(t.property==='ratio') v=Math.max(0.0625,Math.min(16,value));
+        else if(t.property==='offcenter') v=Math.max(0,Math.min(100,value*100));
         if(t.property==='volume') gear.volume=v;
         else if(t.property==='toothWidth') gear.toothWidth=v;
         else if(t.property==='ratio' && !gear.isMain) gear.ratio=v;
+        else if(t.property==='offcenter') gear.offcenter=v;
         if(t.property==='volume'){
           if(gear.id===state.selectedGearId){ const out=document.getElementById('val-inspector-volume'); if(out) out.textContent=`${Math.round(gear.volume*100)}%`; }
           const pv=document.getElementById('val-palette-volume'); if(pv&&gear.id===state.activePaletteGearId) pv.textContent=`${Math.round(gear.volume*100)}%`;
         }
         if(t.property==='toothWidth'){ const out=document.getElementById('val-inspector-tooth-width'); if(out&&gear.id===state.selectedGearId) out.textContent=gear.toothWidth.toFixed(4); }
+        if(t.property==='offcenter'){
+          const iv=document.getElementById('val-inspector-offcenter'); if(iv&&gear.id===state.selectedGearId) iv.textContent=`${Math.round(gear.offcenter)}%`;
+          const pv=document.getElementById('val-palette-offcenter'); if(pv&&gear.id===state.activePaletteGearId) pv.textContent=`${Math.round(gear.offcenter)}%`;
+          state.motionFrameCache.clear();
+        }
         updateAudioNodes();
         if(state.polyMode) updatePolyVoices();
         renderGearList?.();
@@ -9897,74 +9973,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     // Keyboard is a carousel slide in mobile portrait; no separate pinning is required.
     // Fundamental Frequency / Audio Driver RPM Slider
     const fundSlider = document.getElementById('slider-fundamental');
-    const canvasCrankControl = document.getElementById('canvas-crank-control');
-    const canvasCrankSlider = document.getElementById('canvas-crank-slider');
-    requestAnimationFrame(() => { try { positionCanvasCrankControl(); } catch (_) {} });
-    const canvasCrankValue = document.getElementById('canvas-crank-value');
-
-    // The Speed box itself can be repositioned independently of the physical crank.
-    // Store its position in canvas-pixel coordinates so it survives camera movement
-    // and can be dragged with either a mouse or a finger.
-    let speedBoxDrag = null;
-    canvasCrankControl?.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (e.target.closest('#canvas-crank-slider')) return;
-      const rect = canvas.getBoundingClientRect();
-      const currentX = Number.isFinite(state.crankTool.controlX) ? state.crankTool.controlX : canvasCrankControl.offsetLeft;
-      const currentY = Number.isFinite(state.crankTool.controlY) ? state.crankTool.controlY : canvasCrankControl.offsetTop;
-      speedBoxDrag = {
-        pointerId: e.pointerId,
-        startClientX: e.clientX,
-        startClientY: e.clientY,
-        startX: currentX,
-        startY: currentY,
-        rectLeft: rect.left,
-        rectTop: rect.top
-      };
-      canvasCrankControl.setPointerCapture?.(e.pointerId);
-      canvasCrankControl.style.cursor = 'grabbing';
-      e.preventDefault();
-      e.stopPropagation();
-    });
-
-    canvasCrankControl?.addEventListener('pointermove', (e) => {
-      if (!speedBoxDrag || speedBoxDrag.pointerId !== e.pointerId) return;
-      const rect = canvas.getBoundingClientRect();
-      const dx = e.clientX - speedBoxDrag.startClientX;
-      const dy = e.clientY - speedBoxDrag.startClientY;
-      const w = canvasCrankControl.offsetWidth || 122;
-      const h = canvasCrankControl.offsetHeight || 64;
-      state.crankTool.controlX = Math.max(4, Math.min(rect.width - w - 4, speedBoxDrag.startX + dx));
-      state.crankTool.controlY = Math.max(8, Math.min(rect.height - h - (isMobilePortraitLayout() ? 96 : 8), speedBoxDrag.startY + dy));
-      canvasCrankControl.style.left = `${state.crankTool.controlX}px`;
-      canvasCrankControl.style.top = `${state.crankTool.controlY}px`;
-      e.preventDefault();
-      e.stopPropagation();
-    });
-
-    const finishSpeedBoxDrag = (e) => {
-      if (!speedBoxDrag || speedBoxDrag.pointerId !== e.pointerId) return;
-      speedBoxDrag = null;
-      canvasCrankControl.style.cursor = 'grab';
-      try { canvasCrankControl.releasePointerCapture?.(e.pointerId); } catch (_) {}
-      e.stopPropagation?.();
-    };
-    canvasCrankControl?.addEventListener('pointerup', finishSpeedBoxDrag);
-    canvasCrankControl?.addEventListener('pointercancel', finishSpeedBoxDrag);
     const ratioScrollLeftBtn = document.getElementById('btn-ratio-scroll-left');
     const ratioScrollRightBtn = document.getElementById('btn-ratio-scroll-right');
 
-    canvasCrankSlider?.addEventListener('input', (e) => {
-      const value = Number(e.target.value);
-      const freq = value <= Number(canvasCrankSlider.min) ? 0 : Math.pow(10, value);
-      if (state.audioDriver.buffer) setDriverRPM(freq, false);
-      else setFundamentalFrequency(freq);
-      state.isSlidingFreq = true;
-    });
-    canvasCrankSlider?.addEventListener('pointerup', () => {
-      state.isSlidingFreq = false;
-      if (!state.audioDriver.buffer) { state.masterPhase = 0; updateKinematicNetwork(); }
-    });
     ratioScrollLeftBtn?.addEventListener('click', () => {
       document.getElementById('rational-gear-palette')?.scrollBy({ left: -210, behavior: 'smooth' });
     });
@@ -10170,6 +10181,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           <div class="current-gear-knob-cell">
             <label><span>Phase</span><span id="val-inspector-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/${Math.max(1,Math.round(gear.teeth||1))}</span></label>
             <input type="range" id="input-phase-deg-slider" min="0" max="${Math.max(0,Math.round(gear.teeth||1)-1)}" step="1" value="${Math.max(0,Math.min(Math.max(0,Math.round(gear.teeth||1)-1),Math.round(gear.phaseOffsetTeeth||0)))}" style="width:100%;">
+          </div>
+          <div class="current-gear-knob-cell">
+            <label><span>Offcenter</span><span id="val-inspector-offcenter" style="color:var(--accent-cyan);font-weight:700;">${Math.round(getGearOffcenterPercent(gear))}%</span></label>
+            <input type="range" id="slider-inspector-offcenter" min="0" max="100" step="1" value="${Math.round(getGearOffcenterPercent(gear))}" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
           </div>
         </div>
         <div class="gear-adsr-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
@@ -10463,6 +10478,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       });
       const inspectorAccelSlider=document.getElementById('slider-inspector-acceleration');
       const inspectorAccelValue=document.getElementById('val-inspector-acceleration');
+      const inspectorOffcenterSlider=document.getElementById('slider-inspector-offcenter');
+      const inspectorOffcenterValue=document.getElementById('val-inspector-offcenter');
+      inspectorOffcenterSlider?.addEventListener('input',e=>{
+        gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
+        if(inspectorOffcenterValue)inspectorOffcenterValue.textContent=`${Math.round(gear.offcenter)}%`;
+        state.motionFrameCache.clear();
+        updateAudioNodes();
+        if(state.polyMode) updatePolyVoices();
+        syncInspectorPhaseAndAccelerationUi(gear);
+        renderGearList();
+      });
       inspectorAccelSlider?.addEventListener('input',e=>{
         const effective=Math.max(0,Math.min(10000,Number(e.target.value)||0));
         const pct=getGlobalAccelerationPercent();
@@ -11298,6 +11324,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       updateInspector?.();
     });
 
+    document.getElementById('slider-palette-offcenter')?.addEventListener('input',e=>{
+      const gear=getActivePaletteGear(); if(!gear)return;
+      gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
+      const value=document.getElementById('val-palette-offcenter'); if(value)value.textContent=`${Math.round(gear.offcenter)}%`;
+      state.motionFrameCache.clear();
+      updateAudioNodes();
+      if(state.polyMode) updatePolyVoices();
+      syncPaletteCurrentGearExtras(gear);
+      renderGearList();
+    });
+
     document.getElementById('slider-palette-acceleration')?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return;
       const scale=getGlobalAccelerationPercent()/100;
@@ -11422,7 +11459,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     closeRatioPaletteBtn?.addEventListener('click', () => {
       if (!ratioPaletteModal) return;
       ratioPaletteModal.classList.add('is-hidden');
-      requestAnimationFrame(() => { if (typeof resizeCanvasToDisplaySize === 'function') resizeCanvasToDisplaySize(); });
     });
     if (ratioPaletteHeader && ratioPaletteModal) {
       let drag = null;
@@ -11713,11 +11749,6 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
     });
 
-    window.addEventListener('keyup', (e) => {
-      const tag = e.target?.tagName;
-      if (tag && /INPUT|SELECT|TEXTAREA/i.test(tag)) return;
-      releasePhysicalComputerKey(e.code);
-    });
 
     // INITIALIZATION
     function initApp() {
@@ -11918,7 +11949,6 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   #app-container.mobile-one-screen-mode #hud-top-right,
   #app-container.mobile-one-screen-mode #selected-gear-detail,
   #app-container.mobile-one-screen-mode #hud-bottom-left,
-  #app-container.mobile-one-screen-mode #canvas-crank-control{display:none!important;}
 
   #mobile-keyboard-dock{
     position:absolute!important;left:0!important;right:0!important;bottom:0!important;height:92px!important;
@@ -12001,47 +12031,6 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
 </style>
 
 
-<script id="compact-left-knob-layout-js">
-(function(){
-  function arrange(){
-    if(window.innerWidth<=900)return;
-    const scroll=document.querySelector('#sidebar .sidebar-scroll');
-    if(!scroll||document.querySelector('.left-primary-knob-row'))return;
-    const master=document.getElementById('input-master-vol')?.closest('.control-group');
-    const spatial=document.getElementById('slider-spatial-scale')?.closest('.control-group');
-    const global=document.getElementById('global-acceleration-panel');
-    if(!master||!spatial||!global)return;
-    const row=document.createElement('div');row.className='left-primary-knob-row';row.id='left-primary-knob-row';
-    row.setAttribute('aria-label','Primary controls');
-    scroll.insertBefore(row,scroll.firstElementChild?.nextSibling||scroll.firstChild);
-    row.append(master,spatial,global);
-    const ml=master.querySelector('label'); if(ml&&ml.firstChild)ml.firstChild.textContent='MASTER VOL ';
-    const dl=spatial.querySelector('label'); if(dl&&dl.firstChild)dl.firstChild.textContent='DISTANCE ';
-    const gl=global.querySelector('.panel-title > span:first-child'); if(gl)gl.textContent='ACCELLERATION';
-  }
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',arrange,{once:true});else arrange();
-  window.addEventListener('resize',arrange,{passive:true});
-  setTimeout(arrange,80);setTimeout(arrange,300);
-  new MutationObserver(()=>{try{arrange();}catch(_){}}).observe(document.querySelector('#sidebar')||document.body,{childList:true,subtree:true});
-})();
-</script>
-<script id="compact-palette-knob-layout-js">
-(function(){
-  function arrange(){
-    const vol=document.getElementById('slider-palette-volume')?.closest('.gear-volume-cell');
-    const acc=document.getElementById('slider-palette-acceleration')?.closest('.current-gear-accel-cell');
-    const parent=vol?.parentNode;
-    if(!vol||!acc||!parent)return;
-    if(vol.parentNode?.classList?.contains('gear-volume-accel-row')) return;
-    const row=document.createElement('div');row.className='gear-volume-accel-row';
-    parent.insertBefore(row,vol);
-    row.append(vol,acc);
-  }
-  arrange();
-  const target=document.getElementById('ratio-palette-modal')||document.body;
-  new MutationObserver(()=>{try{arrange()}catch(_){}}).observe(target,{childList:true,subtree:true});
-})();
-</script>
 <script id="visual-mode-controller">
 (function(){
   window.setSteamWhistleVisualMode=function(mode){
@@ -12120,7 +12109,6 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
         const freqLabel=preservedFrequency===null?'0.0Hz':preservedFrequency>=1000?`${(preservedFrequency/1000).toFixed(2)}kHz`:`${preservedFrequency.toFixed(1)}Hz`;
                 if(document.getElementById('fundamental-unit'))document.getElementById('fundamental-unit').textContent='Hz';
         if(document.getElementById('val-fundamental'))document.getElementById('val-fundamental').textContent=freqLabel;
-        syncCanvasCrankControl?.();
         if(!state.legato) updateKinematicNetwork();
       }catch(_){}
     }
@@ -12215,8 +12203,8 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     const mobilePrimaryRow=document.createElement('div');
     mobilePrimaryRow.id='mobile-primary-knob-row';
     mobilePrimaryRow.setAttribute('aria-label','Primary controls');
-    const mobileMasterControl=nodes.master?.querySelector('#input-master-vol')?.closest('.control-group');
-    const mobileDistanceControl=nodes.spatial?.querySelector('#slider-spatial-scale')?.closest('.control-group');
+    const mobileMasterControl=document.getElementById('input-master-vol')?.closest('.control-group');
+    const mobileDistanceControl=document.getElementById('slider-spatial-scale')?.closest('.control-group');
     if(mobileMasterControl&&mobileDistanceControl&&nodes.globalAcceleration){
       original.mobilePrimary.set(mobileMasterControl,{parent:mobileMasterControl.parentNode,next:mobileMasterControl.nextSibling});
       original.mobilePrimary.set(mobileDistanceControl,{parent:mobileDistanceControl.parentNode,next:mobileDistanceControl.nextSibling});
@@ -12363,7 +12351,7 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   function gearSnapshot(g){
     const audio=audioBufferToWavBase64(g.audioBuffer);
     return {
-      id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,
+      id:g.id,teeth:g.teeth,color:g.color,isMain:!!g.isMain,x:g.x,y:g.y,angle:g.angle,phaseOffsetDeg:g.phaseOffsetDeg,offcenter:getGearOffcenterPercent(g),
       volume:g.volume,muted:!!g.muted,solo:!!g.solo,ratioLock:!!g.ratioLock,teethLock:!!g.teethLock,
       midiWidthActive:!!g._midiWidthActive,midiWidth:safeNumber(g._midiWidth,1),
       orbitEnabled:!!g.orbitEnabled,orbitPeriodSec:g.orbitPeriodSec,orbitDirection:g.orbitDirection,orbitDirectionToggle:g._orbitDirectionToggle!==false,orbitAngle:g.orbitAngle,orbitRadius:g.orbitRadius,orbitPhase:g.orbitPhase,orbitPreservePhase:!!g.orbitPreservePhase,hrtfZ:safeNumber(g.hrtfZ,0),hrtfZAdsr:!!g.hrtfZAdsr,hrtfZAngleDeg:safeNumber(g.hrtfZAngleDeg,0),hrtfZRate:safeNumber(g.hrtfZRate,1),
@@ -12510,7 +12498,7 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     const snapshots=Array.isArray(p.state.gears)?p.state.gears:[];
     for(const sg of snapshots){
       const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
-      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,_orbitDirectionToggle:sg.orbitDirectionToggle!==false,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+      Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),offcenter:Math.max(0,Math.min(100,safeNumber(sg.offcenter,0))),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,_orbitDirectionToggle:sg.orbitDirectionToggle!==false,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||sg.toothWaveform||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
       g.setPhaseOffsetDeg(safeNumber(sg.phaseOffsetDeg,0));
       g.widthModEnabled=!!sg.widthModEnabled;
       if(sg.widthMod) g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
@@ -13123,4 +13111,159 @@ html:not(:has(body.neon-visual-mode)) textarea{font-family:Arial,Helvetica,sans-
 }
 </style>
 
+<style id="v108-four-knob-offcenter">
+.gear-volume-accel-phase-row,.inspector-volume-accel-phase-row{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:4px!important;align-items:start!important;}
+.gear-volume-accel-phase-row .current-gear-knob-cell,.inspector-volume-accel-phase-row .current-gear-knob-cell{min-width:0!important;overflow:visible;}
+.gear-volume-accel-phase-row .rotary-host,.inspector-volume-accel-phase-row .rotary-host{width:52px!important;min-width:52px!important;height:52px!important;margin:2px auto 0!important;}
+.gear-volume-accel-phase-row .rotary-knob,.inspector-volume-accel-phase-row .rotary-knob{width:46px!important;height:46px!important;}
+.gear-volume-accel-phase-row .rotary-value,.inspector-volume-accel-phase-row .rotary-value{font-size:7px!important;min-width:34px!important;max-width:40px!important;padding:2px 1px!important;}
+.gear-volume-accel-phase-row .rotary-label,.inspector-volume-accel-phase-row .rotary-label{font-size:.54rem!important;line-height:1!important;white-space:nowrap!important;}
+@media(max-width:900px){
+  .gear-volume-accel-phase-row,.inspector-volume-accel-phase-row{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:3px!important;}
+  .gear-volume-accel-phase-row .rotary-host,.inspector-volume-accel-phase-row .rotary-host{width:44px!important;min-width:44px!important;height:46px!important;margin:1px auto 0!important;}
+  .gear-volume-accel-phase-row .rotary-knob,.inspector-volume-accel-phase-row .rotary-knob{width:40px!important;height:40px!important;}
+  .gear-volume-accel-phase-row .rotary-value,.inspector-volume-accel-phase-row .rotary-value{font-size:6.5px!important;min-width:28px!important;max-width:34px!important;padding:1px!important;}
+  .gear-volume-accel-phase-row .rotary-label,.inspector-volume-accel-phase-row .rotary-label{font-size:.48rem!important;}
+}
+</style>
+
+
+<style id="v111-desktop-layout-only">
+/* v111: final desktop layout pass only. No HTML structure, IDs, handlers, or audio code changes. */
+@media (min-width:901px){
+  /* Kill every legacy reserved-footer value that appears later in the file. */
+  :root{--frame-footer:0px!important;}
+  #app-container{
+    top:40px!important;
+    bottom:0!important;
+    height:auto!important;
+    min-height:0!important;
+    padding-top:0!important;
+    padding-bottom:0!important;
+  }
+  #canvas-container,
+  #sidebar,
+  #ratio-palette-modal{
+    bottom:0!important;
+  }
+  /* Keep the full-width keyboard above the right palette rail so RESET PITCH remains clickable. */
+  #sidebar{z-index:20000!important;}
+
+  /* Keyboard is the only bottom control panel. It touches the viewport edge. */
+  #sidebar .keyboard-panel-box{
+    position:fixed!important;
+    left:0!important;
+    right:0!important;
+    bottom:0!important;
+    width:100vw!important;
+    height:113px!important;
+    min-height:113px!important;
+    max-height:113px!important;
+    margin:0!important;
+    padding:3px 7px 0!important;
+    box-sizing:border-box!important;
+    display:grid!important;
+    grid-template-columns:auto minmax(0,1fr) auto!important;
+    grid-template-rows:23px 65px 21px!important;
+    column-gap:10px!important;
+    row-gap:0!important;
+    align-items:center!important;
+    overflow:hidden!important;
+  }
+
+  #sidebar .keyboard-panel-title{
+    grid-column:1 / -1!important;
+    grid-row:1!important;
+    height:23px!important;
+    min-height:23px!important;
+    margin:0!important;
+  }
+
+  #sidebar .keyboard-container{
+    grid-column:1 / -1!important;
+    grid-row:2!important;
+    width:100%!important;
+    height:65px!important;
+    min-height:65px!important;
+    margin:0!important;
+    padding:2px!important;
+  }
+
+  /* Flatten the old Octave/Reset wrapper so its three controls can occupy
+     one visual row: OCTAVE controls | POLY/CONTINUOUS/JI | RESET PITCH. */
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"]{
+    display:contents!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"] > div:first-child{
+    grid-column:1!important;
+    grid-row:3!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    gap:4px!important;
+    width:auto!important;
+    height:21px!important;
+    min-height:21px!important;
+    margin:0!important;
+    white-space:nowrap!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="justify-content: space-between"] > #btn-reset-pitch{
+    grid-column:3!important;
+    grid-row:3!important;
+    align-self:center!important;
+    margin:0!important;
+  }
+
+  #sidebar .keyboard-panel-box > div[style*="border-top"]{
+    grid-column:2!important;
+    grid-row:3!important;
+    display:block!important;
+    width:100%!important;
+    height:21px!important;
+    min-height:21px!important;
+    margin:0!important;
+    padding:0!important;
+    border-top:0!important;
+    overflow:visible!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] > div:first-child{
+    display:flex!important;
+    align-items:center!important;
+    justify-content:flex-start!important;
+    flex-wrap:nowrap!important;
+    gap:12px!important;
+    width:100%!important;
+    height:21px!important;
+    min-height:21px!important;
+    margin:0!important;
+    padding:0!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] label{
+    display:inline-flex!important;
+    align-items:center!important;
+    gap:4px!important;
+    margin:0!important;
+    padding:0!important;
+    white-space:nowrap!important;
+    font-size:.68rem!important;
+  }
+  #sidebar .keyboard-panel-box > div[style*="border-top"] input[type="radio"]{
+    margin:0!important;
+  }
+}
+</style>
+
+<style id="v111-desktop-footer-rail-fix">
+/* v111 fix: reserve the fixed 113px keyboard footer in the desktop frame.
+   This keeps both side rails fully scrollable above the keyboard instead of
+   allowing their bottom controls to sit underneath it. */
+@media (min-width:901px){
+  :root{--frame-footer:113px!important;}
+  #app-container{
+    bottom:var(--frame-footer)!important;
+  }
+}
+</style>
 </html>
+
+
