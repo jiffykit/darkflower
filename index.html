@@ -1470,12 +1470,17 @@
   #midi-learn-menu button:hover { background:rgba(213,162,75,.16); }
   #midi-learn-menu .midi-learn-status { padding:6px 9px; color:#62f08a; border-top:1px solid rgba(255,255,255,.08); margin-top:3px; }
   .midi-learn-armed { outline:2px solid #62f08a !important; outline-offset:1px; }
+
+/* Preset navigation occupies the old PRESETS slot and keeps BLOOM slightly shorter. */
+.keyboard-panel-title{padding-right:112px!important;}
+@media(max-width:900px) and (orientation:portrait){.keyboard-panel-title{padding-right:104px!important;}}
 </style>
 <style id="user-presets-css">
 #user-presets-toggle{font:700 10px/1 Arial,sans-serif;letter-spacing:.6px;padding:4px 8px;min-width:58px;}
 #user-preset-menu{position:fixed;display:none;z-index:12000;width:min(420px,calc(100vw - 16px));max-height:min(46vh,430px);box-sizing:border-box;overflow:hidden;background:rgba(18,14,10,.98);border:1px solid #75552d;border-radius:8px;box-shadow:0 12px 36px rgba(0,0,0,.65);color:var(--text-main,#eee);font-family:Arial,sans-serif;}
 #user-preset-menu.is-open{display:flex;flex-direction:column;}
-#user-preset-menu .preset-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid #4f3b22;}
+#user-preset-menu .preset-head{display:flex;align-items:center;gap:6px;padding:7px 8px;border-bottom:1px solid #4f3b22;cursor:grab;touch-action:none;user-select:none;}
+#user-preset-menu .preset-head:active{cursor:grabbing;}
 #user-preset-menu .preset-head strong{font-size:10px;letter-spacing:.8px;flex:1;}
 #user-preset-menu .preset-head input{min-width:0;flex:1;height:26px;box-sizing:border-box;}
 #user-preset-menu .preset-head button{height:26px;padding:2px 7px;font-size:9px;}
@@ -1493,21 +1498,37 @@
 #user-preset-menu .preset-depth-1{padding-left:18px;}
 #user-preset-menu .preset-depth-2{padding-left:29px;}
 #user-preset-menu .preset-depth-3{padding-left:40px;}
-#user-preset-menu .preset-foot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid #4f3b22;}
-#user-preset-menu .preset-foot button{flex:1;font-size:8px;padding:5px 6px;}
-#user-preset-menu .preset-status{font-size:8px;color:var(--text-muted,#9a9a9a);min-height:11px;flex:1;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#user-preset-menu .preset-foot{display:flex;align-items:center;gap:5px;padding:6px 8px;border-top:1px solid #4f3b22;flex-wrap:wrap;}
+#user-preset-menu .preset-foot button{flex:0 1 auto;font-size:8px;padding:5px 6px;}
+#user-preset-menu .preset-crossfade{display:flex;align-items:center;gap:4px;color:var(--text-muted,#9a9a9a);font-size:8px;white-space:nowrap;flex:1 1 118px;min-width:118px;}
+#user-preset-menu .preset-crossfade input{width:74px;height:18px;margin:0;accent-color:#d5a24b;}
+#user-preset-menu .preset-crossfade-value{display:inline-block;min-width:25px;text-align:right;color:var(--text-main,#eee);font-weight:700;}
+#user-preset-menu .preset-status{font-size:8px;color:var(--text-muted,#9a9a9a);min-height:11px;flex:0 1 120px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 body.neon-visual-mode #user-preset-menu{background:rgba(0,8,4,.98);border-color:#39ff88;box-shadow:0 0 25px rgba(57,255,136,.18),0 12px 36px rgba(0,0,0,.85);font-family:"Rajdhani","Arial Narrow",Arial,sans-serif;}
 body.neon-visual-mode #user-preset-menu .preset-head,body.neon-visual-mode #user-preset-menu .preset-foot{border-color:rgba(57,255,136,.32);}
 body.neon-visual-mode #user-preset-menu .preset-item{border-color:rgba(57,255,136,.28);background:rgba(0,18,9,.62);box-shadow:inset 0 0 10px rgba(57,255,136,.035);}
 body.neon-visual-mode #user-preset-menu .preset-head strong,body.neon-visual-mode #user-preset-menu .preset-name{color:#8bffb7;letter-spacing:.8px;text-shadow:0 0 6px rgba(57,255,136,.28);}
 #user-presets-toggle{display:none!important;}
-#keyboard-user-presets-toggle{display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:27px;padding:3px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;margin-left:auto;}
+#keyboard-preset-nav{position:absolute;top:6px;right:6px;display:flex;align-items:center;gap:3px;z-index:8;max-width:calc(100% - 12px);}
+#keyboard-preset-nav button{height:27px;min-height:27px;padding:3px 7px;font:700 9px/1 Arial,sans-serif;letter-spacing:.3px;box-sizing:border-box;}
+#keyboard-preset-nav > button:first-child,#keyboard-preset-nav > button:last-child{min-width:24px;width:24px;padding-left:0;padding-right:0;}
+#keyboard-user-presets-toggle{min-width:100px;max-width:132px;overflow:hidden;margin:0!important;white-space:nowrap;}
+#keyboard-preset-nav #keyboard-user-presets-toggle{position:relative!important;top:auto!important;right:auto!important;left:auto!important;bottom:auto!important;z-index:1!important;}
+#keyboard-user-presets-toggle .preset-nav-label{display:block;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:clip;}
+#keyboard-user-presets-toggle .preset-nav-label.is-long{animation:preset-nav-marquee 6.5s ease-in-out infinite alternate;will-change:transform;}
+@keyframes preset-nav-marquee{0%,14%{transform:translateX(0)}86%,100%{transform:translateX(var(--preset-nav-scroll, -20px))}}
+
 .keyboard-bloom-label,.keyboard-bloom-options{display:none!important;}
 .keyboard-bloom-slider-row{display:flex;align-items:center;gap:7px;width:100%;height:24px;}
 .keyboard-bloom-slider-row > input[type="range"]{flex:1 1 auto;min-width:120px;}
 .keyboard-bloom-placement{display:flex!important;align-items:center;gap:4px;white-space:nowrap;}
 
-@media(max-width:900px) and (orientation:portrait){#keyboard-user-presets-toggle{display:none!important;}}
+@media(max-width:900px) and (orientation:portrait){
+  #keyboard-preset-nav{top:3px;right:4px;gap:2px;max-width:calc(100% - 8px);}
+  #keyboard-preset-nav button{height:24px;min-height:24px;padding:2px 5px;font-size:8px;}
+  #keyboard-preset-nav > button:first-child,#keyboard-preset-nav > button:last-child{min-width:20px;width:20px;}
+  #keyboard-user-presets-toggle{min-width:84px;max-width:96px;}
+}
 #mobile-user-presets-toggle{z-index:12550;box-sizing:border-box;min-width:62px;padding:5px 8px;font:700 9px/1 Arial,sans-serif;letter-spacing:.5px;}
 .palette-mod-width-toggle{display:inline-flex;align-items:center;gap:4px;color:#62f08a;font-size:.62rem;font-weight:800;cursor:pointer;white-space:nowrap;}
 .palette-mod-width-toggle input{margin:0;accent-color:#62f08a;}
@@ -1826,6 +1847,55 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
   }
 }
 </style>
+<style id="v113-preset-nav-final">
+#keyboard-preset-nav #keyboard-user-presets-toggle{position:relative!important;top:auto!important;right:auto!important;left:auto!important;bottom:auto!important;margin:0!important;z-index:1!important;}
+#mobile-keyboard-dock #keyboard-preset-nav #keyboard-user-presets-toggle{position:relative!important;top:auto!important;right:auto!important;left:auto!important;bottom:auto!important;}
+</style>
+<style id="v115-preset-nav-layout">
+/* v115: keep preset navigation wholly inside the title row so it never covers keys. */
+#keyboard-preset-nav{
+  position:relative!important;inset:auto!important;display:flex!important;align-items:center!important;
+  align-self:flex-start!important;flex:0 0 214px!important;width:214px!important;max-width:214px!important;
+  margin:0 0 0 auto!important;gap:3px!important;z-index:8!important;overflow:hidden!important;
+}
+#keyboard-preset-nav > button{
+  height:20px!important;min-height:20px!important;box-sizing:border-box!important;
+  line-height:1!important;overflow:hidden!important;
+}
+#keyboard-preset-nav > button:first-child,#keyboard-preset-nav > button:last-child{
+  flex:0 0 22px!important;width:22px!important;min-width:22px!important;padding:0!important;
+}
+#keyboard-preset-nav #keyboard-user-presets-toggle{
+  position:relative!important;inset:auto!important;top:auto!important;right:auto!important;left:auto!important;bottom:auto!important;
+  flex:1 1 auto!important;width:auto!important;min-width:0!important;max-width:none!important;margin:0!important;padding:2px 7px!important;
+  overflow:hidden!important;white-space:nowrap!important;
+}
+#keyboard-user-presets-toggle .preset-nav-label{
+  display:block!important;max-width:100%!important;overflow:hidden!important;white-space:nowrap!important;text-overflow:clip!important;
+}
+.keyboard-panel-title{padding-right:0!important;}
+.keyboard-panel-title .keyboard-panel-spacer{display:none!important;}
+.keyboard-panel-title .keyboard-bloom-wrap{max-width:none!important;min-width:120px!important;flex:1 1 auto!important;}
+
+@media(max-width:900px) and (orientation:portrait){
+  #mobile-keyboard-dock .keyboard-panel-title{padding-left:34px!important;padding-right:0!important;gap:4px!important;}
+  #mobile-keyboard-dock #keyboard-preset-nav{
+    align-self:flex-start!important;flex:0 0 140px!important;width:140px!important;max-width:140px!important;gap:2px!important;
+  }
+  #mobile-keyboard-dock #keyboard-preset-nav > button{
+    height:20px!important;min-height:20px!important;padding:1px 4px!important;font-size:8px!important;
+  }
+  #mobile-keyboard-dock #keyboard-preset-nav > button:first-child,#mobile-keyboard-dock #keyboard-preset-nav > button:last-child{
+    flex:0 0 20px!important;width:20px!important;min-width:20px!important;padding:0!important;
+  }
+  #mobile-keyboard-dock #keyboard-user-presets-toggle{flex:1 1 auto!important;min-width:0!important;max-width:none!important;}
+  #mobile-keyboard-dock .keyboard-bloom-wrap{min-width:60px!important;flex:1 1 auto!important;}
+}
+@media(max-width:520px){
+  #mobile-keyboard-dock #keyboard-preset-nav{flex-basis:124px!important;width:124px!important;max-width:124px!important;}
+}
+</style>
+
 </head>
 <body>
 
@@ -2189,7 +2259,6 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
 
         <!-- PIANO KEYBOARD -->
         <div class="panel-box keyboard-panel-box">
-          <button id="keyboard-user-presets-toggle" type="button" title="User presets" aria-label="User presets">PRESETS</button>
           <div class="panel-title keyboard-panel-title">
             <span class="keyboard-title-label">BLOOM</span>
             <span class="keyboard-panel-spacer" aria-hidden="true"></span>
@@ -2198,6 +2267,11 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
                 <input id="slider-keyboard-bloom" type="range" min="-5" max="5" step="0.01" value="0" aria-label="Global harmonic bloom time and order" title="Bloom: left = high harmonics first; right = fundamental first">
                 <label class="keyboard-bloom-placement"><input id="chk-bloom-placement-order" type="radio"><span>Placement order</span></label>
               </div>
+            </div>
+            <div id="keyboard-preset-nav" class="keyboard-preset-nav" aria-label="Preset navigation">
+              <button id="keyboard-preset-prev" type="button" title="Previous preset" aria-label="Previous preset">&lt;</button>
+              <button id="keyboard-user-presets-toggle" type="button" title="Open presets" aria-label="Open presets"><span class="preset-nav-label">PRESETS</span></button>
+              <button id="keyboard-preset-next" type="button" title="Next preset" aria-label="Next preset">&gt;</button>
             </div>
           </div>
           <div class="keyboard-container" id="virtual-keyboard" aria-label="8 octave piano keyboard">
@@ -4289,10 +4363,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const segmentDuration = Math.max(.001, (gear.audioLoopEnd || gear.audioBuffer?.duration || .001) - (gear.audioLoopStart || 0));
           const targetRate = Math.max(.00001, segmentDuration * Math.abs(gear.freq || .001) * (gear._shapeRate || 1));
           const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
+          if (gear._presetTransitionActive) {
+            try { gear.audioSource.playbackRate.setTargetAtTime(targetRate, now, 0.012); } catch (_) {}
+            gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=0;
+          }
           const prevTarget = Number(gear._accelTargetAudioFreq);
           const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
           const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
-          if (changed) {
+          if (changed && !gear._presetTransitionActive) {
             try {
               const p=gear.audioSource.playbackRate;
               const currentRate=Math.max(.00001,Number(p.value)||targetRate);
@@ -4334,6 +4412,14 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             gear._accelLastDurationSec = 0;
             gear.osc.frequency.value = targetFreq; if (gear.oscSine) gear.oscSine.frequency.value = targetFreq;
             gear.delayNode.delayTime.value = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
+          } else if (gear._presetTransitionActive) {
+            try {
+              gear.osc.frequency.setTargetAtTime(targetFreq, now, 0.012);
+              if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(targetFreq, now, 0.012);
+            } catch (_) {}
+            const targetDelay = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
+            try { gear.delayNode.delayTime.setTargetAtTime(targetDelay, now, 0.012); } catch (_) {}
+            gear._accelTargetAudioFreq=targetFreq; gear._accelLastDurationSec=0;
           } else {
             applyGearAccelerationToAudio(gear, targetFreq, now, false);
             const targetDelay = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, targetFreq);
@@ -4343,12 +4429,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           const source = state.audioDriver.sources.get(gear.id);
           if (source) {
             const targetRate = Math.max(0.000001, Math.abs(gear.ratio) * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1));
+            if (gear._presetTransitionActive) {
+              try { source.playbackRate.setTargetAtTime(targetRate, now, 0.012); } catch (_) {}
+              gear._accelTargetAudioFreq=targetRate; gear._accelLastDurationSec=0;
+            }
             const durationSec = getEffectiveGearAccelerationMs(gear) / 1000;
             const prevTarget = Number(gear._accelTargetAudioFreq);
             const durationChanged = Number(gear._accelLastDurationSec) !== durationSec;
             const changed = !Number.isFinite(prevTarget) || Math.abs(prevTarget - targetRate) > Math.max(1e-6, Math.abs(targetRate) * 1e-7) || durationChanged;
             try {
-              if (changed) {
+              if (changed && !gear._presetTransitionActive) {
                 const p=source.playbackRate;
                 const currentRate=Math.max(.000001,Number(p.value)||targetRate);
                 p.cancelScheduledValues(now); p.setValueAtTime(currentRate,now);
@@ -4458,7 +4548,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
       document.getElementById('loop-conflict-warning').style.display = state.loopConflict ? 'block' : 'none';
 
-      updateAudioNodes();
+      if (!state._presetTransitionActive) updateAudioNodes();
       renderGearList();
       updateHUD();
     }
@@ -5073,19 +5163,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       visited.add(gear.id);
       if (gear.isMain) {
-        const motion=shapePhaseAndRate(gear.shape, rootPhase, gear.shapeParams || {});
+        const motion=shapePhaseAndRateForGear(gear, rootPhase);
         return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,rootPhase)) };
       }
       const parent = getGearParent(gear);
       if (!parent || parent.ratio === 0) {
         const transmittedPhase=gear.ratio*rootPhase+gear.phaseOffsetRad;
-        const motion=shapePhaseAndRate(gear.shape, transmittedPhase, gear.shapeParams || {});
+        const motion=shapePhaseAndRateForGear(gear, transmittedPhase);
         return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,transmittedPhase)) };
       }
       const parentMotion = getGearMechanicalMotionAtPhase(parent, rootPhase, visited);
       const relativeRatio = gear.ratio / parent.ratio;
       const transmittedPhase = parentMotion.phase * relativeRatio + gear.phaseOffsetRad;
-      const ownMotion = shapePhaseAndRate(gear.shape, transmittedPhase, gear.shapeParams || {});
+      const ownMotion = shapePhaseAndRateForGear(gear, transmittedPhase);
       return { phase: ownMotion.phase, rate: Math.max(0.001, parentMotion.rate * ownMotion.rate * getGearOffcenterRate(gear,transmittedPhase)) };
     }
 
@@ -5146,19 +5236,81 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const x = Math.sin((id * 12.9898) + salt * 78.233) * 43758.5453;
       return x - Math.floor(x);
     }
+    function transitionAmount(gear){
+      const t=Number(gear?._presetTransitionT);
+      return Number.isFinite(t)?Math.max(0,Math.min(1,t)):null;
+    }
+    function smoothstep01(t){const x=Math.max(0,Math.min(1,Number(t)||0));return x*x*(3-2*x);}
+    function blendNumber(a,b,t){const A=Number(a),B=Number(b);return Number.isFinite(A)&&Number.isFinite(B)?A+(B-A)*t:b;}
+    function interpolateShapeParams(a,b,t){
+      const A=normalizedShapeParams(a||{}),B=normalizedShapeParams(b||{}),u=Math.max(0,Math.min(1,Number(t)||0));
+      const out={...A};
+      for(const k of Object.keys(out)){
+        if(k==='triangleType') out[k]=u<1?A[k]:B[k];
+        else if(Number.isFinite(Number(A[k]))&&Number.isFinite(Number(B[k]))) out[k]=blendNumber(A[k],B[k],u);
+        else out[k]=u<1?A[k]:B[k];
+      }
+      return normalizedShapeParams(out);
+    }
+    function shapeRadiusForGear(gear,theta,radius){
+      if(!gear) return radius;
+      const u=transitionAmount(gear);
+      if(u==null || !gear._presetTransitionFromShape) return shapeRadius(gear.shape||'circular',theta,radius,gear.shapeParams||{});
+      const a=shapeRadius(gear._presetTransitionFromShape,theta,radius,gear._presetTransitionFromShapeParams||gear.shapeParams||{});
+      const b=shapeRadius(gear._presetTransitionToShape||gear.shape,theta,radius,gear._presetTransitionToShapeParams||gear.shapeParams||{});
+      return blendNumber(a,b,u);
+    }
+    function shapePhaseAndRateForGear(gear,theta){
+      if(!gear)return {phase:theta,rate:1};
+      const u=transitionAmount(gear);
+      if(u==null || !gear._presetTransitionFromShape) return shapePhaseAndRate(gear.shape||'circular',theta,gear.shapeParams||{});
+      const a=shapePhaseAndRate(gear._presetTransitionFromShape,theta,gear._presetTransitionFromShapeParams||gear.shapeParams||{});
+      const b=shapePhaseAndRate(gear._presetTransitionToShape||gear.shape,theta,gear._presetTransitionToShapeParams||gear.shapeParams||{});
+      return {phase:blendNumber(a.phase,b.phase,u),rate:Math.max(0.03,blendNumber(a.rate,b.rate,u))};
+    }
+    function gearToothRadiusForCount(teeth,theta,rOuter,rInner){
+      const n=Math.max(3,Math.round(Number(teeth)||3));
+      if(n>160)return rOuter;
+      const step=TAU/n, local=Math.abs((((theta+step*.5)%step)+step)%step-step*.5);
+      const toothHalf=step*.175, ramp=step*.070;
+      if(local<=toothHalf)return rOuter;
+      if(local<=toothHalf+ramp){
+        const q=(local-toothHalf)/Math.max(1e-6,ramp);const eased=q*q*(3-2*q);
+        return rOuter+(rInner-rOuter)*eased;
+      }
+      return rInner;
+    }
     function gearPath(ctx, gear, rOuter, rInner) {
-      const teeth = Math.max(3, gear.teeth|0);
-      if (gear.shape !== 'circular') {
-        const points = gear.shape === 'mobius' ? 160 : (gear.shape === 'square' ? 32 : (gear.shape === 'hexagon' ? 36 : 96));
+      const teeth = Math.max(3, Number(gear.teeth)||3);
+      const toothMorphT=transitionAmount(gear);
+      if (toothMorphT != null || gear.shape !== 'circular' || gear._presetTransitionFromShape) {
+        const fromShape=gear._presetTransitionFromShape||gear.shape||'circular';
+        const toShape=gear._presetTransitionToShape||gear.shape||'circular';
+        const points=(gear._presetTransitionFromShape||gear._presetTransitionToShape)?192:(toShape==='mobius'?160:(toShape==='square'?64:(toShape==='hexagon'?72:96)));
         ctx.beginPath();
-        for (let i = 0; i <= points; i++) {
-          const a = (i / points) * TAU;
-          const rr = Math.min(rOuter * 1.22, shapeRadius(gear.shape, a, rOuter * 0.88, gear.shapeParams));
-          const px = Math.cos(a) * rr, py = Math.sin(a) * rr;
-          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        for(let i=0;i<=points;i++){
+          const a=(i/points)*TAU;
+          let contour;
+          if(gear._presetTransitionFromShape){
+            contour=shapeRadiusForGear(gear,a,rOuter*.88);
+          }else{
+            contour=Math.min(rOuter*1.22,shapeRadius(toShape,a,rOuter*.88,gear.shapeParams||{}));
+          }
+          if(fromShape==='circular'&&toShape==='circular'&&toothMorphT!=null){
+            const fromR=gearToothRadiusForCount(gear._presetTransitionFromTeeth,a,rOuter,rInner);
+            const toR=gearToothRadiusForCount(gear._presetTransitionToTeeth,a,rOuter,rInner);
+            contour=blendNumber(fromR,toR,toothMorphT);
+          }else if(gear._presetTransitionFromShape&&toShape==='circular'){
+            const toR=gearToothRadiusForCount(gear._presetTransitionToTeeth??gear.teeth,a,rOuter,rInner);
+            contour=blendNumber(contour,toR,toothMorphT??1);
+          }else if(gear._presetTransitionFromShape&&fromShape==='circular'){
+            const fromR=gearToothRadiusForCount(gear._presetTransitionFromTeeth??gear.teeth,a,rOuter,rInner);
+            contour=blendNumber(fromR,contour,toothMorphT??1);
+          }
+          const px=Math.cos(a)*contour,py=Math.sin(a)*contour;
+          if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
         }
-        ctx.closePath();
-        return;
+        ctx.closePath();return;
       }
       if (teeth > 160) { ctx.beginPath(); ctx.arc(0,0,rOuter,0,TAU); ctx.closePath(); return; }
       if (teeth <= 5) {
@@ -5385,13 +5537,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function neonShapeRadius(gear,theta,baseRadius){
-      const shape=gear?.shape||'circular';
-      if(shape==='mobius'){
-        // Keep the Möbius contour readable while preserving its characteristic twist.
-        const p=normalizedShapeParams(gear?.shapeParams||{});
-        return shapeRadius(shape,theta,baseRadius,p);
-      }
-      return shapeRadius(shape,theta,baseRadius,gear?.shapeParams||{});
+      return shapeRadiusForGear(gear,theta,baseRadius);
     }
 
     function neonGearPoint(gear,theta,toothCount,visual={}){
@@ -9649,7 +9795,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
     function enhanceRangeAsRotary(input){
       if(!input || input.type!=='range' || input.dataset.rotaryDone==='1') return;
-      if(input.id==='slider-fundamental'||input.id==='slider-keyboard-bloom'||input.id==='slider-palette-tooth-width'||input.id==='slider-inspector-tooth-width') return;
+      if(input.id==='slider-fundamental'||input.id==='slider-keyboard-bloom'||input.id==='slider-palette-tooth-width'||input.id==='slider-inspector-tooth-width'||input.id==='user-preset-crossfade') return;
       input.dataset.rotaryDone='1';
       const host=document.createElement('div'); host.className='rotary-host'; host.dataset.rotaryFor=input.id; host.title=input.title||input.getAttribute('aria-label')||getRotaryLabel(input);
       const knob=document.createElement('div'); knob.className='rotary-knob'; knob.setAttribute('role','slider'); knob.tabIndex=0;
@@ -12812,13 +12958,17 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   const menu=document.createElement('section');menu.id='user-preset-menu';menu.setAttribute('aria-label','User Presets');menu.innerHTML=`
     <div class="preset-head"><strong>USER PRESETS</strong><input id="user-preset-name" type="text" maxlength="80" placeholder="Preset name"><button id="user-preset-save" class="btn-primary">SAVE</button><button id="user-preset-close" title="Close">×</button></div>
     <div class="preset-list" id="user-preset-list" tabindex="0"></div>
-    <div class="preset-foot"><button id="user-preset-export-current">EXPORT CURRENT .COG</button><button id="user-preset-export-all">EXPORT ALL</button><button id="user-preset-import">IMPORT PACK/.COG</button><input id="user-preset-file" type="file" accept=".cog,.cogpack,application/json" hidden><span class="preset-status" id="user-preset-status"></span></div>`;
+    <div class="preset-foot"><button id="user-preset-export-current">EXPORT CURRENT .COG</button><button id="user-preset-export-all">EXPORT ALL</button><button id="user-preset-import">IMPORT PACK/.COG</button><label class="preset-crossfade" title="Crossfade to the next selected preset"><span>CROSSFADE TIME</span><input id="user-preset-crossfade" type="range" min="0" max="10" step="0.1" value="0"><span class="preset-crossfade-value" id="user-preset-crossfade-value">0.0s</span></label><button id="user-preset-folder" title="Choose the folder containing index.html / preset files">FOLDER</button><input id="user-preset-folder-file" type="file" webkitdirectory directory multiple hidden><input id="user-preset-file" type="file" accept=".cog,.cogpack,application/json" hidden><span class="preset-status" id="user-preset-status"></span></div>`;
   document.body.appendChild(menu);
-  const desktopLauncher=document.getElementById('keyboard-user-presets-toggle');if(desktopLauncher)desktopLauncher.setAttribute('aria-expanded','false');
-  const inputName=el('user-preset-name'), list=el('user-preset-list'), status=el('user-preset-status');
+  const desktopLauncher=document.getElementById('keyboard-user-presets-toggle');
+  const presetNavLabel=document.querySelector('#keyboard-user-presets-toggle .preset-nav-label');if(desktopLauncher)desktopLauncher.setAttribute('aria-expanded','false');
+  const inputName=el('user-preset-name'), list=el('user-preset-list'), status=el('user-preset-status'), crossfadeInput=el('user-preset-crossfade'), crossfadeValue=el('user-preset-crossfade-value'), folderInput=el('user-preset-folder-file');
   let open=false;
-  function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(presets));return true;}catch(_){status.textContent='Local storage full - use .COG export';return false;}}
-  function setStatus(t){if(status){status.textContent=t||'';clearTimeout(setStatus.t);setStatus.t=setTimeout(()=>status.textContent='',2600);}}
+  let menuDrag=null;
+  let menuUserPosition=null;
+  let menuMoved=false;
+  let presetCrossfadeSeconds=0;
+  let directoryHandle=null;
   const collapsedCategories=new Set();
   let flatLeaves=[];
   let activeIndex=-1;
@@ -12826,9 +12976,119 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   let loadSequence=0;
   let presetLoadBusy=false;
   let pendingLoadIndex=null;
+  function persist(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(presets));return true;}catch(_){status.textContent='Local storage full - use .COG export';return false;}}
+  function setStatus(t){if(status){status.textContent=t||'';clearTimeout(setStatus.t);setStatus.t=setTimeout(()=>status.textContent='',3200);}}
+  try{presetCrossfadeSeconds=Math.max(0,Math.min(10,Number(localStorage.getItem('steamwhistle.presetCrossfade.v1')||0)));}catch(_){}
+  try{menuUserPosition=JSON.parse(localStorage.getItem('steamwhistle.userPresetMenuPos.v1')||'null');if(menuUserPosition&&Number.isFinite(menuUserPosition.left)&&Number.isFinite(menuUserPosition.top))menuMoved=true;}catch(_){}
+  if(crossfadeInput){crossfadeInput.value=String(presetCrossfadeSeconds);if(crossfadeValue)crossfadeValue.textContent=`${presetCrossfadeSeconds.toFixed(1)}s`;}
   function splitPresetName(name){
     return String(name||'Untitled').split(':').map(x=>x.trim()).filter(Boolean);
   }
+  function mergeIncomingPresets(incoming, sourceLabel='folder'){
+    const clean=incoming.filter(p=>p&&p.format==='STEAMWHISTLE-COG'&&p.state);
+    if(!clean.length)return 0;
+    const seen=new Map(presets.map((p,i)=>[String(p.name||'').toLowerCase(),i]));
+    let changed=0;
+    clean.forEach(p=>{
+      const key=String(p.name||'Untitled').toLowerCase();
+      if(seen.has(key))presets[seen.get(key)]=p;
+      else{seen.set(key,presets.length);presets.push(p);}
+      changed++;
+    });
+    persist();
+    render();
+    setStatus(`Loaded ${changed} preset${changed===1?'':'s'} from ${sourceLabel}`);
+    return changed;
+  }
+  async function parsePresetFile(file){
+    try{
+      const data=JSON.parse(await file.text());
+      if(data?.format==='STEAMWHISTLE-PRESET-PACK'&&Array.isArray(data.presets))return data.presets.filter(x=>x&&x.format==='STEAMWHISTLE-COG'&&x.state);
+      if(data?.format==='STEAMWHISTLE-COG'&&data.state)return [data];
+    }catch(_){}
+    return [];
+  }
+  async function loadPresetFiles(files, sourceLabel='folder'){
+    const incoming=[];
+    for(const file of files){
+      if(!/\.(?:cog|cogpack)$/i.test(file.name||''))continue;
+      incoming.push(...await parsePresetFile(file));
+    }
+    return mergeIncomingPresets(incoming,sourceLabel);
+  }
+  async function scanSiblingPresetDirectory(){
+    if(!/^https?:$/.test(location.protocol))return 0;
+    try{
+      const dirUrl=new URL('./',document.baseURI||location.href);
+      const res=await fetch(dirUrl.href,{cache:'no-store'});
+      if(!res.ok)return 0;
+      const html=await res.text();
+      const doc=new DOMParser().parseFromString(html,'text/html');
+      const hrefs=[...doc.querySelectorAll('a[href]')].map(a=>a.getAttribute('href')).filter(Boolean);
+      const urls=[];
+      for(const href of hrefs){
+        try{const u=new URL(href,dirUrl.href);if(u.origin!==dirUrl.origin||!u.pathname.startsWith(dirUrl.pathname))continue;if(/\.(?:cog|cogpack)$/i.test(u.pathname))urls.push(u.href);}catch(_){}
+      }
+      const files=[];
+      for(const url of urls){try{const r=await fetch(url,{cache:'no-store'});if(!r.ok)continue;const blob=await r.blob();const name=decodeURIComponent(new URL(url).pathname.split('/').pop()||'preset.cog');files.push(new File([blob],name,{type:r.headers.get('content-type')||'application/octet-stream'}));}catch(_){}}
+      return loadPresetFiles(files,'index folder');
+    }catch(_){return 0;}
+  }
+  async function loadFromDirectoryHandle(handle){
+    if(!handle)return 0;
+    try{
+      const perm=await handle.queryPermission?.({mode:'read'});
+      if(perm!=='granted')return 0;
+      const files=[];
+      for await(const entry of handle.values()){if(entry.kind==='file'&&/\.(?:cog|cogpack)$/i.test(entry.name)){try{files.push(await entry.getFile());}catch(_){}}}
+      return loadPresetFiles(files,'folder');
+    }catch(_){return 0;}
+  }
+  function openPresetHandleDb(){
+    return new Promise((resolve,reject)=>{
+      if(!window.indexedDB){resolve(null);return;}
+      const req=indexedDB.open('steamwhistle-preset-folders.v1',1);
+      req.onupgradeneeded=()=>{try{req.result.createObjectStore('handles');}catch(_){}};
+      req.onsuccess=()=>resolve(req.result);req.onerror=()=>resolve(null);
+    });
+  }
+  async function savePresetDirectoryHandle(handle){
+    const db=await openPresetHandleDb();if(!db)return false;
+    return new Promise(resolve=>{try{const tx=db.transaction('handles','readwrite');tx.objectStore('handles').put(handle,'current');tx.oncomplete=()=>{db.close();resolve(true)};tx.onerror=()=>{db.close();resolve(false)};}catch(_){try{db.close()}catch(__){};resolve(false);}});
+  }
+  async function getSavedPresetDirectoryHandle(){
+    const db=await openPresetHandleDb();if(!db)return null;
+    return new Promise(resolve=>{try{const tx=db.transaction('handles','readonly');const req=tx.objectStore('handles').get('current');req.onsuccess=()=>{const h=req.result||null;try{db.close()}catch(_){};resolve(h)};req.onerror=()=>{try{db.close()}catch(_){};resolve(null)};}catch(_){try{db.close()}catch(__){};resolve(null);}});
+  }
+  async function choosePresetFolder(){
+    try{
+      if(window.showDirectoryPicker){
+        directoryHandle=await window.showDirectoryPicker({mode:'read'});
+        try{localStorage.setItem('steamwhistle.presetFolderName.v1',directoryHandle.name||'');}catch(_){}
+        await savePresetDirectoryHandle(directoryHandle);
+        const count=await loadFromDirectoryHandle(directoryHandle);
+        if(!count) setStatus('Folder selected. No .COG/.COGPACK files found.');
+        return count;
+      }
+      el('user-preset-folder-file')?.click();
+    }catch(err){if(err?.name!=='AbortError')setStatus('Folder access cancelled');}
+    return 0;
+  }
+  async function autoLoadFolderPresets(){
+    let count=0;
+    count+=await scanSiblingPresetDirectory();
+    if(!directoryHandle)directoryHandle=await getSavedPresetDirectoryHandle();
+    if(directoryHandle)count+=await loadFromDirectoryHandle(directoryHandle);
+    return count;
+  }
+  function applyMenuPosition(){
+    if(!menuUserPosition)return false;
+    const mw=menu.offsetWidth||Math.min(420,window.innerWidth-16),mh=Math.min(500,window.innerHeight*.55);
+    const left=Math.max(8,Math.min(window.innerWidth-mw-8,Number(menuUserPosition.left)||8));
+    const top=Math.max(8,Math.min(window.innerHeight-mh-8,Number(menuUserPosition.top)||8));
+    menu.style.left=left+'px';menu.style.top=top+'px';menuUserPosition={left,top};return true;
+  }
+  function saveMenuPosition(){try{localStorage.setItem('steamwhistle.userPresetMenuPos.v1',JSON.stringify(menuUserPosition));}catch(_){}menuMoved=true;}
   function buildPresetTree(){
     const root={name:'',children:new Map(),leaves:[]};
     presets.forEach((p,i)=>{
@@ -12845,8 +13105,9 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   }
   function categoryKey(parts){return parts.join('\u001f');}
   function render(){
-    if(!presets.length){list.innerHTML='<div class="preset-empty">No saved presets yet.</div>';flatLeaves=[];activeIndex=-1;return;}
+    if(!presets.length){list.innerHTML='<div class="preset-empty">No saved presets yet.</div>';flatLeaves=[];activeIndex=-1;syncPresetNavDisplay();return;}
     const root=buildPresetTree();flatLeaves=[];list.innerHTML='';
+    if(activeIndex<0) activeIndex=0;
     const renderNode=(node,depth,path)=>{
       const entries=[...node.children.entries()].sort((a,b)=>a[0].localeCompare(b[0],undefined,{numeric:true,sensitivity:'base'}));
       entries.forEach(([name,child])=>{
@@ -12877,11 +13138,30 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     };
     const countLeaves=n=>n.leaves.length+[...n.children.values()].reduce((sum,c)=>sum+countLeaves(c),0);
     renderNode(root,0,[]);
+    syncPresetNavDisplay();
   }
+  // Populate the preset name display immediately, even before the modal is opened.
+  render();
+  function syncPresetNavDisplay(){
+    const targets=document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle');
+    let item=null;
+    if(flatLeaves.length){const idx=activeIndex>=0&&activeIndex<flatLeaves.length?activeIndex:0;item=flatLeaves[idx];}
+    const fullName=item?.preset?.name||item?.name||'PRESETS';
+    targets.forEach(btn=>{
+      let label=btn.querySelector('.preset-nav-label');
+      if(!label){label=document.createElement('span');label.className='preset-nav-label';btn.textContent='';btn.appendChild(label);}
+      label.textContent=fullName;
+      label.classList.toggle('is-long',fullName.length>16);
+      const visibleChars=Math.max(8,Math.floor((btn.clientWidth||100)/6.2));
+      label.style.setProperty('--preset-nav-scroll',`-${Math.max(0,(fullName.length-visibleChars)*6.2).toFixed(1)}px`);
+      btn.title=item?.preset?.name||fullName;btn.setAttribute('aria-label',`Open preset ${fullName}`);
+    });
+  }
+
   async function loadByFlatIndex(index){
     if(!flatLeaves.length)return;
     index=Math.max(0,Math.min(flatLeaves.length-1,index));
-    activeIndex=index;pendingLoadIndex=index;render();
+    activeIndex=index;pendingLoadIndex=index;render();syncPresetNavDisplay();
     requestAnimationFrame(()=>{const row=list.querySelector(`[data-preset-index="${index}"]`);row?.scrollIntoView({block:'nearest'});});
     if(presetLoadBusy)return;
     presetLoadBusy=true;
@@ -12890,7 +13170,9 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
         const target=pendingLoadIndex;pendingLoadIndex=null;
         const item=flatLeaves[target];if(!item)continue;
         const seq=++loadSequence;
-        await loadPreset(item.preset);
+        const seconds=Math.max(0,Math.min(10,Number(presetCrossfadeSeconds)||0));
+        if(seconds>0) await transitionToPreset(item.preset,seconds);
+        else await loadPreset(item.preset);
         if(seq===loadSequence)setStatus('Loaded '+(item.preset.name||item.name));
       }
     }finally{presetLoadBusy=false;}
@@ -12902,6 +13184,7 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     loadByFlatIndex(next);
   }
   function anchorMenu(){
+    if(menuMoved&&applyMenuPosition())return;
     const key=el('virtual-keyboard');if(!key)return;
     const r=key.getBoundingClientRect();const mw=Math.min(420,window.innerWidth-16), mh=Math.min(window.innerHeight*.55,500);
     let left=Math.max(8,Math.min(window.innerWidth-mw-8,r.left+(r.width-mw)/2));
@@ -12909,8 +13192,25 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     menu.style.width=mw+'px';menu.style.maxHeight=mh+'px';menu.style.left=left+'px';menu.style.top=Math.max(8,top)+'px';
     if(desktopLauncher) desktopLauncher.setAttribute('aria-expanded',open?'true':'false');
   }
-  function setOpen(v){open=!!v;menu.classList.toggle('is-open',open);document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));if(open){anchorMenu();render();list?.focus?.();}}
+  async function setOpen(v){open=!!v;menu.classList.toggle('is-open',open);document.querySelectorAll('#keyboard-user-presets-toggle,#mobile-user-presets-toggle').forEach(b=>b.setAttribute('aria-expanded',open?'true':'false'));if(open){anchorMenu();render();list?.focus?.();autoLoadFolderPresets().catch(()=>{});}}
   function toggle(){setOpen(!open);}
+  const presetHead=menu.querySelector('.preset-head');
+  presetHead?.addEventListener('pointerdown',e=>{
+    if(e.target.closest('input,button,label'))return;
+    const r=menu.getBoundingClientRect();menuDrag={id:e.pointerId,dx:e.clientX-r.left,dy:e.clientY-r.top};
+    try{presetHead.setPointerCapture(e.pointerId);}catch(_){}
+    e.preventDefault();
+  });
+  presetHead?.addEventListener('pointermove',e=>{
+    if(!menuDrag||menuDrag.id!==e.pointerId)return;
+    const mw=menu.offsetWidth||420,mh=menu.offsetHeight||300;
+    const left=Math.max(8,Math.min(window.innerWidth-mw-8,e.clientX-menuDrag.dx));
+    const top=Math.max(8,Math.min(window.innerHeight-mh-8,e.clientY-menuDrag.dy));
+    menu.style.left=left+'px';menu.style.top=top+'px';menuUserPosition={left,top};
+    e.preventDefault();
+  });
+  const finishMenuDrag=e=>{if(menuDrag&&menuDrag.id===e.pointerId){menuDrag=null;saveMenuPosition();}};
+  presetHead?.addEventListener('pointerup',finishMenuDrag);presetHead?.addEventListener('pointercancel',finishMenuDrag);
   function downloadText(name,text,type){const blob=new Blob([text],{type}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),500);}
   function exportPreset(p){downloadText((p.name||'preset').replace(/[^a-z0-9 _.-]/gi,'_')+'.cog',JSON.stringify(p,null,2),'application/octet-stream');setStatus('Exported .COG');}
   function exportAll(){
@@ -12928,9 +13228,386 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
     state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;state.visualMode=st.visualMode==='neon'?'neon':'default';state.globalAccelerationPercent=Number.isFinite(Number(st.globalAccelerationPercent))?clampGlobalAccelerationPercent(st.globalAccelerationPercent):clampGlobalAccelerationPercent((Number(st.globalAccelerationMs)||1000)/10);state.globalAccelerationMs=state.globalAccelerationPercent*10;state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
   }
+  function fadeAudioForPresetReplace(durationSec=0.1){
+    const ctx=state.audioCtx;if(!ctx||!state.audioRunning)return Promise.resolve(false);
+    const duration=Math.max(0.01,Number(durationSec)||0.1),now=ctx.currentTime;
+    try{
+      if(state.masterGain?.gain){const g=state.masterGain.gain;const current=Math.max(0,Number(g.value)||0);g.cancelScheduledValues(now);g.setValueAtTime(current,now);g.linearRampToValueAtTime(0,now+duration);}
+    }catch(_){}
+    return new Promise(resolve=>setTimeout(()=>{try{stopAudio();}catch(_){}resolve(true);},Math.ceil(duration*1000)+12));
+  }
+  function safeLerp(a,b,t){return Number.isFinite(Number(a))&&Number.isFinite(Number(b))?Number(a)+(Number(b)-Number(a))*t:b;}
+  function lerpObject(A,B,t){
+    const a=A&&typeof A==='object'?A:{};
+    const b=B&&typeof B==='object'?B:{};
+    const out={...a};
+    const keys=new Set([...Object.keys(a),...Object.keys(b)]);
+    for(const k of keys){
+      if(Number.isFinite(Number(a[k]))&&Number.isFinite(Number(b[k]))) out[k]=safeLerp(a[k],b[k],t);
+      else out[k]=t<1?a[k]:b[k];
+    }
+    return out;
+  }
+  function getGearTransitionState(g){
+    return {
+      x:Number(g?.x)||0,y:Number(g?.y)||0,angle:Number(g?.angle)||0,
+      offcenter:getGearOffcenterPercent(g),volume:Math.max(0,Math.min(1,Number(g?.volume)||0)),
+      accelerationMs:Math.max(0,Math.min(5000,Number(g?.accelerationMs)||0)),
+      orbitPeriodSec:Math.max(.25,Number(g?.orbitPeriodSec)||8),orbitAngle:Number(g?.orbitAngle)||0,orbitRadius:Math.max(0,Number(g?.orbitRadius)||0),orbitPhase:Number(g?.orbitPhase)||0,
+      hrtfZ:Math.max(-1,Math.min(1,Number(g?.hrtfZ)||0)),hrtfZAngleDeg:Number(g?.hrtfZAngleDeg)||0,hrtfZRate:Math.max(.1,Math.min(8,Number(g?.hrtfZRate)||1)),
+      phaseOffsetDeg:Number(g?.phaseOffsetDeg)||0,toothWidth:Math.max(0,Math.min(.98,Number(g?.toothWidth)||.5)),
+      midiWidth:Math.max(0,Number(g?._midiWidth)||1),teeth:Math.max(3,Number(g?.teeth)||3),
+      ratio:Number.isFinite(Number(g?.ratio))?Number(g.ratio):0,
+      shapeParams:normalizedShapeParams(g?.shapeParams||{}),
+      adsr:cloneJSON(g?.adsr||state.adsr||{}),widthMod:cloneJSON(g?.widthMod||g?.adsr||state.adsr||{})
+    };
+  }
+  function getSnapshotTransitionState(sg){
+    return {
+      x:safeNumber(sg?.x,0),y:safeNumber(sg?.y,0),angle:safeNumber(sg?.angle,-Math.PI/2),
+      offcenter:Math.max(0,Math.min(100,safeNumber(sg?.offcenter,0))),volume:Math.max(0,Math.min(1,safeNumber(sg?.volume,.2))),
+      accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg?.accelerationMs,0))),
+      orbitPeriodSec:Math.max(.25,safeNumber(sg?.orbitPeriodSec,8)),orbitAngle:safeNumber(sg?.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg?.orbitRadius,0)),orbitPhase:safeNumber(sg?.orbitPhase,0),
+      hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg?.hrtfZ,0))),hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg?.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg?.hrtfZRate,1))),
+      phaseOffsetDeg:safeNumber(sg?.phaseOffsetDeg,0),toothWidth:Math.max(0,Math.min(.98,safeNumber(sg?.toothWidth,.5))),
+      midiWidth:Math.max(0,safeNumber(sg?.midiWidth,1)),teeth:Math.max(3,Number(sg?.teeth)||3),
+      ratio:Number.isFinite(Number(sg?.ratio))?Number(sg.ratio):0,
+      shapeParams:normalizedShapeParams(sg?.shapeParams||{}),
+      adsr:cloneJSON(sg?.adsr||state.adsr||{}),widthMod:cloneJSON(sg?.widthMod||sg?.adsr||state.adsr||{})
+    };
+  }
+  function applySnapshotDiscretes(g,sg){
+    if(!g||!sg)return;
+    const oldVol=Math.max(0,Math.min(1,safeNumber(g.volume,.2)));
+    Object.assign(g,{teeth:Math.max(1,Math.round(Number(sg.teeth)||g.teeth)),color:sg.color||g.color,isMain:!!sg.isMain,muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,orbitEnabled:!!sg.orbitEnabled,orbitDirection:sg.orbitDirection<0?-1:1,_orbitDirectionToggle:sg.orbitDirectionToggle!==false,orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZAdsr:!!sg.hrtfZAdsr,shape:sg.shape||g.shape,toothWaveform:sg.toothWaveform||g.toothWaveform,sourceMode:sg.sourceMode||g.sourceMode,midiNote:Math.round(safeNumber(sg.midiNote,g.midiNote||60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):g.shapeParams});
+    g.offcenter=Math.max(0,Math.min(100,safeNumber(sg.offcenter,g.offcenter)));
+    g.widthModEnabled=!!sg.widthModEnabled;g.widthMod=sg.widthMod?{...g.widthMod,...cloneJSON(sg.widthMod)}:g.widthMod;
+    g.toothWidth=Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,g.toothWidth)));
+    g.accelerationMs=Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,g.accelerationMs)));
+    g._midiWidth=Math.max(0,safeNumber(sg.midiWidth,g._midiWidth));
+    g.orbitPeriodSec=Math.max(.25,safeNumber(sg.orbitPeriodSec,g.orbitPeriodSec));
+    g.orbitAngle=safeNumber(sg.orbitAngle,g.orbitAngle);g.orbitRadius=Math.max(0,safeNumber(sg.orbitRadius,g.orbitRadius));g.orbitPhase=safeNumber(sg.orbitPhase,g.orbitPhase);
+    g.hrtfZ=Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,g.hrtfZ)));g.hrtfZAngleDeg=Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,g.hrtfZAngleDeg)));g.hrtfZRate=Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,g.hrtfZRate)));
+    g.phaseOffsetDeg=safeNumber(sg.phaseOffsetDeg,g.phaseOffsetDeg);
+    g.adsr=sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr};g.adsrLinks={attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})};
+    if(sg.widthMod)g.widthMod={...g.widthMod,...cloneJSON(sg.widthMod)};
+    g._presetTransitionLevel=1;
+    // During a crossfade the animation owns volume. Do not overwrite its envelope when discrete settings swap.
+    if (!g._inPresetTransition) g.volume=Math.max(0,Math.min(1,safeNumber(sg.volume,oldVol)));
+  }
+  function gearFromSnapshot(sg){
+    const g=new Gear(Number(sg.id),Math.max(1,Math.round(Number(sg.teeth)||1)),sg.color||'#999',!!sg.isMain);
+    Object.assign(g,{x:safeNumber(sg.x,0),y:safeNumber(sg.y,0),angle:safeNumber(sg.angle,-Math.PI/2),phaseOffsetDeg:safeNumber(sg.phaseOffsetDeg,0),offcenter:Math.max(0,Math.min(100,safeNumber(sg.offcenter,0))),_midiWidthActive:!!sg.midiWidthActive,_midiWidth:safeNumber(sg.midiWidth,1),volume:Math.max(0,Math.min(1,safeNumber(sg.volume,.2))),muted:!!sg.muted,solo:!!sg.solo,ratioLock:!!sg.ratioLock,teethLock:!!sg.teethLock,accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg.accelerationMs,0))),orbitEnabled:!!sg.orbitEnabled,orbitPeriodSec:Math.max(.25,safeNumber(sg.orbitPeriodSec,8)),orbitDirection:sg.orbitDirection<0?-1:1,_orbitDirectionToggle:sg.orbitDirectionToggle!==false,orbitAngle:safeNumber(sg.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg.orbitRadius,0)),orbitPhase:safeNumber(sg.orbitPhase,0),orbitPreservePhase:sg.orbitPreservePhase!==false,hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg.hrtfZ,0))),hrtfZAdsr:!!sg.hrtfZAdsr,hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg.hrtfZRate,1))),shape:sg.shape||'circular',toothWaveform:sg.toothWaveform||state.waveform,toothWidth:Math.max(0,Math.min(.98,safeNumber(sg.toothWidth,.5))),sourceMode:sg.sourceMode||state.waveform,adsr:sg.adsr?{...state.adsr,...cloneJSON(sg.adsr)}:{...state.adsr},audioFileName:sg.audioFileName||'',audioLoopStart:Math.max(0,safeNumber(sg.audioLoopStart,0)),audioLoopEnd:Math.max(0,safeNumber(sg.audioLoopEnd,0)),midiNote:Math.round(safeNumber(sg.midiNote,60)),magneticMesh:sg.magneticMesh!==false,shapeParams:sg.shapeParams?normalizedShapeParams(sg.shapeParams):normalizedShapeParams({}),adsrLinks:{attack:true,decay:true,sustain:true,release:true,...(sg.adsrLinks||{})}});
+    g.setPhaseOffsetDeg(safeNumber(sg.phaseOffsetDeg,0));g.widthModEnabled=!!sg.widthModEnabled;g.widthMod=sg.widthMod?cloneJSON(sg.widthMod):{...g.adsr};return g;
+  }
+  function transitionGearMatchScore(g, sg, currentMain, targetMain) {
+    if (!g || !sg) return -Infinity;
+    const gMain=!!g.isMain, sMain=!!sg.isMain;
+    if (gMain !== sMain) return -Infinity;
+    const gm=Math.max(1,Number(currentMain?.teeth)||1), sm=Math.max(1,Number(targetMain?.teeth)||1);
+    const gr=Math.max(0.0001,Math.abs(Number(g.teeth)||1)/gm);
+    const sr=Math.max(0.0001,Math.abs(Number(sg.teeth)||1)/sm);
+    const ratioCost=Math.abs(Math.log(gr/sr));
+    const posCost=Math.min(6,Math.hypot((Number(g.x)||0)-(Number(sg.x)||0),(Number(g.y)||0)-(Number(sg.y)||0))/80);
+    const shapeCost=(g.shape||'circular')===(sg.shape||'circular')?0:0.45;
+    const midiCost=Math.min(2,Math.abs((Number(g.midiNote)||60)-(Number(sg.midiNote)||60))/24);
+    return 8-ratioCost*3-posCost-shapeCost-midiCost;
+  }
+
+  function buildPresetTransitionMatches(targetGears) {
+    const current=[...state.gears], usedCurrent=new Set(), usedTarget=new Set(), pairs=[];
+    const currentMain=current.find(g=>g.isMain)||current[0]||null;
+    const targetMain=targetGears.find(g=>g.isMain)||targetGears[0]||null;
+    // Main gears are always paired with one another, even if their IDs differ.
+    if(currentMain && targetMain){ pairs.push({g:currentMain,sg:targetMain}); usedCurrent.add(currentMain.id); usedTarget.add(Number(targetMain.id)); }
+    // Stable IDs are the strongest identity signal for the remaining gears.
+    current.forEach(g=>{
+      if(usedCurrent.has(g.id))return;
+      const exact=targetGears.find(sg=>!usedTarget.has(Number(sg.id)) && Number(sg.id)===Number(g.id) && !sg.isMain);
+      if(exact){pairs.push({g,sg:exact});usedCurrent.add(g.id);usedTarget.add(Number(exact.id));}
+    });
+    // If IDs are different between presets, morph the closest remaining mechanical roles.
+    current.filter(g=>!usedCurrent.has(g.id)&&!g.isMain).forEach(g=>{
+      let best=null,bestScore=-Infinity;
+      targetGears.forEach(sg=>{
+        if(usedTarget.has(Number(sg.id))||sg.isMain)return;
+        const score=transitionGearMatchScore(g,sg,currentMain,targetMain);
+        if(score>bestScore){bestScore=score;best=sg;}
+      });
+      if(best){pairs.push({g,sg:best});usedCurrent.add(g.id);usedTarget.add(Number(best.id));}
+    });
+    const removals=current.filter(g=>!usedCurrent.has(g.id)).map(g=>({g,sg:null,start:{volume:Math.max(0,Math.min(1,Number(g.volume)||0))}}));
+    const additions=targetGears.filter(sg=>!usedTarget.has(Number(sg.id))).map(sg=>({sg,g:null}));
+    return {pairs,removals,additions,currentMain,targetMain};
+  }
+
+  async function transitionToPreset(p,durationSec){
+    if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
+    const duration=Math.max(.05,Math.min(10,Number(durationSec)||0));
+    if(!state.gears.length||!state.audioRunning){return loadPreset(p);}
+
+    const targetGears=Array.isArray(p.state.gears)?p.state.gears:[];
+    const targetById=new Map(targetGears.map(sg=>[Number(sg.id),sg]));
+    const targetRatioById=new Map();
+    const targetMainForRatios=targetGears.find(sg=>sg.isMain)||targetGears[0]||null;
+    if(targetMainForRatios){
+      targetRatioById.set(Number(targetMainForRatios.id),1);
+      const queue=[targetMainForRatios];
+      const visited=new Set([Number(targetMainForRatios.id)]);
+      while(queue.length){
+        const parent=queue.shift();
+        const parentId=Number(parent.id), parentRatio=Number(targetRatioById.get(parentId));
+        (parent.neighbors||[]).forEach(nid=>{
+          const child=targetById.get(Number(nid)); if(!child)return;
+          const childId=Number(child.id); if(visited.has(childId))return;
+          const childTeeth=Math.max(1,Number(child.teeth)||1);
+          const parentTeeth=Math.max(1,Number(parent.teeth)||1);
+          targetRatioById.set(childId,-parentRatio*(parentTeeth/childTeeth));
+          visited.add(childId); queue.push(child);
+        });
+      }
+    }
+    const match=buildPresetTransitionMatches(targetGears);
+    const {pairs,removals,additions,currentMain,targetMain}=match;
+    const pairTransitions=pairs.map(({g,sg})=>({g,sg,start:getGearTransitionState(g),target:getSnapshotTransitionState(sg),targetRatio:Number(targetRatioById.get(Number(sg.id))||0)}));
+    const targetMainId=Number(targetMain?.id);
+    const targetMainIsNew=!!targetMain && !pairs.some(x=>x.sg===targetMain);
+    const wasRunning=!!state.audioRunning;
+    const now=performance.now();
+    const smoother=t=>{const x=Math.max(0,Math.min(1,Number(t)||0));return x*x*x*(x*(x*6-15)+10);};
+    const startState={
+      fundamentalFreq:Number(state.fundamentalFreq)||Number(state.baseFundamentalFreq)||0,
+      baseFundamentalFreq:Number(state.baseFundamentalFreq)||Number(state.fundamentalFreq)||0,
+      masterVolume:Number(state.masterVolume)||0,
+      clockworkTickWidthMs:Number(state.clockworkTickWidthMs)||0,
+      bloomAmount:Number(state.bloom?.amount)||0,
+      globalAccelerationPercent:Number(state.globalAccelerationPercent)||0,
+      adsr:cloneJSON(state.adsr),
+      spatialScale:Number(state.spatialScale)||0, pitchModule:Number(state.pitchModule)||1.2, glissTime:Number(state.glissTime)||0,
+      camera:{x:Number(state.camera?.x)||0,y:Number(state.camera?.y)||0,zoom:Number(state.camera?.zoom)||1}
+    };
+
+    // Every matched gear gets explicit transition geometry. Ratios themselves remain
+    // kinematically derived from the continuously changing tooth counts below.
+    pairTransitions.forEach(({g,sg,start,targetRatio})=>{
+      const fromShape=g.shape||'circular',toShape=sg.shape||fromShape;
+      const fromParams=start.shapeParams,toParams=normalizedShapeParams(sg.shapeParams||{});
+      const fromTeeth=start.teeth,toTeeth=Math.max(1,Number(sg.teeth)||fromTeeth);
+      g._presetTransitionActive=true;g._presetTransitionT=0;
+      g._presetTransitionFromShape=fromShape;g._presetTransitionToShape=toShape;
+      g._presetTransitionFromShapeParams=fromParams;g._presetTransitionToShapeParams=toParams;
+      g._presetTransitionFromTeeth=fromTeeth;g._presetTransitionToTeeth=toTeeth;
+      g._presetTransitionFromRatio=start.ratio;g._presetTransitionToRatio=targetRatio;
+      g._presetTransitionFromSourceMode=g.sourceMode;g._presetTransitionToSourceMode=sg.sourceMode||g.sourceMode;
+    });
+
+    // Additions are created only when their sequential fade slot begins. This makes
+    // a 3→5 transition visibly create gear 4, then gear 5, rather than showing both
+    // destination gears silently from the first frame.
+    const addedTransitions=additions.map((add)=>({g:null,sg:add.sg,targetVolume:Math.max(0,Math.min(1,Number(add.sg.volume)||0)),targetRatio:Number(targetRatioById.get(Number(add.sg.id))||0),_created:false,_removed:false}));
+    const orderedAdds=addedTransitions.slice().sort((a,b)=>Number(a.sg.id)-Number(b.sg.id));
+    const orderedRemovals=removals.slice().sort((a,b)=>(a.g.isMain?1:0)-(b.g.isMain?1:0)||Number(a.g.id)-Number(b.g.id));
+    const changeCount=orderedAdds.length+orderedRemovals.length;
+    const slotDuration=duration/Math.max(1,changeCount);
+    orderedAdds.forEach((op,i)=>op._transitionSlotIndex=i);
+    orderedRemovals.forEach((op,i)=>op._transitionSlotIndex=orderedAdds.length+i);
+
+    // Map target preset IDs onto the actual in-memory gear IDs used during the morph.
+    // Preset packs can legitimately reuse different IDs for equivalent mechanical roles.
+    const targetToActualId=new Map();
+    pairs.forEach(({g,sg})=>targetToActualId.set(Number(sg.id),Number(g.id)));
+
+    // Hold the source neighbour graph during the morph. Target neighbour IDs are
+    // applied only after the continuous transition so the live source ratios cannot snap.
+    const applyFinalTargetNeighbors=(g,sg)=>{
+      if(!g||!sg)return;
+      const mapped=new Set();
+      (sg.neighbors||[]).forEach(id=>{
+        const actual=targetToActualId.get(Number(id));
+        if(actual!=null&&actual!==Number(g.id))mapped.add(actual);
+      });
+      g.neighbors=mapped;
+    };
+
+    state._presetTransitionActive=true;
+    setStatus(`Crossfading → ${p.name||'preset'} (${duration.toFixed(1)}s)`);
+
+    return new Promise(resolve=>{
+      const tick=()=>{
+        const linearT=Math.max(0,Math.min(1,(performance.now()-now)/(duration*1000)));
+        const t=smoother(linearT);
+        const freq=safeLerp(startState.fundamentalFreq,safeNumber(p.state.fundamentalFreq,startState.fundamentalFreq),t);
+
+        // Fundamental and base frequency both move continuously. Updating the base
+        // is important for POLY voices, which derive every voice from it.
+        if (!state.audioDriver.buffer) {
+          // Use the normal frequency setter so the live oscillator graph, MIDI/poly
+          // reference frequency, and visible Hz controls all follow the same value.
+          setFundamentalFrequency(Math.max(0,freq), true, true, true);
+          state.fundamentalFreq=Math.max(0,freq);
+          state.targetFundamentalFreq=Math.max(0,freq);
+          state.baseFundamentalFreq=Math.max(.001,freq || startState.baseFundamentalFreq || 1);
+        } else {
+          state.fundamentalFreq=Math.max(0,freq);
+          state.targetFundamentalFreq=Math.max(0,freq);
+          state.baseFundamentalFreq=Math.max(.001,freq || startState.baseFundamentalFreq || 1);
+        }
+        state.masterVolume=safeLerp(startState.masterVolume,safeNumber(p.state.masterVolume,startState.masterVolume),t);
+        state.clockworkTickWidthMs=safeLerp(startState.clockworkTickWidthMs,safeNumber(p.state.clockworkTickWidthMs,startState.clockworkTickWidthMs),t);
+        state.spatialScale=safeLerp(startState.spatialScale,safeNumber(p.state.spatialScale,startState.spatialScale),t);
+        state.pitchModule=safeLerp(startState.pitchModule,safeNumber(p.state.pitchModule,startState.pitchModule),t);
+        state.glissTime=safeLerp(startState.glissTime,safeNumber(p.state.glissTime,startState.glissTime),t);
+        state.camera=state.camera||{};state.camera.x=safeLerp(startState.camera.x,safeNumber(p.state.camera?.x,startState.camera.x),t);state.camera.y=safeLerp(startState.camera.y,safeNumber(p.state.camera?.y,startState.camera.y),t);state.camera.zoom=safeLerp(startState.camera.zoom,safeNumber(p.state.camera?.zoom,startState.camera.zoom),t);
+        state.globalAccelerationPercent=safeLerp(startState.globalAccelerationPercent,safeNumber(p.state.globalAccelerationPercent,startState.globalAccelerationPercent),t);
+        state.globalAccelerationMs=state.globalAccelerationPercent*10;
+        state.bloom=state.bloom||{};state.bloom.amount=safeLerp(startState.bloomAmount,safeNumber(p.state.bloom?.amount,startState.bloomAmount),t);
+        const targetAdsrs=p.state.adsr?cloneJSON(p.state.adsr):startState.adsr;
+        ['attack','decay','sustain','release','attackCurve','decayCurve','releaseCurve'].forEach(k=>{if(targetAdsrs[k]!==undefined&&startState.adsr[k]!==undefined)state.adsr[k]=safeLerp(startState.adsr[k],targetAdsrs[k],t);});
+
+        pairTransitions.forEach(({g,sg,start,target,targetRatio})=>{
+          g._presetTransitionT=t;
+          g.x=safeLerp(start.x,target.x,t);g.y=safeLerp(start.y,target.y,t);g.angle=safeLerp(start.angle,target.angle,t);
+          g.offcenter=safeLerp(start.offcenter,target.offcenter,t);
+          g.volume=safeLerp(start.volume,target.volume,t);
+          g.accelerationMs=safeLerp(start.accelerationMs,target.accelerationMs,t);
+          g.orbitPeriodSec=safeLerp(start.orbitPeriodSec,target.orbitPeriodSec,t);g.orbitAngle=safeLerp(start.orbitAngle,target.orbitAngle,t);g.orbitRadius=safeLerp(start.orbitRadius,target.orbitRadius,t);g.orbitPhase=safeLerp(start.orbitPhase,target.orbitPhase,t);
+          g.hrtfZ=safeLerp(start.hrtfZ,target.hrtfZ,t);g.hrtfZAngleDeg=safeLerp(start.hrtfZAngleDeg,target.hrtfZAngleDeg,t);g.hrtfZRate=safeLerp(start.hrtfZRate,target.hrtfZRate,t);
+          g.phaseOffsetDeg=safeLerp(start.phaseOffsetDeg,target.phaseOffsetDeg,t);g.toothWidth=safeLerp(start.toothWidth,target.toothWidth,t);g._midiWidth=safeLerp(start.midiWidth,target.midiWidth,t);g.teeth=safeLerp(start.teeth,target.teeth,t);
+          g.shapeParams=interpolateShapeParams(start.shapeParams,target.shapeParams,t);
+          g.adsr=lerpObject(start.adsr,target.adsr,t);g.widthMod=lerpObject(start.widthMod,target.widthMod,t);
+          g.ratio=safeLerp(start.ratio,targetRatio,t);
+          g.freq=Math.abs(g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+        });
+
+        orderedAdds.forEach(op=>{
+          const i=op._transitionSlotIndex;
+          const slotStart=(i*slotDuration)/duration,slotEnd=((i+1)*slotDuration)/duration;
+          const phase=Math.max(0,Math.min(1,(linearT-slotStart)/Math.max(1e-9,slotEnd-slotStart)));
+          const e=smoother(phase);
+          if(phase>0 && !op.g){
+            const g=gearFromSnapshot(op.sg);
+            const futureMain=!!op.sg.isMain;
+            if(futureMain)g.isMain=false;
+            const addTarget=getSnapshotTransitionState(op.sg);
+            g._presetTransitionActive=true;g._presetTransitionIn=true;g._inPresetTransition=true;g._presetTransitionLevel=0;g._presetTransitionT=t;
+            g._presetTransitionFromShape='circular';g._presetTransitionToShape=g.shape;
+            g._presetTransitionFromShapeParams=normalizedShapeParams({});g._presetTransitionToShapeParams=addTarget.shapeParams;
+            g._presetTransitionFromTeeth=3;g._presetTransitionToTeeth=addTarget.teeth;
+            g._presetTransitionFromRatio=0;g._presetTransitionToRatio=op.targetRatio;
+            g._presetTargetSnapshot=op.sg;g.neighbors=[];
+            g._presetAddStart={x:currentMain?Number(currentMain.x)||0:0,y:currentMain?Number(currentMain.y)||0:0,angle:currentMain?Number(currentMain.angle)||0:0};
+            g.x=g._presetAddStart.x;g.y=g._presetAddStart.y;g.angle=g._presetAddStart.angle;
+            g.teeth=3;g.offcenter=0;g.volume=0;g.accelerationMs=0;g.orbitPeriodSec=8;g.orbitAngle=0;g.orbitRadius=0;g.orbitPhase=0;g.hrtfZ=0;g.hrtfZAngleDeg=0;g.hrtfZRate=1;g.phaseOffsetDeg=0;g.toothWidth=.5;g._midiWidth=1;g.ratio=0;g.freq=0;g.adsr=cloneJSON(state.adsr||{});g.widthMod=cloneJSON(state.adsr||{});
+            g._presetTransitionAddTarget=addTarget;
+            if(state.gearMap.has(g.id))g.id=Math.max(0,...state.gears.map(x=>Number(x.id)||0))+1;
+            if(futureMain)g._presetWillBecomeMain=true;
+            state.gears.push(g);state.gearMap.set(g.id,g);op.g=g;op._created=true;
+            targetToActualId.set(Number(op.sg.id),Number(g.id));
+          }
+          if(op.g){
+            op.g._presetTransitionT=t;op.g._presetTransitionLevel=e;
+            const at=op.g._presetTransitionAddTarget||getSnapshotTransitionState(op.sg);
+            const addStart=op.g._presetAddStart||{x:0,y:0,angle:0};
+            op.g.x=safeLerp(addStart.x,at.x,e);op.g.y=safeLerp(addStart.y,at.y,e);op.g.angle=safeLerp(addStart.angle,at.angle,e);
+            op.g.offcenter=safeLerp(0,at.offcenter,e);op.g.volume=safeLerp(0,op.targetVolume,e);op.g.accelerationMs=safeLerp(0,at.accelerationMs,e);
+            op.g.orbitPeriodSec=safeLerp(8,at.orbitPeriodSec,e);op.g.orbitAngle=safeLerp(0,at.orbitAngle,e);op.g.orbitRadius=safeLerp(0,at.orbitRadius,e);op.g.orbitPhase=safeLerp(0,at.orbitPhase,e);
+            op.g.hrtfZ=safeLerp(0,at.hrtfZ,e);op.g.hrtfZAngleDeg=safeLerp(0,at.hrtfZAngleDeg,e);op.g.hrtfZRate=safeLerp(1,at.hrtfZRate,e);
+            op.g.phaseOffsetDeg=safeLerp(0,at.phaseOffsetDeg,e);op.g.toothWidth=safeLerp(.5,at.toothWidth,e);op.g._midiWidth=safeLerp(1,at.midiWidth,e);op.g.teeth=safeLerp(3,at.teeth,e);
+            op.g.shapeParams=interpolateShapeParams(normalizedShapeParams({}),at.shapeParams,e);op.g.adsr=lerpObject(cloneJSON(state.adsr||{}),at.adsr,e);op.g.widthMod=lerpObject(cloneJSON(state.adsr||{}),at.widthMod,e);
+            op.g.ratio=safeLerp(0,op.targetRatio,e);op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+          }
+        });
+
+        orderedRemovals.forEach(op=>{
+          const i=op._transitionSlotIndex;
+          const slotStart=(i*slotDuration)/duration,slotEnd=((i+1)*slotDuration)/duration;
+          const phase=Math.max(0,Math.min(1,(linearT-slotStart)/Math.max(1e-9,slotEnd-slotStart)));
+          const e=smoother(phase);
+          if(!op._removed && op.g && state.gears.includes(op.g)){
+            op.g._presetTransitionActive=true;op.g._presetTransitionOut=true;op.g._presetTransitionT=t;op.g._presetTransitionLevel=1-e;
+            const start=op.startState||getGearTransitionState(op.g);op.startState=start;
+            op.g.volume=Math.max(0,safeLerp(start.volume,0,e));op.g.offcenter=safeLerp(start.offcenter,0,e);op.g.accelerationMs=safeLerp(start.accelerationMs,0,e);
+            op.g.orbitRadius=safeLerp(start.orbitRadius,0,e);op.g.orbitAngle=safeLerp(start.orbitAngle,0,e);op.g.orbitPhase=safeLerp(start.orbitPhase,0,e);op.g.hrtfZ=safeLerp(start.hrtfZ,0,e);op.g.hrtfZAngleDeg=safeLerp(start.hrtfZAngleDeg,0,e);
+            op.g.hrtfZRate=safeLerp(start.hrtfZRate,1,e);op.g.phaseOffsetDeg=safeLerp(start.phaseOffsetDeg,0,e);op.g.toothWidth=safeLerp(start.toothWidth,.5,e);op.g._midiWidth=safeLerp(start.midiWidth,1,e);op.g.teeth=safeLerp(start.teeth,3,e);
+            op.g.shapeParams=interpolateShapeParams(start.shapeParams,normalizedShapeParams({}),e);op.g.adsr=lerpObject(start.adsr,state.adsr||{},e);op.g.widthMod=lerpObject(start.widthMod,state.adsr||{},e);op.g.ratio=safeLerp(start.ratio,0,e);
+            op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+            if(phase>=1){
+              try{removeGearAudio(op.g);}catch(_){}
+              state.gearMap.delete(op.g.id);
+              const gi=state.gears.indexOf(op.g);if(gi>=0)state.gears.splice(gi,1);
+              op._removed=true;
+            }
+          }
+        });
+
+        // Hold the current main until the target main is available, then hand over
+        // the kinematic root smoothly. The common pack uses stable main ID 1, so this
+        // only matters for presets whose main gear identity changes.
+        if(targetMainIsNew && linearT>=0.5 && !state._presetMainSwitched){
+          state._presetMainSwitched=true;
+          if(currentMain)currentMain.isMain=false;
+          const addedMain=addedTransitions.find(x=>Number(x.sg.id)===targetMainId);
+          const mainGear=addedMain?.g || state.gears.find(g=>Number(g.id)===targetMainId);
+          if(mainGear){mainGear.isMain=true;mainGear._presetWillBecomeMain=false;}
+        }
+
+        try{updateKinematicNetwork();}catch(_){ }
+        pairTransitions.forEach(({g,start,target,targetRatio})=>{
+          const r=safeLerp(start.ratio,targetRatio,t);
+          g.ratio=Number.isFinite(r)?r:0;
+          g.offcenter=safeLerp(start.offcenter,target.offcenter,t);
+          g.accelerationMs=safeLerp(start.accelerationMs,target.accelerationMs,t);
+          g.orbitRadius=safeLerp(start.orbitRadius,target.orbitRadius,t);
+          g.hrtfZ=safeLerp(start.hrtfZ,target.hrtfZ,t);
+          g.freq=Math.abs(g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+        });
+        const liveMain=state.gears.find(g=>g.isMain)||state.gears[0];
+        if(liveMain)state.mainTeeth=Number(liveMain.teeth)||state.mainTeeth;
+        addedTransitions.forEach(op=>{
+          if(!op.g)return;
+          op.g.ratio=Math.abs(Number(op.g.ratio)||0)*(Number(op.g.ratio)<0?-1:1);
+          op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+        });
+        // Keep the actual audio pitch following the transition continuously. The
+        // regular audio updater respects these _presetTransitionActive flags with a
+        // short smoothing time instead of repeatedly snapping to the frame target.
+        try{updateAudioNodes();}catch(_){ }
+        if(state.polyVoices.size)try{updatePolyVoices();}catch(_){ }
+        if(state.audioDriver.buffer&&state.audioDriver.playing)try{applyKeyboardDriverPitch();}catch(_){ }
+
+        if(linearT<1){requestAnimationFrame(tick);return;}
+
+        orderedRemovals.forEach(tr=>{if(tr._removed||!tr.g||!state.gears.includes(tr.g))return;try{removeGearAudio(tr.g);}catch(_){}state.gearMap.delete(tr.g.id);const i=state.gears.indexOf(tr.g);if(i>=0)state.gears.splice(i,1);tr._removed=true;});
+        pairTransitions.forEach(({g,sg})=>applyFinalTargetNeighbors(g,sg));
+        addedTransitions.forEach(({g,sg})=>applyFinalTargetNeighbors(g,sg));
+        pairTransitions.forEach(({g,sg})=>applySnapshotDiscretes(g,sg));
+        addedTransitions.forEach(({g,sg})=>applySnapshotDiscretes(g,sg));
+        // Preserve the exact target global state, including the discrete settings that
+        // were intentionally left untouched during the continuous morph.
+        assignStateValues(p.state);
+        state.gears.forEach(g=>{
+          g._presetTransitionActive=false;g._presetTransitionLevel=undefined;g._presetTransitionIn=undefined;g._presetTransitionOut=undefined;g._inPresetTransition=undefined;g._presetTransitionT=undefined;g._presetTransitionFromShape=undefined;g._presetTransitionToShape=undefined;g._presetTransitionFromShapeParams=undefined;g._presetTransitionToShapeParams=undefined;g._presetTransitionFromTeeth=undefined;g._presetTransitionToTeeth=undefined;g._presetTransitionFromRatio=undefined;g._presetTransitionToRatio=undefined;g._presetTargetSnapshot=undefined;g._presetTransitionFromSourceMode=undefined;g._presetTransitionToSourceMode=undefined;g._presetWillBecomeMain=undefined;g._presetTransitionAddTarget=undefined;g._presetAddStart=undefined;
+        });
+        state._presetMainSwitched=false;state._presetTransitionActive=false;
+        const byFinal=new Map(state.gears.map(g=>[Number(g.id),g]));
+        const selectedActual=targetToActualId.get(Number(p.state.selectedGearId));
+        const paletteActual=targetToActualId.get(Number(p.state.activePaletteGearId));
+        state.selectedGearId=(selectedActual!=null&&byFinal.has(selectedActual))?selectedActual:(state.gears.find(g=>g.isMain)?.id||null);
+        state.activePaletteGearId=(paletteActual!=null&&byFinal.has(paletteActual))?paletteActual:state.selectedGearId;
+        state.nextGearId=Math.max(safeNumber(state.nextGearId,1),...state.gears.map(g=>safeNumber(g.id,0)+1),1);
+        updateKinematicNetwork();renderRationalGearPalette?.();window.updateInspector?.();window.renderGearList?.();
+        try{setFundamentalFrequency(state.fundamentalFreq,false,true,true);}catch(_){}try{updateAudioNodes();}catch(_){ }
+        setTimeout(()=>{pairs.concat(addedTransitions).filter(tr=>tr.sg&&tr.g.sourceMode==='audio'&&tr.sg.audioWav).forEach(async tr=>{try{const b=await wavBase64ToAudioBuffer(tr.sg.audioWav,state.audioCtx);if(b){tr.g.audioBuffer=b;tr.g.audioLoopEnd=Math.min(tr.g.audioLoopEnd||b.duration,b.duration);tr.g.audioSource=null;updateAudioNodes();}}catch(_){}});},0);
+        resolve();
+      };
+      requestAnimationFrame(tick);
+    });
+  }
+
   async function loadPreset(p){
     if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
-    const wasRunning=!!state.audioRunning;try{if(wasRunning)stopAudio();}catch(_){ }
+    const wasRunning=!!state.audioRunning;
+    if(wasRunning)await fadeAudioForPresetReplace(0.1);
     try{state.gears.forEach(g=>{try{removeGearAudio(g);}catch(_){}});}catch(_){ }
     assignStateValues(p.state);
     state.gears=[];state.gearMap.clear();
@@ -12962,10 +13639,12 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     setTimeout(()=>{snapshots.forEach(async sg=>{const g=byId.get(sg.id);if(!g||!sg.audioWav)return;const b=await wavBase64ToAudioBuffer(sg.audioWav,state.audioCtx);if(b){g.audioBuffer=b;g.audioLoopEnd=Math.min(g.audioLoopEnd||b.duration,b.duration);g.audioSource=null;updateAudioNodes();renderRationalGearPalette?.();window.updateInspector?.();}});},0);
   }
   inputName?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveCurrent();setOpen(false);}});
-  el('user-preset-save')?.addEventListener('click',saveCurrent);el('user-preset-close')?.addEventListener('click',()=>setOpen(false));el('user-preset-export-current')?.addEventListener('click',exportCurrent);el('user-preset-export-all')?.addEventListener('click',exportAll);el('user-preset-import')?.addEventListener('click',()=>el('user-preset-file')?.click());
-  el('user-preset-file')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());let incoming=[];if(data?.format==='STEAMWHISTLE-PRESET-PACK'&&Array.isArray(data.presets)){incoming=data.presets.filter(x=>x&&x.format==='STEAMWHISTLE-COG'&&x.state);}else if(data?.format==='STEAMWHISTLE-COG'&&data.state){incoming=[data];}else throw new Error('format');
-      const seen=new Map(presets.map((p,i)=>[String(p.name||'').toLowerCase(),i]));incoming.forEach(p=>{const key=String(p.name||'Untitled').toLowerCase();if(seen.has(key))presets[seen.get(key)]=p;else{seen.set(key,presets.length);presets.push(p);}});persist();render();setStatus(`Imported ${incoming.length} preset${incoming.length===1?'':'s'}`);
-    }catch(_){setStatus('Invalid preset or pack');}e.target.value='';});
+  el('user-preset-save')?.addEventListener('click',saveCurrent);el('user-preset-close')?.addEventListener('click',()=>setOpen(false));el('user-preset-export-current')?.addEventListener('click',exportCurrent);el('user-preset-export-all')?.addEventListener('click',exportAll);el('user-preset-import')?.addEventListener('click',()=>el('user-preset-file')?.click());el('user-preset-folder')?.addEventListener('click',()=>choosePresetFolder());
+  el('keyboard-preset-prev')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();moveSelection(-1);});
+  el('keyboard-preset-next')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();moveSelection(1);});
+  crossfadeInput?.addEventListener('input',()=>{presetCrossfadeSeconds=Math.max(0,Math.min(10,Number(crossfadeInput.value)||0));if(crossfadeValue)crossfadeValue.textContent=`${presetCrossfadeSeconds.toFixed(1)}s`;try{localStorage.setItem('steamwhistle.presetCrossfade.v1',String(presetCrossfadeSeconds));}catch(_){}});
+  folderInput?.addEventListener('change',async e=>{const fs=[...(e.target.files||[])];if(fs.length){await loadPresetFiles(fs,'selected folder');}e.target.value='';});
+  el('user-preset-file')?.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;const incoming=await parsePresetFile(f);if(incoming.length)mergeIncomingPresets(incoming,'import');else setStatus('Invalid preset or pack');e.target.value='';});
   list?.addEventListener('keydown',e=>{if(!open)return;if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();moveSelection(e.key==='ArrowDown'?1:-1);}else if(e.key==='Home'){e.preventDefault();loadByFlatIndex(0);}else if(e.key==='End'){e.preventDefault();loadByFlatIndex(flatLeaves.length-1);}else if(e.key==='Enter'&&activeIndex>=0){e.preventDefault();loadByFlatIndex(activeIndex);}});
   list?.addEventListener('wheel',e=>{if(!open||!flatLeaves.length)return;e.preventDefault();wheelCarry+=e.deltaY;const threshold=Math.max(18,Math.min(70,list.clientHeight/5));while(Math.abs(wheelCarry)>=threshold){moveSelection(wheelCarry>0?1:-1);wheelCarry += wheelCarry>0?-threshold:threshold;}},{passive:false});
   window.addUserPreset=saveCurrent;window.exportUserPreset=exportCurrent;
@@ -12974,15 +13653,16 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
   document.addEventListener('click',e=>{const b=e.target.closest?.('#mobile-user-presets-toggle');if(!b)return;e.preventDefault();e.stopPropagation();if(!open)setOpen(true);});
   menu.addEventListener('click',e=>e.stopPropagation());
   menu.addEventListener('pointerdown',e=>e.stopPropagation());
-  document.addEventListener('click',e=>{if(open&&!menu.contains(e.target)&&!e.target.closest('#keyboard-user-presets-toggle')&&!e.target.closest('#mobile-user-presets-toggle'))setOpen(false);});
+  document.addEventListener('click',e=>{if(open&&!menu.contains(e.target)&&!e.target.closest('#keyboard-user-presets-toggle')&&!e.target.closest('#mobile-user-presets-toggle')&&!e.target.closest('#keyboard-preset-prev')&&!e.target.closest('#keyboard-preset-next'))setOpen(false);});
   document.addEventListener('keydown',e=>{
     if(!open||e.key!=='Enter')return;
     const t=e.target;
     if(t&&t.closest?.('#user-preset-name')){e.preventDefault();saveCurrent();setOpen(false);return;}
     e.preventDefault();setOpen(false);
   });
-  window.addEventListener('resize',()=>{if(open)anchorMenu();});window.addEventListener('scroll',()=>{if(open)anchorMenu();},{passive:true});
+  window.addEventListener('resize',()=>{if(open){if(menuMoved)applyMenuPosition();else anchorMenu();}});window.addEventListener('scroll',()=>{if(open&& !menuMoved)anchorMenu();},{passive:true});
   render();
+  autoLoadFolderPresets().catch(()=>{});
 })();
     // Expose a small deterministic contour regression helper for browser tests.
     window.__shapeContourSelfTest = () => {
@@ -13718,6 +14398,21 @@ html:not(:has(body.neon-visual-mode)) textarea{font-family:Arial,Helvetica,sans-
   }
 }
 </style>
+<style id="v115-preset-nav-row-final">
+@media (min-width:901px){
+  #sidebar .keyboard-panel-title{height:23px!important;min-height:23px!important;padding-right:0!important;overflow:visible!important;}
+  #sidebar #keyboard-preset-nav{position:relative!important;inset:auto!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;height:20px!important;min-height:20px!important;align-self:flex-start!important;}
+  #sidebar #keyboard-preset-nav > button{height:20px!important;min-height:20px!important;position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;}
+  #sidebar #keyboard-preset-nav #keyboard-user-presets-toggle{top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;}
+}
+@media (max-width:900px) and (orientation:portrait){
+  #mobile-keyboard-dock .keyboard-panel-title{padding-right:0!important;overflow:visible!important;}
+  #mobile-keyboard-dock #keyboard-preset-nav{position:relative!important;inset:auto!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;height:20px!important;min-height:20px!important;align-self:flex-start!important;}
+  #mobile-keyboard-dock #keyboard-preset-nav > button{height:20px!important;min-height:20px!important;position:relative!important;top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;}
+  #mobile-keyboard-dock #keyboard-preset-nav #keyboard-user-presets-toggle{top:auto!important;right:auto!important;bottom:auto!important;left:auto!important;}
+}
+</style>
+
 </html>
 
 
