@@ -937,6 +937,10 @@
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
     }
 
+.key.note-fading {
+      transition: background-color 210ms linear, color 210ms linear !important;
+    }
+
     .black-key {
       position: absolute;
       width: 8.5%;
@@ -977,6 +981,32 @@
       color: #000000 !important;
       transform: translateY(2px);
       box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    /* POLY LOWER-KEYBOARD NOTE LIGHTS: every held note gets its own colour and
+       intensity. Release fades the key back to the same black used at rest. */
+    #virtual-keyboard .key.note-lit {
+      transition: background-color 0.14s linear, color 0.14s linear, filter 0.14s linear;
+    }
+    #virtual-keyboard .key.note-lit.note-fading {
+      transition-duration: 0.18s;
+    }
+    /* Per-note colours must sit above the inverted desktop key background rules. */
+    #virtual-keyboard .key.note-lit {
+      background-color: var(--note-lit-bg, #000) !important;
+      color: var(--note-lit-fg, #f8fafc) !important;
+    }
+
+    /* MIDI USER controller */
+    #btn-midi-user { min-width:62px; padding:4px 9px; font-size:.65rem; font-weight:800; }
+    #btn-midi-user.user-armed {
+      outline:2px solid #62f08a !important;
+      outline-offset:1px;
+      background:linear-gradient(180deg,#88c96f,#466c31) !important;
+      color:#071006 !important;
+    }
+    #midi-user-status {
+      font-size:.62rem; color:var(--text-muted); line-height:1.3; margin-top:5px; min-height:1.3em;
     }
 
 
@@ -1984,7 +2014,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               </div>
               <div class="current-gear-accel-cell current-gear-knob-cell">
                 <label><span>Accelleration</span><span id="val-palette-acceleration" style="color:var(--accent-cyan);font-weight:700;">0 ms</span></label>
-                <input id="slider-palette-acceleration" type="range" min="0" max="10000" step="10" value="0" style="width:100%;margin-top:4px;" aria-label="Accelleration" title="0 ms = immediate pitch change; higher values glide to the new pitch.">
+                <input id="slider-palette-acceleration" type="range" min="0" max="5000" step="10" value="0" style="width:100%;margin-top:4px;" aria-label="Accelleration" title="0 ms = immediate pitch change; higher values glide to the new pitch.">
               </div>
               <div class="current-gear-accel-cell current-gear-knob-cell">
                 <label><span>Phase</span><span id="val-palette-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/1</span></label>
@@ -2331,9 +2361,11 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               <div title="MIDI CC64 sustain pedal. Note-offs are held while the pedal is down, then released when the pedal is raised.">SUSTAIN (CC64)<br><span id="midi-sustain-value">UP</span></div>
               <div title="Last received MIDI note velocity. Velocity controls note level in the poly engine.">VELOCITY<br><span id="midi-velocity-value">100%</span></div>
             </div>
-            <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+            <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:6px;">
+              <button id="btn-midi-user" type="button" title="Learn one MIDI CC, then use it to nudge whichever slider, knob, or numeric field the pointer is over or currently focused.">User</button>
               <button id="btn-midi-clear-all-learn" type="button" style="padding:3px 7px;font-size:.62rem;">Clear ALL MIDI Learn</button>
             </div>
+            <div id="midi-user-status" aria-live="polite"></div>
             <div id="midi-status" style="font-size:0.68rem; color:var(--text-muted); line-height:1.35; margin-top:6px;">WebMIDI disabled</div>
           </div>
         </div>
@@ -2493,6 +2525,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       activeSemitone: null,      // Active playing semitone
       releaseOnKeyup: true,      // Continuous OFF is the default startup mode
       keyboardAudioActive: false, // Gate state is established by initAudio() or an actual note-on.
+      keyboardVisualNotes: new Map(), // keyId -> { semitone, intensity, color, fading } for per-note lower-keyboard lights.
       audioRoutingWatchdog: null,
       audioRoutingWatchdogBusy: false,
       audioIdleShutdownAt: 0,
@@ -2506,6 +2539,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       midiPitchBendRange: 2,
       midiLastVelocity: 1,
       midiLearn: { armed: null, mappings: [] },
+      midiUser: { armed: false, mapping: null, lastValue: null, hoverElement: null, focusedElement: null, pointerX: null, pointerY: null },
       globalAccelerationPercent: 100,
       // Legacy field retained for old presets; runtime uses globalAccelerationPercent.
       globalAccelerationMs: 1000,
@@ -2531,7 +2565,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       driveDirection: 1,
       pitchModule: 1.2, // Pixels per tooth multiplier for pitch radius
       loopConflict: false,
-      masterPhase: 0, // Global fundamental phase angle [0, 2pi)
+      masterPhase: 0, // Wrapped global fundamental phase angle [0, 2pi) for bounded audio timing.
+      masterPhaseUnwrapped: 0, // Continuous mechanical phase; never wraps each main revolution.
       isSlidingFreq: false, // Instant pitch feedback mode during slider drag
       audioSyncPending: false,
       audioSyncPerfMs: 0,
@@ -2720,6 +2755,15 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       }
     }
 
+    function getMasterPhaseForMotion(){
+      const p=Number(state.masterPhaseUnwrapped);
+      return Number.isFinite(p) ? p : (Number(state.masterPhase)||0);
+    }
+    function wrapMasterPhase(phase){
+      const p=Number(phase)||0;
+      return ((p%TAU)+TAU)%TAU;
+    }
+
     function normalizeWrappedAngle(angle) {
       return Math.atan2(Math.sin(angle), Math.cos(angle));
     }
@@ -2849,7 +2893,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       newMain.ratio = 1;
       newMain.freq = state.fundamentalFreq;
       state.crankTool.beltTargetId = newMain.id;
-      state.masterPhase = 0;
+      state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
       updateKinematicNetwork();
       forceGearMod0Sync('belt-fundamental-change');
       fitMachineToView(!!state.crankTool.enabled);
@@ -3110,7 +3154,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       // When audio is running, the existing hard sync additionally rebuilds
       // audible sources on the same audio clock so sound and animation agree.
       if (snapLooseGears) snapNearbyUnpoweredGearsToMachine(10);
-      state.masterPhase = 0;
+      state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
       state.gears.forEach(g => {
         g.setPhaseOffsetDeg(0);
         if (g.ratio !== 0 || g.isMain) g.angle = -Math.PI / 2;
@@ -3130,7 +3174,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       const startAt = state.audioCtx.currentTime + lead;
       state.audioSyncPending = true;
       state.audioSyncPerfMs = performance.now() + lead * 1000;
-      state.masterPhase = 0;
+      state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
 
       state.gears.forEach(g => {
         g.setPhaseOffsetDeg(0);
@@ -3177,7 +3221,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       // Any successful gear addition or completed move is a hard mechanical re-sync.
       // The visible machine and all audible sources restart together at Mod 0.
       hardResetAudioPhaseToMod0();
-      state.masterPhase = 0;
+      state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
       state.gears.forEach(g => {
         if (g.ratio !== 0 || g.isMain) {
           g.angle = -Math.PI / 2;
@@ -3255,7 +3299,8 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
       // The driver's transport rate is authoritative. Visual phase advances at the
       // same rate as the loaded audio, so the 12-o'clock hand remains the phase-zero reference.
       const transportPhaseAdvance = TAU * (d.detectedFreq * d.driverRate) * dt;
-      state.masterPhase = ((state.masterPhase + transportPhaseAdvance) % TAU + TAU) % TAU;
+      state.masterPhaseUnwrapped = getMasterPhaseForMotion() + transportPhaseAdvance;
+      state.masterPhase = wrapMasterPhase(state.masterPhaseUnwrapped);
       const sample=getDriverSample(pos);
       let warp=0;
       if(d.visualShape==='square') warp=sample>=0?Math.PI/4:-Math.PI/4;
@@ -4474,10 +4519,10 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         return;
       }
 
-      // child.angle = baseVertical + ratio * masterPhase + phaseOffset
+      // child.angle = baseVertical + ratio * continuous master phase + phaseOffset
       // Choose the offset so the child's hand is exactly where the parent's
       // hand is at the instant of attachment.
-      const computedWithoutOffset = baseVertical + (ratio * state.masterPhase);
+      const computedWithoutOffset = baseVertical + (ratio * getMasterPhaseForMotion());
       const offsetRad = parent.angle - computedWithoutOffset;
       child.setPhaseOffsetDeg(((offsetRad * 180 / Math.PI + 540) % 360) - 180);
       child.angle = parent.angle;
@@ -4631,7 +4676,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }else if(id.endsWith('orbit-preserve-phase')){
         gear.orbitPreservePhase=next;
         if(next&&gear.orbitEnabled){
-          gear.angle=-Math.PI/2+gear.ratio*state.masterPhase+gear.phaseOffsetRad;
+          gear.angle=-Math.PI/2+gear.ratio*getMasterPhaseForMotion()+gear.phaseOffsetRad;
           if(gear.delayNode&&state.audioCtx){
             const sourceFreq=Math.max(.1,gear.freq||state.fundamentalFreq||1);
             const targetDelay=gear.isMain?0.0001:getPhaseAlignedDelaySeconds(gear.phaseOffsetRad,sourceFreq);
@@ -4701,7 +4746,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const accelSlider=document.getElementById('slider-palette-acceleration');
       const accelValue=document.getElementById('val-palette-acceleration');
       const accelerationMs=getEffectiveGearAccelerationMs(gear);
-      if(accelSlider) { accelSlider.max='10000'; accelSlider.value=String(accelerationMs); accelSlider.title=getGlobalAccelerationPercent()===0?'Global Acceleration is 0%: raise it above 0% to edit effective Accelleration.':'Sets effective Accelleration time; the stored per-gear value is automatically scaled by Global Acceleration.'; accelSlider.disabled=(getGlobalAccelerationPercent()===0); }
+      if(accelSlider) { accelSlider.max='5000'; accelSlider.value=String(Math.min(5000,accelerationMs)); accelSlider.title=getGlobalAccelerationPercent()===0?'Global Acceleration is 0%: raise it above 0% to edit effective Accelleration.':'Sets effective Accelleration time; the stored per-gear value is automatically scaled by Global Acceleration.'; accelSlider.disabled=(getGlobalAccelerationPercent()===0); }
       if(accelValue) accelValue.textContent=formatGearAcceleration(accelerationMs);
       const teethVal=document.getElementById('palette-teeth-value'); if(teethVal) teethVal.textContent=String(Math.round(gear.teeth||0));
       const orbitChk=document.getElementById('chk-palette-orbit'); if(orbitChk){orbitChk.checked=!!gear.orbitEnabled;orbitChk.disabled=!!gear.isMain;}
@@ -5009,15 +5054,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function getGearMechanicalMotion(gear, visited = new Set()) {
       if (!gear) return {phase:0,rate:1};
       if (visited.size===0) {
-        if (state.motionFrameCachePhase!==state.masterPhase) {
+        if (state.motionFrameCachePhase!==getMasterPhaseForMotion()) {
           state.motionFrameCache.clear();
-          state.motionFrameCachePhase=state.masterPhase;
+          state.motionFrameCachePhase=getMasterPhaseForMotion();
         }
         const cached=state.motionFrameCache.get(gear.id); if(cached)return cached;
-        const motion=getGearMechanicalMotionAtPhase(gear,state.masterPhase,new Set());
+        const motion=getGearMechanicalMotionAtPhase(gear,getMasterPhaseForMotion(),new Set());
         state.motionFrameCache.set(gear.id,motion); return motion;
       }
-      return getGearMechanicalMotionAtPhase(gear, state.masterPhase, visited);
+      return getGearMechanicalMotionAtPhase(gear, getMasterPhaseForMotion(), visited);
     }
 
     function getGearMechanicalMotionAtPhase(gear, rootPhase, visited = new Set()) {
@@ -5558,7 +5603,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       return Math.max(.075,Math.pow(.32,delta/4));
     }
     function neonVoiceRootPhase(voice){
-      return state.masterPhase*Math.max(.000001,Number(voice?.voiceRatio)||1);
+      return getMasterPhaseForMotion()*Math.max(.000001,Number(voice?.voiceRatio)||1);
     }
     function neonVoiceGearRotation(voice,gear){
       const rootPhase=neonVoiceRootPhase(voice);
@@ -5984,7 +6029,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         // Preserve Phase = checked: current behavior, orbit is spatial only.
         // Unchecked: orbital motion advances the gear phase for a more dramatic effect.
         if (!gear.orbitPreservePhase) {
-          gear.angle = -Math.PI / 2 + gear.ratio * state.masterPhase + gear.phaseOffsetRad + gear.orbitPhase;
+          gear.angle = -Math.PI / 2 + gear.ratio * getMasterPhaseForMotion() + gear.phaseOffsetRad + gear.orbitPhase;
           if (gear.delayNode && state.audioCtx) {
             const sourceFreq = Math.max(0.1, gear.freq || state.fundamentalFreq || 1);
             const effectivePhase = gear.phaseOffsetRad + gear.orbitPhase;
@@ -6293,7 +6338,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if (state.audioSyncPending) {
         if (performance.now() >= state.audioSyncPerfMs) {
           state.audioSyncPending = false;
-          state.masterPhase = 0;
+          state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
         } else {
           state.gears.forEach(g => { if (g.ratio !== 0) g.angle = -Math.PI / 2; });
         }
@@ -6304,11 +6349,13 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           updateDriverAnimation(dt);
         } else {
           const previousMasterPhase = state.masterPhase;
+          const previousMasterPhaseUnwrapped = getMasterPhaseForMotion();
           const phaseAdvance = (TAU * state.fundamentalFreq * state.driveDirection) * dt;
-          const unwrappedMasterPhase = previousMasterPhase + phaseAdvance;
-          state.masterPhase = ((unwrappedMasterPhase % TAU) + TAU) % TAU;
+          const unwrappedMasterPhase = previousMasterPhaseUnwrapped + phaseAdvance;
+          state.masterPhaseUnwrapped = unwrappedMasterPhase;
+          state.masterPhase = wrapMasterPhase(unwrappedMasterPhase);
           state.gears.forEach(g => {
-            if (g.sourceMode === 'midi') triggerGearMidiRotations(g, previousMasterPhase * (g.isMain ? 1 : Math.abs(g.ratio || 1)), unwrappedMasterPhase * (g.isMain ? 1 : Math.abs(g.ratio || 1)));
+            if (g.sourceMode === 'midi') triggerGearMidiRotations(g, previousMasterPhaseUnwrapped * (g.isMain ? 1 : Math.abs(g.ratio || 1)), unwrappedMasterPhase * (g.isMain ? 1 : Math.abs(g.ratio || 1)));
           });
           applyCurrentMasterPhaseToGears();
         }
@@ -6728,7 +6775,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         const pointerAngle = Math.atan2(mouse.y - state.crankTool.pivotY, mouse.x - state.crankTool.pivotX);
         const deltaAngle = normalizeWrappedAngle(pointerAngle - state.dragState.lastAngle);
         state.crankTool.dragAngle = pointerAngle;
-        state.masterPhase = (state.masterPhase + deltaAngle + TAU) % TAU;
+        state.masterPhaseUnwrapped = getMasterPhaseForMotion() + deltaAngle;
+        state.masterPhase = wrapMasterPhase(state.masterPhaseUnwrapped);
         const nowMs = performance.now();
         const tool = state.crankTool;
         // Measure over a rolling time window. Slow Android/touch pointer events
@@ -8594,7 +8642,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         pannerNode.connect(voice.masterGain);
         delayNode.connect(gainNode);
 
-        const voicePhase = state.masterPhase * voiceRatio;
+        const voicePhase = getMasterPhaseForMotion() * voiceRatio;
         const shapeMotion = getGearMechanicalMotionAtPhase(gear, voicePhase);
         const gearFreq = Math.max(0.001, masterFreq * Math.abs(gear.ratio) * shapeMotion.rate);
         const phaseRad = (Number(gear.phaseOffsetDeg) || 0) * Math.PI / 180;
@@ -8937,7 +8985,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
         voice.gears.forEach(pg => {
           const gear = pg.gear;
-          const voicePhase = state.masterPhase * voice.voiceRatio;
+          const voicePhase = getMasterPhaseForMotion() * voice.voiceRatio;
           const shapeMotion = getGearMechanicalMotionAtPhase(gear, voicePhase);
           const gearFreq = Math.max(0.001, voice.masterFreq * Math.abs(gear.ratio) * shapeMotion.rate);
           const phaseRad = (Number(gear.phaseOffsetDeg) || 0) * Math.PI / 180;
@@ -9044,6 +9092,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     function playSemitone(semitone, keyId = `note-${semitone}`, velocity=1) {
       if (!state.audioRunning) initAudio();
+      setKeyboardVisualNote(keyId, semitone, velocity);
       state.lastNoteDownPerf=performance.now();
       state.lastPaletteColorMidi=69 + Number(semitone||0) + Number(state.octaveShift||0)*12;
       queueRatioPaletteRecolor();
@@ -9083,6 +9132,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
 
     function releaseKeyboardNotes(keyId = null) {
+      if (keyId) releaseKeyboardVisualNote(keyId);
       // POLY is always key-gated: releasing a physical key/MIDI note must
       // immediately enter that note's own ADSR release, regardless of Continuous.
       if (state.polyMode && keyId) {
@@ -9117,23 +9167,113 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       syncKeyboardAudioGate();
     }
 
+    function keyboardVisualColor(semitone) {
+      const absoluteMidiLike = 69 + Number(semitone || 0) + Number(state.octaveShift || 0) * 12;
+      return { hue: neonHueForPitch(absoluteMidiLike), color: neonColorForPitch(absoluteMidiLike) };
+    }
+
+    function setKeyboardVisualNote(keyId, semitone, intensity = 1) {
+      if (keyId == null || !Number.isFinite(Number(semitone))) return;
+      const c = keyboardVisualColor(semitone);
+      const level = Math.max(0.04, Math.min(1, Number(intensity) || 0));
+      state.keyboardVisualNotes.set(String(keyId), { semitone:Number(semitone), intensity:level, color:c.color, hue:c.hue, fading:false });
+      updateKeyboardUI(state.activeSemitone, 1.0);
+    }
+
+    function releaseKeyboardVisualNote(keyId) {
+      if (keyId == null) return;
+      const rec = state.keyboardVisualNotes.get(String(keyId));
+      if (!rec) return;
+      rec.fading = true;
+      state.keyboardVisualNotes.set(String(keyId), rec);
+      const keys = document.querySelectorAll('#virtual-keyboard .key');
+      keys.forEach(k => {
+        const visualIds=String(k.dataset.noteVisualKey||'').split('|').filter(Boolean);
+        if (!visualIds.includes(String(keyId))) return;
+        const otherActive=visualIds.some(id=>id!==String(keyId) && state.keyboardVisualNotes.get(id)?.fading!==true);
+        if(otherActive) { updateKeyboardUI(state.activeSemitone,1); return; }
+        k.classList.add('note-lit','note-fading');
+        // Force the fading state through the !important keyboard colour rule.
+        // Start from the currently displayed colour, then transition to black.
+        const currentBg = k.style.getPropertyValue('--note-lit-bg').trim() || getComputedStyle(k).backgroundColor;
+        const currentFg = k.style.getPropertyValue('--note-lit-fg').trim() || getComputedStyle(k).color;
+        k.style.setProperty('background', currentBg, 'important');
+        k.style.setProperty('color', currentFg, 'important');
+        void k.offsetWidth;
+        requestAnimationFrame(() => {
+          k.style.setProperty('background', '#000000', 'important');
+          k.style.setProperty('color', '#f8fafc', 'important');
+        });
+        window.setTimeout(() => {
+          const latest = state.keyboardVisualNotes.get(String(keyId));
+          if (latest && latest.fading) state.keyboardVisualNotes.delete(String(keyId));
+          if (!state.keyboardVisualNotes.has(String(keyId))) {
+            k.classList.remove('note-lit','note-fading','active');
+            k.removeAttribute('data-note-visual-key');
+            k.style.removeProperty('--note-lit-bg');
+            k.style.removeProperty('--note-lit-fg');
+            k.style.removeProperty('background');
+            k.style.removeProperty('background-color');
+            k.style.removeProperty('color');
+          }
+        }, 210);
+      });
+    }
+
+    function releaseAllKeyboardVisualNotes() {
+      [...state.keyboardVisualNotes.keys()].forEach(releaseKeyboardVisualNote);
+    }
+
     function updateKeyboardUI(activeSemitone, ratio = 1.0) {
       const keys = document.querySelectorAll('#virtual-keyboard .key');
-      const hasActive = activeSemitone !== null && activeSemitone !== undefined;
-      const effectiveSemitone = hasActive ? Number(activeSemitone) + (Number(state.octaveShift) || 0) * 12 : null;
+      const visualByNote = new Map();
+      state.keyboardVisualNotes.forEach((rec, keyId) => {
+        if(rec?.fading || !Number.isFinite(Number(rec.semitone))) return;
+        const note=Number(rec.semitone)+(Number(state.octaveShift)||0)*12;
+        const prev=visualByNote.get(note);
+        if(!prev || Number(rec.intensity)>Number(prev.intensity)) visualByNote.set(note,{...rec,keyIds:[String(keyId)],intensity:Math.max(Number(rec.intensity)||0,Number(prev?.intensity)||0)});
+        else prev.keyIds.push(String(keyId));
+      });
+
+      // Legacy mono/root highlight remains available, but POLY visuals come from
+      // every independently held lower-keyboard key. MIDI and physical keys both
+      // populate keyboardVisualNotes through playSemitone().
       keys.forEach(k => {
         const keySemitone = Number(k.getAttribute('data-note'));
-        const isActive = hasActive && Number.isFinite(keySemitone) && keySemitone === effectiveSemitone;
-        k.classList.toggle('active', isActive);
-        if (isActive) {
-          const absoluteSemitone = 69 + effectiveSemitone;
-          k.style.setProperty('background-color', k.dataset.noteActiveColor || neonColorForPitch(absoluteSemitone), 'important');
-        } else {
+        const baseId = String(k.getAttribute('data-key') || '');
+        const matching = [...visualByNote.values()].find(v => Number.isFinite(keySemitone) && Number(v.semitone)+(Number(state.octaveShift)||0)*12===keySemitone);
+        // Visual state is authoritative. Do not fall back to activeSemitone here:
+        // that would resurrect a key while its release fade is still running.
+        const rec = matching;
+        const held = !!rec;
+        k.classList.toggle('active', held);
+        if (held) {
+          const intensity = Math.max(0.04, Math.min(1, Number(rec.intensity)||1));
+          const hue = Number.isFinite(Number(rec.hue)) ? Number(rec.hue) : neonHueForPitch(69 + keySemitone);
+          const lightness = 7 + 53 * intensity;
+          const color = `hsl(${hue},100%,${lightness}%)`;
+          k.dataset.noteVisualKey = (rec.keyIds && rec.keyIds.length ? rec.keyIds.join('|') : (rec.keyId || baseId));
+          k.classList.add('note-lit');
+          k.classList.remove('note-fading');
+          k.style.setProperty('--note-lit-bg', color);
+          k.style.setProperty('--note-lit-fg', intensity > 0.45 ? '#000000' : '#f8fafc');
+          // Clear any shorthand left by a previous release fade before applying
+          // the active colour, otherwise the !important background can mask it.
+          k.style.removeProperty('background');
+          k.style.setProperty('background-color', color, 'important');
+          k.style.setProperty('color', intensity > 0.45 ? '#000000' : '#f8fafc', 'important');
+        } else if (!k.classList.contains('note-fading')) {
+          k.classList.remove('note-lit');
+          k.removeAttribute('data-note-visual-key');
+          k.style.removeProperty('--note-lit-bg');
+          k.style.removeProperty('--note-lit-fg');
           k.style.removeProperty('background-color');
+          k.style.removeProperty('color');
         }
       });
 
       const noteHud = document.getElementById('hud-current-note');
+      const hasActive = activeSemitone !== null && activeSemitone !== undefined;
       if (hasActive) {
         const pitchClass = ((Number(activeSemitone) % 12) + 12) % 12;
         const noteName = NOTE_NAMES[pitchClass] || 'C';
@@ -9332,6 +9472,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         state.octaveShift = 0;
         document.getElementById('val-oct-shift').textContent = '0';
         state.activeSemitone = null;
+        releaseAllKeyboardVisualNotes();
         if (state.polyMode) { stopAllPolyVoices(); updateKeyboardUI(null, 1.0); return; }
         state.audioDriver.keyboardKeyRatio = 1;
         if (state.audioDriver.buffer && state.audioDriver.playing) {
@@ -9471,6 +9612,41 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const s=wrap?.querySelector('label, strong'); if(s) return (s.textContent||'').replace(/\s+/g,' ').trim().replace(/\s+$/,'');
       return id||'CONTROL';
     }
+    function isPerceptualGearRotary(input){
+      const id=input?.id||'';
+      return id==='slider-palette-acceleration' || id==='slider-inspector-acceleration' ||
+             id==='slider-palette-offcenter' || id==='slider-inspector-offcenter';
+    }
+    function rotaryPositionFromValue(input, value){
+      const min=Number(input.min||0), max=Number(input.max||1);
+      const v=Math.max(min,Math.min(max,Number(value)||0));
+      const span=Math.max(1e-9,max-min);
+      const x=(v-min)/span;
+      if(input.id==='slider-palette-acceleration'||input.id==='slider-inspector-acceleration'){
+        // Smooth exponential/log-style travel: 0% = 0 s, 50% = 1 s, 100% = 5 s.
+        const q=4;
+        return Math.log1p(x*(q*q-1))/(2*Math.log(q));
+      }
+      if(input.id==='slider-palette-offcenter'||input.id==='slider-inspector-offcenter'){
+        // Smooth exponential/log-style travel: 0% = 0%, 50% = 3%, 100% = 100%.
+        const q=100/3-1;
+        return Math.log1p(x*(q*q-1))/(2*Math.log(q));
+      }
+      return x;
+    }
+    function rotaryValueFromPosition(input, position){
+      const min=Number(input.min||0), max=Number(input.max||1);
+      const p=Math.max(0,Math.min(1,Number(position)||0));
+      let x=p;
+      if(input.id==='slider-palette-acceleration'||input.id==='slider-inspector-acceleration'){
+        const q=4;
+        x=(Math.pow(q,2*p)-1)/(q*q-1);
+      }else if(input.id==='slider-palette-offcenter'||input.id==='slider-inspector-offcenter'){
+        const q=100/3-1;
+        x=(Math.pow(q,2*p)-1)/(q*q-1);
+      }
+      return min+x*(max-min);
+    }
     function enhanceRangeAsRotary(input){
       if(!input || input.type!=='range' || input.dataset.rotaryDone==='1') return;
       if(input.id==='slider-fundamental'||input.id==='slider-keyboard-bloom'||input.id==='slider-palette-tooth-width'||input.id==='slider-inspector-tooth-width') return;
@@ -9482,8 +9658,9 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         val.textContent=rotaryDisplayValue(input);
         const min=Number(input.min||0),max=Number(input.max||1),v=Number(input.value);
         const unit=max>min?(v-min)/(max-min):0;
+        const rotaryUnit=isPerceptualGearRotary(input)?rotaryPositionFromValue(input,v):unit;
         const isPhaseKnob=input.id.includes('phase-deg-slider');
-        const deg=isPhaseKnob ? (360*Math.max(0,Math.min(1,unit))) : (-135+270*Math.max(0,Math.min(1,unit)));
+        const deg=isPhaseKnob ? (360*Math.max(0,Math.min(1,rotaryUnit))) : (-135+270*Math.max(0,Math.min(1,rotaryUnit)));
         knob.classList.toggle('phase-rotary-knob',isPhaseKnob);
         knob.style.setProperty('--knob-angle', `${deg}deg`);
         knob.dataset.value=input.value;
@@ -9502,13 +9679,50 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         input.dispatchEvent(new Event('input',{bubbles:true}));
         sync();
       };
+      const commitPosition=(p)=>{
+        if(!input.disabled && isPerceptualGearRotary(input)) commit(rotaryValueFromPosition(input,p));
+        else commit(p);
+      };
       let drag=null;
-      knob.addEventListener('pointerdown',e=>{if(input.disabled)return;e.preventDefault();drag={y:e.clientY,v:Number(input.value)||0,id:e.pointerId};try{knob.setPointerCapture(e.pointerId)}catch(_){} });
-      knob.addEventListener('pointermove',e=>{if(!drag||drag.id!==e.pointerId)return;e.preventDefault();const min=Number(input.min||0),max=Number(input.max||1),span=max-min;const delta=drag.y-e.clientY;commit(drag.v+delta*(span/220));});
+      knob.addEventListener('pointerdown',e=>{
+        if(input.disabled)return;
+        e.preventDefault();
+        drag={y:e.clientY,v:Number(input.value)||0,p:rotaryPositionFromValue(input,Number(input.value)||0),id:e.pointerId};
+        try{knob.setPointerCapture(e.pointerId)}catch(_){}
+      });
+      knob.addEventListener('pointermove',e=>{
+        if(!drag||drag.id!==e.pointerId)return;
+        e.preventDefault();
+        const min=Number(input.min||0),max=Number(input.max||1),span=max-min;
+        const delta=drag.y-e.clientY;
+        if(isPerceptualGearRotary(input)) commitPosition(drag.p+delta/220);
+        else commit(drag.v+delta*(span/220));
+      });
       const end=e=>{if(drag&&drag.id===e.pointerId)drag=null;try{knob.releasePointerCapture(e.pointerId)}catch(_){}}; knob.addEventListener('pointerup',end); knob.addEventListener('pointercancel',end);
-      knob.addEventListener('wheel',e=>{if(input.disabled)return;e.preventDefault();const step=rotaryStepFactor(input);commit(Number(input.value)+(e.deltaY<0?step:-step)*10);},{passive:false});
+      knob.addEventListener('wheel',e=>{
+        if(input.disabled)return;
+        e.preventDefault();
+        if(isPerceptualGearRotary(input)){
+          commitPosition(rotaryPositionFromValue(input,Number(input.value)||0)+(e.deltaY<0?0.02:-0.02));
+        }else{
+          const step=rotaryStepFactor(input);commit(Number(input.value)+(e.deltaY<0?step:-step)*10);
+        }
+      },{passive:false});
       knob.addEventListener('dblclick',()=>{const min=Number(input.min||0);commit(min);});
-      knob.addEventListener('keydown',e=>{if(input.disabled)return;if(e.key==='ArrowUp'||e.key==='ArrowRight'){e.preventDefault();commit(Number(input.value)+rotaryStepFactor(input)*10);}else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){e.preventDefault();commit(Number(input.value)-rotaryStepFactor(input)*10);}else if(e.key==='Home'){e.preventDefault();commit(Number(input.min||0));}else if(e.key==='End'){e.preventDefault();commit(Number(input.max||1));}});
+      knob.addEventListener('keydown',e=>{
+        if(input.disabled)return;
+        if(e.key==='Home'){e.preventDefault();commit(Number(input.min||0));return;}
+        if(e.key==='End'){e.preventDefault();commit(Number(input.max||1));return;}
+        if(e.key==='ArrowUp'||e.key==='ArrowRight'){
+          e.preventDefault();
+          if(isPerceptualGearRotary(input)) commitPosition(rotaryPositionFromValue(input,Number(input.value)||0)+0.02);
+          else commit(Number(input.value)+rotaryStepFactor(input)*10);
+        }else if(e.key==='ArrowDown'||e.key==='ArrowLeft'){
+          e.preventDefault();
+          if(isPerceptualGearRotary(input)) commitPosition(rotaryPositionFromValue(input,Number(input.value)||0)-0.02);
+          else commit(Number(input.value)-rotaryStepFactor(input)*10);
+        }
+      });
       input.addEventListener('input',sync); input.addEventListener('change',sync);
       sync();
     }
@@ -9535,7 +9749,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(offVal)offVal.textContent=`${Math.round(off)}%`;
       const accel=document.getElementById('slider-inspector-acceleration'); const accelVal=document.getElementById('val-inspector-acceleration');
       const effective=getEffectiveGearAccelerationMs(gear);
-      if(accel){accel.max='10000';accel.value=String(effective);accel.disabled=getGlobalAccelerationPercent()===0;}
+      if(accel){accel.max='5000';accel.value=String(Math.min(5000,effective));accel.disabled=getGlobalAccelerationPercent()===0;}
       if(accelVal) accelVal.textContent=formatGearAcceleration(effective);
     }
 
@@ -9606,11 +9820,186 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(!state.midiLearn) state.midiLearn={armed:null,mappings:[]};
       state.midiLearn.armed=null;
       state.midiLearn.mappings=[];
-      try{localStorage.removeItem('darkflower.midiLearn.v1');}catch(_){}
+      try{localStorage.removeItem('darkflower.midiLearn.v1');localStorage.removeItem('darkflower.midiUser.v1');}catch(_){}
+      if(state.midiUser){state.midiUser.mapping=null;state.midiUser.armed=false;state.midiUser.lastValue=null;}
+      syncMidiUserButton?.();
+      setMidiUserStatus?.('');
       document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
       setMidiStatus('All MIDI Learn mappings cleared',true);
     }
     document.getElementById('btn-midi-clear-all-learn')?.addEventListener('click',clearAllMidiLearn);
+
+    // MIDI USER --------------------------------------------------------------
+    // One learned CC becomes a temporary, context-sensitive relative controller.
+    // The target is the control currently under the pointer, or the focused input.
+    function setMidiUserStatus(message, good = false) {
+      const el=document.getElementById('midi-user-status');
+      if(el){ el.textContent=message||''; el.style.color=good?'#62f08a':'var(--text-muted)'; }
+    }
+    function syncMidiUserButton() {
+      const b=document.getElementById('btn-midi-user');
+      if(!b) return;
+      b.classList.toggle('user-armed',!!state.midiUser?.armed);
+      if(state.midiUser?.mapping) b.textContent=`User CC${state.midiUser.mapping.number}`;
+      else b.textContent='User';
+    }
+    function armMidiUser() {
+      state.midiUser=state.midiUser||{armed:false,mapping:null,lastValue:null,hoverElement:null,pointerX:null,pointerY:null};
+      state.midiUser.armed=true;
+      state.midiUser.lastValue=null;
+      document.querySelectorAll('.midi-learn-armed').forEach(x=>x.classList.remove('midi-learn-armed'));
+      syncMidiUserButton();
+      setMidiUserStatus('USER: move the next MIDI CC fader/knob.',true);
+      setMidiStatus('MIDI USER armed - waiting for the next CC movement',true);
+    }
+    function getMidiUserControlElement(el) {
+      if(!el || el===document.body || el===document.documentElement) return null;
+      // The User CC is intentionally isolated from the MIDI input/learn panel.
+      // It must never be able to retarget the MIDI device selector, MIDI enable,
+      // User button, learn-clear action, or any other control that could change
+      // the source that is currently driving it.
+      if(el.closest?.('#btn-midi-user, #btn-midi-clear-all-learn, #btn-midi-enable, #btn-midi-refresh, #select-midi-input, #midi-pitch-bend-range')) return null;
+      const midiPanel=el.closest?.('.panel-box');
+      if(midiPanel && midiPanel.querySelector?.('#select-midi-input, #btn-midi-enable, #btn-midi-user, #midi-user-status')) return null;
+      const rotary = el.closest?.('.rotary-host');
+      if(rotary){ const r=rotary.querySelector('input[type="range"]'); if(r) return r; }
+      if(el.matches?.('input[type="range"],input[type="number"],input[type="text"],select,textarea')) return el;
+      if(el.matches?.('[role="slider"]')){
+        const host=el.closest('.rotary-host'); const r=host?.querySelector('input[type="range"]'); if(r) return r;
+      }
+      const control = el.closest?.('input[type="range"],input[type="number"],input[type="text"],select,textarea');
+      if(control) return control;
+      const label=el.closest?.('label');
+      if(label){
+        const nested=label.querySelector('input[type="range"],input[type="number"],input[type="text"],select,textarea');
+        if(nested) return nested;
+        const sibling=label.parentElement?.querySelector?.(':scope > .rotary-host input[type="range"], :scope > input[type="range"], :scope > input[type="number"], :scope > input[type="text"], :scope > select, :scope > textarea');
+        if(sibling) return sibling;
+      }
+      const valueEl=el.closest?.('[id^="val-"]');
+      if(valueEl){
+        const parent=valueEl.closest('.current-gear-knob-cell,.current-gear-accel-cell,.control-group,.control-row');
+        const candidate=parent?.querySelector('input[type="range"],input[type="number"],input[type="text"],select,textarea');
+        if(candidate) return candidate;
+      }
+      return null;
+    }
+    function getMidiUserTarget() {
+      const focused = getMidiUserControlElement(state.midiUser?.focusedElement) || getMidiUserControlElement(document.activeElement);
+      if(focused) return focused;
+      const hovered = getMidiUserControlElement(state.midiUser?.hoverElement);
+      if(hovered) return hovered;
+      if(Number.isFinite(state.midiUser?.pointerX) && Number.isFinite(state.midiUser?.pointerY)) {
+        const under=document.elementFromPoint(state.midiUser.pointerX,state.midiUser.pointerY);
+        const found=getMidiUserControlElement(under);
+        if(found) return found;
+      }
+      return null;
+    }
+    function numericTargetMeta(el) {
+      if(!el) return null;
+      if(el instanceof HTMLInputElement && el.type==='range'){
+        const min=Number.isFinite(Number(el.min))?Number(el.min):0;
+        const max=Number.isFinite(Number(el.max))?Number(el.max):1;
+        const span=Math.max(1e-9,max-min);
+        return {el,min,max,span,step:Math.abs(Number(el.step))||span/100};
+      }
+      if(el instanceof HTMLInputElement && el.type==='number'){
+        const value=Number(el.value);
+        if(!Number.isFinite(value)) return null;
+        const min=Number.isFinite(Number(el.min))?Number(el.min):value-10;
+        const max=Number.isFinite(Number(el.max))?Number(el.max):value+10;
+        const span=Math.max(1e-9,max-min);
+        return {el,min,max,span,step:Math.abs(Number(el.step))||span/100};
+      }
+      if(el instanceof HTMLInputElement && el.type==='text'){
+        const value=Number(el.value);
+        if(!Number.isFinite(value)) return null;
+        const minAttr=el.getAttribute('data-min'); const maxAttr=el.getAttribute('data-max');
+        const min=Number.isFinite(Number(minAttr))?Number(minAttr):value-10;
+        const max=Number.isFinite(Number(maxAttr))?Number(maxAttr):value+10;
+        const span=Math.max(1e-9,max-min);
+        return {el,min,max,span,step:Math.abs(Number(el.getAttribute('data-step')))||span/100};
+      }
+      return null;
+    }
+    function dispatchNumericTarget(el,next) {
+      const meta=numericTargetMeta(el); if(!meta) return false;
+      let v=Math.max(meta.min,Math.min(meta.max,next));
+      const step=meta.step;
+      if(step>0){ v=Math.round((v-meta.min)/step)*step+meta.min; }
+      const decimals=Math.max(0,Math.min(8,String(step).includes('.')?String(step).split('.')[1].length:0));
+      v=Number(v.toFixed(decimals));
+      el.value=String(v);
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      return true;
+    }
+    function applyMidiUserDelta(deltaCc) {
+      const target=getMidiUserTarget();
+      if(!target){ setMidiUserStatus('USER: hover or focus a slider, knob, or numeric field.'); return; }
+      if(target instanceof HTMLSelectElement){
+        const len=target.options.length; if(!len)return;
+        const next=Math.max(0,Math.min(len-1,target.selectedIndex+Math.sign(deltaCc)));
+        if(next!==target.selectedIndex){ target.selectedIndex=next; target.dispatchEvent(new Event('input',{bubbles:true})); target.dispatchEvent(new Event('change',{bubbles:true})); }
+        setMidiUserStatus(`USER → ${target.id||'field'}`,true); return;
+      }
+      const meta=numericTargetMeta(target);
+      if(meta){
+        const delta=(deltaCc/127)*meta.span;
+        if(dispatchNumericTarget(target,Number(target.value)+delta)){
+          setMidiUserStatus(`USER → ${target.id||'field'} (${target.value})`,true);
+          return;
+        }
+      }
+      // Boolean fields behave as a momentary target: below centre = off, above centre = on.
+      if(target instanceof HTMLInputElement && (target.type==='checkbox' || target.type==='radio')){
+        const on=(state.midiUser.lastValue??64)>=64;
+        target.checked=on; target.dispatchEvent(new Event('change',{bubbles:true}));
+        setMidiUserStatus(`USER → ${target.id||'toggle'} (${on?'ON':'OFF'})`,true); return;
+      }
+      setMidiUserStatus('USER: target is not a numeric control. Hover/focus a slider, knob, or numeric field.');
+    }
+    function handleMidiUserCapture(d,status,channel){
+      const mu=state.midiUser; if(!mu?.armed) return false;
+      if((status&0xf0)!==0xb0) return false;
+      const number=d[1]&127, value=(d[2]||0)&127;
+      mu.mapping={kind:'cc',number,channel};
+      mu.armed=false;
+      mu.lastValue=value;
+      syncMidiUserButton();
+      setMidiUserStatus(`USER locked to CC${number} - move it over any control.`,true);
+      setMidiStatus(`MIDI USER linked to CC${number}`,true);
+      try{localStorage.setItem('darkflower.midiUser.v1',JSON.stringify(mu.mapping));}catch(_){ }
+      return true;
+    }
+    function loadMidiUserMapping(){
+      try{
+        const m=JSON.parse(localStorage.getItem('darkflower.midiUser.v1')||'null');
+        if(m&&m.kind==='cc'&&Number.isFinite(Number(m.number))) state.midiUser.mapping={kind:'cc',number:Number(m.number),channel:Number.isFinite(Number(m.channel))?Number(m.channel):255};
+      }catch(_){ }
+      syncMidiUserButton();
+    }
+    document.getElementById('btn-midi-user')?.addEventListener('click',armMidiUser);
+    window.addEventListener('pointermove',e=>{
+      state.midiUser=state.midiUser||{};
+      state.midiUser.pointerX=e.clientX; state.midiUser.pointerY=e.clientY;
+      const target=getMidiUserControlElement(e.target);
+      if(target) state.midiUser.hoverElement=target;
+    },true);
+    document.addEventListener('pointerover',e=>{
+      const target=getMidiUserControlElement(e.target);
+      if(target){ state.midiUser=state.midiUser||{}; state.midiUser.hoverElement=target; }
+    },true);
+    document.addEventListener('focusin',e=>{
+      const target=getMidiUserControlElement(e.target);
+      if(target){ state.midiUser=state.midiUser||{}; state.midiUser.focusedElement=target; }
+    },true);
+    document.addEventListener('focusout',e=>{
+      const target=getMidiUserControlElement(e.target);
+      if(target && state.midiUser?.focusedElement===target) state.midiUser.focusedElement=null;
+    },true);
+    loadMidiUserMapping();
 
     function showMidiLearnMenu(el,x,y){
       let menu=document.getElementById('midi-learn-menu');
@@ -9706,6 +10095,23 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       return false;
     }
+    function applyMidiUserStoredMapping(d,status,channel) {
+      const mu=state.midiUser; if(!mu?.mapping) return false;
+      const type=status&0xf0, number=d[1]&127, value=(d[2]||0)&127;
+      if(type!==0xb0 || Number(mu.mapping.number)!==number) return false;
+      if(Number(mu.mapping.channel)!==255 && Number(mu.mapping.channel)!==channel) return false;
+      const previous=mu.lastValue;
+      mu.lastValue=value;
+      if(previous===null || previous===undefined) return;
+      let delta=value-Number(previous);
+      // Handle fader wrap/encoder rollover defensively so a single jump never
+      // sends a target racing through its whole range.
+      if(delta>64) delta-=128;
+      if(delta<-64) delta+=128;
+      if(delta!==0) applyMidiUserDelta(delta);
+      return true;
+    }
+
     function applyStoredMidiMappings(d,status,channel){
       const type=status&0xf0, number=d[1]&127, velocity=(d[2]||0)&127;
       (state.midiLearn?.mappings||[]).forEach(m=>{
@@ -9806,7 +10212,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           v.voiceRatio=Math.max(0.000001,v.masterFreq/Math.max(.001,state.baseFundamentalFreq||1));
           v.gears?.forEach(pg=>{
             const gear=pg.gear;if(!gear)return;
-            const phase=state.masterPhase*v.voiceRatio;
+            const phase=getMasterPhaseForMotion()*v.voiceRatio;
             const motion=getGearMechanicalMotionAtPhase(gear,phase);
             const f=Math.max(.001,v.masterFreq*Math.abs(gear.ratio)*motion.rate);
             try { if(state.legato){pg.osc?.frequency.setTargetAtTime(f,now,Math.max(.005,state.glissTime/3));pg.oscSine?.frequency.setTargetAtTime(f,now,Math.max(.005,state.glissTime/3));} else {pg.osc?.frequency.setValueAtTime(f,now);pg.oscSine?.frequency.setValueAtTime(f,now);} } catch(_){}
@@ -9827,7 +10233,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       toRelease.forEach(([id,v])=>{
         state.midiHeldNotes.delete(id);
         const keyId=`midi-${id}`;
-        if(state.polyMode) stopPolyVoice(keyId); else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
+        // Sustain release is still a MIDI note release, so the visual key must
+        // fade even when the audio release mode is disabled.
+        if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
+        else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
+        else releaseKeyboardVisualNote(keyId);
       });
       if(state.midiHeldNotes.size===0) state._midiInputVelocity=1;
       syncKeyboardAudioGate();
@@ -9835,9 +10245,16 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     }
     function handleMidiMessage(event) {
       const d=event?.data; if(!d || d.length<2)return;
+      // Invariant: every completed MIDI Note Off (including sustain release and
+      // All Notes Off/Reset All Controllers) must clear/fade its keyboard visual.
+      // This is deliberately independent of state.releaseOnKeyup.
       const status=d[0]&0xff, type=status&0xf0, channel=status&0x0f;
       const note=d[1]&127, velocity=(d[2]||0)&127;
-      if(handleMidiLearnCapture(d,status,channel)) return;
+      if(handleMidiUserCapture(d,status,channel)) return;
+      // A learned User CC owns its CC messages exclusively. This prevents the
+      // same physical controller from also reaching normal MIDI Learn mappings
+      // (including MIDI controls) or accidentally changing the User binding state.
+      if(applyMidiUserStoredMapping(d,status,channel)) return;
       applyStoredMidiMappings(d,status,channel);
       if(type===0x90 && velocity>0){
         const id=midiChannelKey(channel,note);
@@ -9846,6 +10263,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           old.downCount=Math.max(1,Number(old.downCount)||1)+1;
           old.sustained=false;
           old.velocity=velocity; old.velocityGain=midiVelocityGain(velocity);
+          setKeyboardVisualNote(`midi-${id}`, old.semitone, old.velocityGain);
           state.midiLastVelocity=old.velocityGain;
           scheduleMidiUiSync();
           return;
@@ -9863,8 +10281,15 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           v.sustained=true; scheduleMidiUiSync(); return;
         }
         state.midiHeldNotes.delete(id); const keyId=`midi-${id}`;
-        if(state.polyMode){ stopPolyVoice(keyId); }
-        else if(state.releaseOnKeyup){ releaseKeyboardNotes(keyId); }
+        // MIDI Note Off always releases the keyboard's visual note state.
+        // Visual feedback must not depend on the audio Continuous/release setting.
+        if(state.releaseOnKeyup){
+          if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
+          else { releaseKeyboardNotes(keyId); }
+        } else {
+          releaseKeyboardVisualNote(keyId);
+          if(state.polyMode) stopPolyVoice(keyId);
+        }
         if(state.midiHeldNotes.size===0) { state._midiInputVelocity=1; }
         scheduleMidiUiSync();
       } else if(type===0xb0){
@@ -9888,9 +10313,17 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           }
         } else if(cc===123){
           const ids=[...state.midiHeldNotes.keys()];
-          ids.forEach(id=>{ const keyId=`midi-${id}`; state.midiHeldNotes.delete(id); if(state.polyMode) stopPolyVoice(keyId); else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId); });
+          ids.forEach(id=>{
+            const keyId=`midi-${id}`;
+            state.midiHeldNotes.delete(id);
+            if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
+            else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
+            else releaseKeyboardVisualNote(keyId);
+          });
           state._midiInputVelocity=1; scheduleMidiUiSync();
         } else if(cc===120){
+          const ids=[...state.midiHeldNotes.keys()];
+          ids.forEach(id=>{ releaseKeyboardVisualNote(`midi-${id}`); });
           state.midiHeldNotes.clear(); state.midiSustainGlobal=false; state.midiSustainChannels.clear();
           if(state.polyMode) stopAllPolyVoices();
           state.pressedKeys.clear(); state.keyboardPointerHeldKeys.clear();
@@ -9991,7 +10424,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           setDriverRPM(rpm, false, false);
           return;
         }
-        state.masterPhase = 0;
+        state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
         updateKinematicNetwork();
       }
     };
@@ -10017,7 +10450,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     window.addEventListener('pointerup', stopSliderDrag);
 
     document.getElementById('input-fundamental').addEventListener('input', (e) => {
-      state.masterPhase = 0;
+      state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
       const val = parseFloat(e.target.value);
       if (isNaN(val)) return;
       if (state.audioDriver.buffer) setDriverRPM(val, false);
@@ -10026,7 +10459,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     document.querySelectorAll('.btn-freq-preset').forEach(btn => {
       btn.addEventListener('click', () => {
-        state.masterPhase = 0;
+        state.masterPhase = 0; state.masterPhaseUnwrapped = 0;
         const f = parseFloat(btn.getAttribute('data-freq'));
         if (state.audioDriver.buffer) setDriverRPM(f, true);
         else setFundamentalFrequency(f);
@@ -10176,7 +10609,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
           </div>
           <div class="current-gear-knob-cell">
             <label><span>Accelleration</span><span id="val-inspector-acceleration" style="color:var(--accent-cyan);font-weight:700;">${formatGearAcceleration(getEffectiveGearAccelerationMs(gear))}</span></label>
-            <input type="range" id="slider-inspector-acceleration" min="0" max="10000" step="10" value="${getEffectiveGearAccelerationMs(gear)}" style="width:100%;">
+            <input type="range" id="slider-inspector-acceleration" min="0" max="5000" step="10" value="${getEffectiveGearAccelerationMs(gear)}" style="width:100%;">
           </div>
           <div class="current-gear-knob-cell">
             <label><span>Phase</span><span id="val-inspector-phase-knob" style="color:var(--accent-cyan);font-weight:700;">0/${Math.max(1,Math.round(gear.teeth||1))}</span></label>
@@ -10490,7 +10923,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         renderGearList();
       });
       inspectorAccelSlider?.addEventListener('input',e=>{
-        const effective=Math.max(0,Math.min(10000,Number(e.target.value)||0));
+        const effective=Math.max(0,Math.min(5000,Number(e.target.value)||0));
         const pct=getGlobalAccelerationPercent();
         const maxRaw=Math.max(0,...state.gears.map(g=>clampGearAccelerationMs(g?.accelerationMs)));
         const raw=pct<=0?0:(maxRaw>0?Math.round(effective/(pct/100)):0);
@@ -10537,7 +10970,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         gear.orbitPreservePhase = !!e.target.checked;
         if (gear.orbitPreservePhase && gear.orbitEnabled) {
           // Restore the normal phase relationship immediately when re-locking.
-          gear.angle = -Math.PI / 2 + gear.ratio * state.masterPhase + gear.phaseOffsetRad;
+          gear.angle = -Math.PI / 2 + gear.ratio * getMasterPhaseForMotion() + gear.phaseOffsetRad;
           if (gear.delayNode && state.audioCtx) {
             const sourceFreq = Math.max(0.1, gear.freq || state.fundamentalFreq || 1);
             const targetDelay = gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad, sourceFreq);
@@ -10755,7 +11188,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(wasPlaying) {
         window.setTimeout(()=>{
           state.audioDriver.playing=true;
-          state.masterPhase=0;
+          state.masterPhase=0; state.masterPhaseUnwrapped=0;
           updateAudioNodes();
           rebuildPolyVoicesForDriverMode();
         },18);
@@ -10895,7 +11328,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       if(state.audioDriver.playing) {
         state.audioDriver.playing=false; stopAudioDriverSources(); btn.textContent='▶ DRIVE'; updateAudioNodes(); rebuildPolyVoicesForDriverMode();
       } else {
-        state.audioDriver.playing=true; state.audioDriver.elapsed=0; state.masterPhase=0; setDriverRPM(state.audioDriver.driverRPM, false, false); state.audioDriver.keyboardKeyRatio=1; btn.textContent='⏸ DRIVE'; applyKeyboardDriverPitch(); updateAudioNodes(); rebuildPolyVoicesForDriverMode();
+        state.audioDriver.playing=true; state.audioDriver.elapsed=0; state.masterPhase=0; state.masterPhaseUnwrapped=0; setDriverRPM(state.audioDriver.driverRPM, false, false); state.audioDriver.keyboardKeyRatio=1; btn.textContent='⏸ DRIVE'; applyKeyboardDriverPitch(); updateAudioNodes(); rebuildPolyVoicesForDriverMode();
       }
     });
 
@@ -11339,7 +11772,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const gear=getActivePaletteGear(); if(!gear)return;
       const scale=getGlobalAccelerationPercent()/100;
       if(scale<=0){ syncPaletteCurrentGearExtras(gear); return; }
-      const effective=Math.max(0,Math.min(10000,Number(e.target.value)||0));
+      const effective=Math.max(0,Math.min(5000,Number(e.target.value)||0));
       gear.accelerationMs=clampGearAccelerationMs(effective/scale);
       const value=document.getElementById('val-palette-acceleration');
       if(value)value.textContent=formatGearAcceleration(effective);
@@ -11378,7 +11811,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('chk-palette-orbit-preserve-phase')?.addEventListener('change',e=>{
       const gear=getActivePaletteGear(); if(!gear)return; gear.orbitPreservePhase=!!e.target.checked;
       if(gear.orbitPreservePhase&&gear.orbitEnabled){
-        gear.angle=-Math.PI/2+gear.ratio*state.masterPhase+gear.phaseOffsetRad;
+        gear.angle=-Math.PI/2+gear.ratio*getMasterPhaseForMotion()+gear.phaseOffsetRad;
         if(gear.delayNode&&state.audioCtx){const sourceFreq=Math.max(.1,gear.freq||state.fundamentalFreq||1);const targetDelay=gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(gear.phaseOffsetRad,sourceFreq);gear.delayNode.delayTime.setTargetAtTime(targetDelay,state.audioCtx.currentTime,.008);}
       }
       updateAudioNodes(); renderGearList();
@@ -12251,7 +12684,13 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
         if(mobileShape){mobileShape.closest('div[style*="border-top"]')?.setAttribute('hidden','hidden');}
         // Keep the selected gear's Sound Source buttons and tooth-width control available in mobile.
       }catch(_){ }
-      requestAnimationFrame(()=>drawerScroll?.scrollTo({top:0,behavior:'auto'}));
+      requestAnimationFrame(()=>{
+        drawerScroll?.scrollTo({top:0,behavior:'auto'});
+        // Refit the visual machine after the canvas is reduced to its mobile
+        // top-window height, otherwise the full-size framing can leave the
+        // machine outside the visible strip while controls are open.
+        requestAnimationFrame(()=>fitMachineToView(true));
+      });
     } else if(inMode) {
       // Restore the complete machine/crank framing after the drawer has been
       // hidden. Run after the style/display change so fitMachineToView sees
@@ -13261,6 +13700,21 @@ html:not(:has(body.neon-visual-mode)) textarea{font-family:Arial,Helvetica,sans-
   :root{--frame-footer:113px!important;}
   #app-container{
     bottom:var(--frame-footer)!important;
+  }
+}
+</style>
+
+<style id="v112-mobile-overlay-cleanup">
+@media (max-width:900px) and (orientation:portrait){
+  #app-container.mobile-one-screen-mode #hud-top-right,
+  #app-container.mobile-one-screen-mode #selected-gear-detail,
+  #app-container.mobile-one-screen-mode #hud-bottom-left{
+    display:none!important;
+    pointer-events:none!important;
+  }
+  #app-container.mobile-one-screen-mode.mobile-controls-open #canvas-container{
+    display:block!important;
+    inset:0 0 75vh 0!important;
   }
 }
 </style>
