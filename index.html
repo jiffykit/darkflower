@@ -2092,7 +2092,7 @@ body.neon-visual-mode .rational-gear-thumb{background:rgba(0,10,5,.90)!important
               </div>
               <div class="current-gear-accel-cell current-gear-knob-cell">
                 <label><span>Offcenter</span><span id="val-palette-offcenter" style="color:var(--accent-cyan);font-weight:700;">0%</span></label>
-                <input type="range" id="slider-palette-offcenter" min="0" max="100" step="1" value="0" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
+                <input type="range" id="slider-palette-offcenter" min="0" max="100" step="0.01" value="0" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
               </div>
             </div>
             <div>
@@ -4860,8 +4860,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const palettePhaseKnob=document.getElementById('val-palette-phase-knob'); if(palettePhaseKnob)palettePhaseKnob.textContent=`${offsetTeeth}/${toothCount}`;
       const offSlider=document.getElementById('slider-palette-offcenter'); const offVal=document.getElementById('val-palette-offcenter');
       const off=getGearOffcenterPercent(gear);
-      if(offSlider){offSlider.value=String(Math.round(off));offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
-      if(offVal)offVal.textContent=`${Math.round(off)}%`;
+      if(offSlider){offSlider.value=String(off);offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
+      if(offVal)offVal.textContent=formatOffcenterPercent(off);
       const degreeReadout=document.getElementById('palette-phase-degree-readout'); if(degreeReadout)degreeReadout.textContent=`${offsetDeg.toFixed(1)}°`;
       if(teeth){teeth.min='0';teeth.max=String(Math.max(0,toothCount-1));teeth.step='1';teeth.value=String(offsetTeeth);}
     }
@@ -5116,6 +5116,11 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     function getGearOffcenterPercent(gear){
       return Math.max(0, Math.min(100, Number(gear?.offcenter)||0));
     }
+    function formatOffcenterPercent(value){
+      const v=Math.max(0,Math.min(100,Number(value)||0));
+      if(v===0) return '0%';
+      return `${v.toFixed(2).replace(/0+$/,'').replace(/\.$/,'')}%`;
+    }
     function getGearOffcenterRadius(gear){
       if(!gear) return 0;
       const outer=Math.max(1,Number(gear.outerRadius)||Number(gear.pitchRadius)||1);
@@ -5226,11 +5231,19 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     ];
     function gearVisualStyle(gear) {
       if (!gear) return STEAMPUNK_MATERIALS[0];
-      if (!gear.visualStyleIndex) {
-        const seed = (gear.id * 17 + gear.teeth * 7 + (gear.isMain ? 11 : 0)) % STEAMPUNK_MATERIALS.length;
+      // Crossfades intentionally interpolate tooth counts through fractional values.
+      // Never use the live tooth count as an array/material index, or a transition
+      // such as 60T -> 30T can create a fractional visualStyleIndex and make the
+      // render loop throw while the preset is morphing. Material identity is stable
+      // for the life of the gear and is therefore derived only from its integer id.
+      const existing = Number(gear.visualStyleIndex);
+      if (!Number.isInteger(existing) || existing < 1 || existing > STEAMPUNK_MATERIALS.length) {
+        const id = Number.isFinite(Number(gear.id)) ? Math.abs(Math.trunc(Number(gear.id))) : 0;
+        const seed = (id * 17 + (gear.isMain ? 11 : 0)) % STEAMPUNK_MATERIALS.length;
         gear.visualStyleIndex = seed + 1;
       }
-      return STEAMPUNK_MATERIALS[(gear.visualStyleIndex - 1) % STEAMPUNK_MATERIALS.length];
+      const index = Math.max(0, Math.min(STEAMPUNK_MATERIALS.length - 1, Math.round(Number(gear.visualStyleIndex) - 1)));
+      return STEAMPUNK_MATERIALS[index] || STEAMPUNK_MATERIALS[0];
     }
     function seededValue(id, salt=0) {
       const x = Math.sin((id * 12.9898) + salt * 78.233) * 43758.5453;
@@ -9723,7 +9736,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
 
     // ROTARY KNOB CONTROLS ----------------------------------------------------
     function rotaryDisplayValue(input){
-      if(input.id==='slider-global-acceleration') return `${Math.round(Number(input.value)||0)}%`;
+      if(input.id==='slider-global-acceleration') return formatGearAcceleration(Number(input.value)||0);
       if(input.id.includes('phase-deg-slider')){
         const gear=input.id.startsWith('input-palette-') ? (typeof getActivePaletteGear==='function'?getActivePaletteGear():null) : (state.gearMap.get(state.selectedGearId)||null);
         const teeth=Math.max(1,Math.round(gear?.teeth||Number(input.max||0)+1||1));
@@ -9732,7 +9745,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       }
       if(input.id==='slider-keyboard-bloom') return '';
       if(input.id==='slider-palette-acceleration' || input.id==='slider-inspector-acceleration') return formatGearAcceleration(Number(input.value)||0);
-      if(input.id==='slider-palette-offcenter' || input.id==='slider-inspector-offcenter') return `${Math.round(Number(input.value)||0)}%`;
+      if(input.id==='slider-palette-offcenter' || input.id==='slider-inspector-offcenter') return formatOffcenterPercent(Number(input.value)||0);
       if(input.id==='slider-fundamental') return `${Math.max(0,Number(state.fundamentalFreq)||0).toFixed(2)} Hz`;
       const step=Number(input.step); const v=Number(input.value);
       if(input.id.includes('volume')||input.id==='input-master-vol'||input.id==='slider-spatial-scale') return `${Math.round(v*100)}%`;
@@ -9891,8 +9904,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const phaseVal=document.getElementById('val-inspector-phase-knob'); if(phaseVal) phaseVal.textContent=`${Math.round(gear.phaseOffsetTeeth||0)}/${Math.max(1,Math.round(gear.teeth||1))}`;
       const offSlider=document.getElementById('slider-inspector-offcenter'); const offVal=document.getElementById('val-inspector-offcenter');
       const off=getGearOffcenterPercent(gear);
-      if(offSlider){offSlider.value=String(Math.round(off));offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
-      if(offVal)offVal.textContent=`${Math.round(off)}%`;
+      if(offSlider){offSlider.value=String(off);offSlider.title=`Axle eccentricity ${Math.round(off)}%: 0% centered, 100% at the outer tooth radius.`;}
+      if(offVal)offVal.textContent=formatOffcenterPercent(off);
       const accel=document.getElementById('slider-inspector-acceleration'); const accelVal=document.getElementById('val-inspector-acceleration');
       const effective=getEffectiveGearAccelerationMs(gear);
       if(accel){accel.max='5000';accel.value=String(Math.min(5000,effective));accel.disabled=getGlobalAccelerationPercent()===0;}
@@ -10203,8 +10216,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
         }
         if(t.property==='toothWidth'){ const out=document.getElementById('val-inspector-tooth-width'); if(out&&gear.id===state.selectedGearId) out.textContent=gear.toothWidth.toFixed(4); }
         if(t.property==='offcenter'){
-          const iv=document.getElementById('val-inspector-offcenter'); if(iv&&gear.id===state.selectedGearId) iv.textContent=`${Math.round(gear.offcenter)}%`;
-          const pv=document.getElementById('val-palette-offcenter'); if(pv&&gear.id===state.activePaletteGearId) pv.textContent=`${Math.round(gear.offcenter)}%`;
+          const iv=document.getElementById('val-inspector-offcenter'); if(iv&&gear.id===state.selectedGearId) iv.textContent=formatOffcenterPercent(gear.offcenter);
+          const pv=document.getElementById('val-palette-offcenter'); if(pv&&gear.id===state.activePaletteGearId) pv.textContent=formatOffcenterPercent(gear.offcenter);
           state.motionFrameCache.clear();
         }
         updateAudioNodes();
@@ -10762,8 +10775,8 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
             <input type="range" id="input-phase-deg-slider" min="0" max="${Math.max(0,Math.round(gear.teeth||1)-1)}" step="1" value="${Math.max(0,Math.min(Math.max(0,Math.round(gear.teeth||1)-1),Math.round(gear.phaseOffsetTeeth||0)))}" style="width:100%;">
           </div>
           <div class="current-gear-knob-cell">
-            <label><span>Offcenter</span><span id="val-inspector-offcenter" style="color:var(--accent-cyan);font-weight:700;">${Math.round(getGearOffcenterPercent(gear))}%</span></label>
-            <input type="range" id="slider-inspector-offcenter" min="0" max="100" step="1" value="${Math.round(getGearOffcenterPercent(gear))}" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
+            <label><span>Offcenter</span><span id="val-inspector-offcenter" style="color:var(--accent-cyan);font-weight:700;">${formatOffcenterPercent(getGearOffcenterPercent(gear))}</span></label>
+            <input type="range" id="slider-inspector-offcenter" min="0" max="100" step="0.01" value="${getGearOffcenterPercent(gear).toFixed(2)}" style="width:100%;" aria-label="Offcenter" title="Move the axle from the gear center toward the teeth. Higher values create stronger eccentric frequency modulation.">
           </div>
         </div>
         <div class="gear-adsr-section" style="margin-top:8px; border-top:1px solid var(--border-color); padding-top:6px;">
@@ -11061,7 +11074,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
       const inspectorOffcenterValue=document.getElementById('val-inspector-offcenter');
       inspectorOffcenterSlider?.addEventListener('input',e=>{
         gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
-        if(inspectorOffcenterValue)inspectorOffcenterValue.textContent=`${Math.round(gear.offcenter)}%`;
+        if(inspectorOffcenterValue)inspectorOffcenterValue.textContent=formatOffcenterPercent(gear.offcenter);
         state.motionFrameCache.clear();
         updateAudioNodes();
         if(state.polyMode) updatePolyVoices();
@@ -11906,7 +11919,7 @@ registerProcessor('gear-poly-composite',GearPolyCompositeProcessor);
     document.getElementById('slider-palette-offcenter')?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return;
       gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
-      const value=document.getElementById('val-palette-offcenter'); if(value)value.textContent=`${Math.round(gear.offcenter)}%`;
+      const value=document.getElementById('val-palette-offcenter'); if(value)value.textContent=formatOffcenterPercent(gear.offcenter);
       state.motionFrameCache.clear();
       updateAudioNodes();
       if(state.polyMode) updatePolyVoices();
@@ -13372,6 +13385,7 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
     const pairTransitions=pairs.map(({g,sg})=>({g,sg,start:getGearTransitionState(g),target:getSnapshotTransitionState(sg),targetRatio:Number(targetRatioById.get(Number(sg.id))||0)}));
     const targetMainId=Number(targetMain?.id);
     const targetMainIsNew=!!targetMain && !pairs.some(x=>x.sg===targetMain);
+    const sourcePolyMode=!!state.polyMode;
     const wasRunning=!!state.audioRunning;
     const now=performance.now();
     const smoother=t=>{const x=Math.max(0,Math.min(1,Number(t)||0));return x*x*x*(x*(x*6-15)+10);};
@@ -13585,6 +13599,28 @@ body.neon-visual-mode .visual-mode-radio input:checked{background:#39ff88!import
         // Preserve the exact target global state, including the discrete settings that
         // were intentionally left untouched during the continuous morph.
         assignStateValues(p.state);
+
+        // Performance-engine mode must change as a complete handoff. A preset can
+        // legitimately switch POLY -> mono (CARPING does this), and simply changing
+        // state.polyMode leaves the old dedicated poly voices alive. Those orphaned
+        // voices mute the visible gear path and make a held note appear stuck. Stop
+        // the old poly engine before handing control to the target mode. For the
+        // reverse mono -> POLY transition, rebuild voices from notes that are still
+        // physically/MIDI held so the handoff is equally deterministic.
+        if(sourcePolyMode && !state.polyMode){
+          try{stopAllPolyVoices();}catch(_){}
+        }else if(!sourcePolyMode && state.polyMode){
+          try{stopAllPolyVoices();}catch(_){}
+          const heldPhysical=[...state.pressedKeys];
+          heldPhysical.forEach(code=>{if(Object.prototype.hasOwnProperty.call(KEY_TO_SEMITONE,code)){try{startPolyVoice(KEY_TO_SEMITONE[code],code,1);}catch(_){} }});
+          state.midiHeldNotes.forEach((note,noteId)=>{try{startPolyVoice(Number(note.semitone),`midi-${noteId}`,Number(note.velocityGain)||1);}catch(_){}});
+          const lastPhysical=heldPhysical.length?heldPhysical[heldPhysical.length-1]:null;
+          state.activeSemitone=lastPhysical&&Object.prototype.hasOwnProperty.call(KEY_TO_SEMITONE,lastPhysical)
+            ? KEY_TO_SEMITONE[lastPhysical]
+            : (state.midiHeldNotes.size?Array.from(state.midiHeldNotes.values()).at(-1).semitone:null);
+        }
+        syncKeyboardAudioGate();
+
         state.gears.forEach(g=>{
           g._presetTransitionActive=false;g._presetTransitionLevel=undefined;g._presetTransitionIn=undefined;g._presetTransitionOut=undefined;g._inPresetTransition=undefined;g._presetTransitionT=undefined;g._presetTransitionFromShape=undefined;g._presetTransitionToShape=undefined;g._presetTransitionFromShapeParams=undefined;g._presetTransitionToShapeParams=undefined;g._presetTransitionFromTeeth=undefined;g._presetTransitionToTeeth=undefined;g._presetTransitionFromRatio=undefined;g._presetTransitionToRatio=undefined;g._presetTargetSnapshot=undefined;g._presetTransitionFromSourceMode=undefined;g._presetTransitionToSourceMode=undefined;g._presetWillBecomeMain=undefined;g._presetTransitionAddTarget=undefined;g._presetAddStart=undefined;
         });
