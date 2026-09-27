@@ -2370,11 +2370,26 @@ html.app-booting body > [data-app-splash]{visibility:visible !important;pointer-
         if (gear.ratio !== 0 && !isGearBeingDragged(gear)) {
           const motion = getGearMechanicalMotion(gear);
           gear._shapePhase = motion.phase + (warp ? (gear.isMain ? warp : gear.ratio * warp) : 0);
-          gear._shapeRate = motion.rate;
+          // UnifiedAudioWorklet receives the shape/network rate separately from
+          // this gear's own eccentric-axis rate. Otherwise offcenter gets applied
+          // once through shapeRate and a second time inside the worklet.
+          gear._shapeRate = Math.max(0.001, Number(motion.shapeRate ?? motion.rate) || 1);
+          gear._mechanicalRate = Math.max(0.001, Number(motion.rate) || 1);
           gear.angle = baseVertical + gear._shapePhase;
           applyGearShapeMotion(gear);
         }
       });
+      // Send only the shape/network component. The worklet evaluates each gear's
+      // eccentric-axis FM continuously from its own offcenter value and mechanical
+      // phase, preserving audio-rate modulation instead of sampling it at the visual FPS.
+      if(state.audioRunning && state.audioWorkletReady){
+        const updates=[];
+        state.gears.forEach(gear=>{
+          if(gear.ratio===0 || !Number.isFinite(Number(gear._shapeRate)))return;
+          updates.push({id:Number(gear.id),shapeRate:Math.max(.001,Math.min(8,Number(gear._shapeRate)||1)),offcenter:getGearOffcenterPercent(gear),phaseCycle:Number(gear._shapePhase||gear.angle||0)/TAU});
+        });
+        if(updates.length)postUnifiedAudio({type:'gear-motion-batch',updates});
+      }
     }
 
     function syncCrankToolSpeed(angularVelocity) {
@@ -2872,6 +2887,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // only the base keyboard tuning ratio and the JI policy inputs. The actual
     // simple-ratio selection happens here, sample-accurately with the voice DSP.
     this.jiKeyboard=true; this.baseFundamentalFreq=440; this.pitchBendRatio=1; this.jiTuningVersion=0;
+    // Off-center pitch wobble is a slow mechanical/eccentric cycle, not the
+    // audible waveform cycle. 0.555 Hz at A4 matches the app's vinyl reference.
+    this.offcenterVinylHzAt440=.555;
     this.jiStableRoot=null; this.jiRootCacheKey=''; this.jiRootCacheValue=null;
     this.gears=new Map(); this.gearArray=[]; this.samples=new Map(); this.maxReleaseSec=0;
     this.driver={playing:false,left:null,right:null,sampleRate:this.sr,pos:0,rate:1,keyboardKeyRatio:1,loopStart:0,loopEnd:0,crossfadeSec:.025};
@@ -2909,7 +2927,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
           // Keep Worklet-side ultrasonic eligibility synchronized with the live
           // keyboard fundamental without rebuilding the complete machine config.
           this.gears.forEach(g=>{
-            const f=Math.max(.001,this.baseFundamentalFreq*Math.max(.00001,Math.abs(Number(g.ratio)||0))*Math.max(.00001,Math.abs(Number(g.shapeRate)||1)));
+            const f=Math.max(.001,this.baseFundamentalFreq*Math.max(.00001,Math.abs(Number(g.ratio)||0)));
             g.freq=f; g.targetFreq=f; g.isUltrasonic=f>20000||f>this.sr/2;
           });
           this.jiKeyboard=!!m.jiKeyboard;
@@ -2932,19 +2950,226 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
           this.mono.targetFreq=f;
           this.baseFundamentalFreq=f;
           this.gears.forEach(g=>{
-            const gf=Math.max(.001,f*Math.max(.00001,Math.abs(Number(g.ratio)||0))*Math.max(.00001,Math.abs(Number(g.shapeRate)||1)));
+            const gf=Math.max(.001,f*Math.max(.00001,Math.abs(Number(g.ratio)||0)));
             g.freq=gf; g.targetFreq=gf; g.isUltrasonic=gf>20000||gf>this.sr/2;
           });
           this.rebuildBloomAttackCache();
           break;
         }
-        case 'gear-acceleration': { const g=this.gears.get(Number(m.id)); if(g){ g.accelSec=Math.max(0,Math.min(10,Number(m.seconds)||0)); g.accelAlpha=g.accelSec>0.000001 ? 1-Math.exp(-5/(g.accelSec*this.sr)) : 1; this.polyReuseEnabled=this.gearArray.some(x=>Number(x.accelSec)>0.000001); } break; }
-        case 'gear-offcenter': { const g=this.gears.get(Number(m.id)); if(g) g.offcenter=Math.max(0,Math.min(100,Number(m.value)||0)); break; }
-        case 'gear-phase': { const g=this.gears.get(Number(m.id)); if(g) g.phaseOffset=Number(m.value)||0; break; }
+        case 'gear-transition': {
+          const list=Array.isArray(m.gears)?m.gears:[];
+          for(const p of list){
+            const g=this.gears.get(Number(p.id)); if(!g)continue;
+            if(Number.isFinite(Number(p.ratio))){g.ratio=Number(p.ratio);}
+            if(Number.isFinite(Number(p.shapeRate))){
+              g.shapeRate=Math.max(.00001,Math.abs(Number(p.shapeRate)));
+              g.motionShapeRateTarget=Math.max(.001,Math.min(8,g.shapeRate));
+            }
+            if(Number.isFinite(Number(p.motionShapeRate)))g.motionShapeRateTarget=Math.max(.001,Math.min(8,Number(p.motionShapeRate)));
+            if(Number.isFinite(Number(p.freq))){g.freq=Math.max(.001,Math.abs(Number(p.freq)));g.targetFreq=g.freq;}
+            if(Number.isFinite(Number(p.volume))){g.volume=Math.max(0,Math.min(1,Number(p.volume)));g._volume=g.volume;}
+            if(Number.isFinite(Number(p.offcenter))){const v=Math.max(0,Math.min(100,Number(p.offcenter)));g.offcenter=v;g.offcenterTarget=v;g._offcenterActive=g.offcenter>0;}
+            if(Number.isFinite(Number(p.accelerationMs))){g.accelSec=Math.max(0,Math.min(10,Number(p.accelerationMs)/1000));g.accelAlpha=g.accelSec>0.000001?1-Math.exp(-5/(g.accelSec*this.sr)):1;}
+            if(Number.isFinite(Number(p.phaseOffsetDeg))){g.phaseOffset=Number(p.phaseOffsetDeg)*Math.PI/180;g._phaseOffsetCycles=Number(p.phaseOffsetDeg)/360;}
+            if(Number.isFinite(Number(p.toothWidth))){g.width=Math.max(0,Math.min(.98,Number(p.toothWidth)));}
+            if(p.presetTransitionActive!==undefined)g._presetTransitionActive=!!p.presetTransitionActive;
+            if(p.transitionSourceSolo!==undefined)g._transitionSourceSolo=!!p.transitionSourceSolo;
+            if(p.transitionTargetSolo!==undefined)g._transitionTargetSolo=!!p.transitionTargetSolo;
+            if(p.soloFrom!==undefined)g._transitionSoloFrom=!!p.soloFrom;
+            if(p.soloTo!==undefined)g._transitionSoloTo=!!p.soloTo;
+            if(p.mutedFrom!==undefined)g._transitionMutedFrom=!!p.mutedFrom;
+            if(p.mutedTo!==undefined)g._transitionMutedTo=!!p.mutedTo;
+            if(Number.isFinite(Number(p.transitionMix)))g._transitionAudibilityTarget=Math.max(0,Math.min(1,Number(p.transitionMix)));
+            if(p.waveformFrom!==undefined)g.waveformFrom=String(p.waveformFrom||g.waveform||'sine').toLowerCase();
+            if(p.waveformTo!==undefined)g.waveformTo=String(p.waveformTo||g.waveformFrom||g.waveform||'sine').toLowerCase();
+            if(Number.isFinite(Number(p.waveMorph))){
+              g.waveMorphTarget=Math.max(0,Math.min(1,Number(p.waveMorph)));
+              // Keep the current audio morph exactly where it is and let renderGear()
+              // close the remaining distance sample-by-sample. The old code assigned
+              // g.waveMorph directly here, creating a 25–40 ms staircase between control
+              // messages and making the final waveform handoff especially conspicuous.
+              // The exact endpoint is also *slewed*; never hard-switch to the target shape
+              // just because the transition ticker reached t=1.
+              if(g.waveMorphTarget>=0.999999)g._waveMorphActive=true;
+            }
+            if(Number.isFinite(Number(p.widthFrom)))g.widthFrom=Math.max(0,Math.min(.98,Number(p.widthFrom)));
+            if(Number.isFinite(Number(p.widthTo)))g.widthTo=Math.max(0,Math.min(.98,Number(p.widthTo)));
+            if(Number(g.waveMorphTarget)>=0.999999){
+              // Endpoint is still audio-rate slewed in renderGear(). Do not assign
+              // g.waveMorph/g.waveform here or the final message becomes a discrete
+              // waveform swap at exactly the end of the crossfade.
+              g.waveMorphTarget=1;g._waveMorphActive=true;
+            }else{
+              g._waveMorphActive=(g.waveformFrom!==g.waveformTo)||(Math.abs((g.widthFrom??g.width??.5)-(g.widthTo??g.width??.5))>1e-6)||(Number(g.waveMorphTarget??g.waveMorph??0)>0);
+            }
+            if(Number.isFinite(Number(p.clockTickMs))){g.clockTickMs=Math.max(.4,Math.min(18,Number(p.clockTickMs)));}
+            if(Number.isFinite(Number(p.midiWidth))){g._midiWidth=Math.max(0,Number(p.midiWidth));}
+            if(Number.isFinite(Number(p.teeth))){g.teeth=Math.max(3,Number(p.teeth));}
+            if(p.adsr&&typeof p.adsr==='object'){
+              g.adsr={...g.adsr,...p.adsr};
+              const ad=g.adsr;
+              g._attackSamples=Math.max(0,Math.min(10,Number(g.bloomAttack)||Number(ad.attack)||0))*this.sr;
+              g._decaySamples=Math.max(0,Math.min(2,Number(ad.decay)||0))*this.sr;
+              g._releaseSamples=Math.max(0,Math.min(10,Number(ad.release)||0))*this.sr;
+              g._sustain=Math.max(0,Math.min(1,Number(ad.sustain??.8)));
+              g._attackCurve=Math.max(-1,Math.min(1,Number(ad.attackCurve)||0));
+              g._decayCurve=Math.max(-1,Math.min(1,Number(ad.decayCurve)||0));
+              g._releaseCurve=Math.max(-1,Math.min(1,Number(ad.releaseCurve)||0));
+            }
+            if(p.widthMod&&typeof p.widthMod==='object')g.widthMod={...g.widthMod,...p.widthMod};
+            if(p.widthModEnabled!==undefined)g.widthModEnabled=!!p.widthModEnabled;
+            if(p.sourceMode!==undefined&&p.sourceMode===g.sourceMode){}
+            // A transition may alter waveform/width continuously; disable the
+            // quantized table only for this live morph so width never waits for the
+            // final preset handoff to become audible. The final config rebuilds it.
+            g._waveTable=null;g._waveTableKey='';
+            g._freqMul=Math.max(.00001,Math.abs(g.ratio));
+            this.polyReuseEnabled=this.gearArray.some(x=>Number(x.accelSec)>0.000001);
+          }
+          if(Number.isFinite(Number(m.baseFundamentalFreq))&&Number(m.baseFundamentalFreq)>0)this.baseFundamentalFreq=Number(m.baseFundamentalFreq);
+          if(Number.isFinite(Number(m.masterVolume)))this.masterTarget=Math.max(0,Math.min(1,Number(m.masterVolume)));
+          if(Number.isFinite(Number(m.spatialScale)))this.spatialScale=Math.max(.001,Math.min(2,Number(m.spatialScale)));
+          if(Number.isFinite(Number(m.bloomAmount))){this.bloomAmount=Math.max(-5,Math.min(5,Number(m.bloomAmount)));this.rebuildBloomAttackCache();}
+          if(Number.isFinite(Number(m.clockworkTickWidthMs))){const v=Math.max(.4,Math.min(18,Number(m.clockworkTickWidthMs)));for(const g of this.gears.values())g.clockTickMs=v;}
+          this.recomputePolyTuningTargets();
+          break;
+        }
+        case 'gear-acceleration': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            g.accelSec=Math.max(0,Math.min(10,Number(m.seconds)||0));
+            g.accelAlpha=g.accelSec>0.000001 ? 1-Math.exp(-5/(g.accelSec*this.sr)) : 1;
+            // renderGear() reads the realtime cache, not the config-only mirror.
+            // Keep the cache live so the knob changes the already-playing voice.
+            g._accelAlpha=g.accelAlpha;
+            this.polyReuseEnabled=this.gearArray.some(x=>Number(x.accelSec)>0.000001);
+          }
+          break;
+        }
+        case 'gear-waveform': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            const next=String(m.waveform||g.waveform||'sawtooth').toLowerCase();
+            const allowed=['sine','triangle','sawtooth','square','clockwork'];
+            const target=allowed.includes(next)?next:'sawtooth';
+            const cur=String(g.waveform||'sawtooth').toLowerCase();
+            if(cur===target && !g._waveMorphActive) break;
+            // Manual tooth-shape changes get their own short audio-rate morph so
+            // the UI never waits for a throttled full machine snapshot and never
+            // hard-swaps sine/square/saw/triangle at a control-message boundary.
+            const currentMorphActive=!!g._waveMorphActive;
+            const currentMorph=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
+            let from=cur, fromWidth=Math.max(0,Math.min(.98,Number(g.width)||.5));
+            if(currentMorphActive){
+              // Preserve the currently audible preset transition as the source of
+              // the manual morph. The normal preset transition may continue underneath.
+              from=String(g.waveformTo||g.waveform||cur).toLowerCase();
+              fromWidth=Math.max(0,Math.min(.98,Number(g.widthTo??g.width)||fromWidth));
+            }
+            g.waveformFrom=from; g.waveformTo=target;
+            g.widthFrom=fromWidth; g.widthTo=fromWidth;
+            g.waveMorph=currentMorphActive ? 0 : 0;
+            g.waveMorphTarget=1; g._waveMorphActive=true;
+            g._manualWaveformMorph=true; g._manualWaveformMorphTarget=target;
+            g.waveMorphAlpha=1-Math.exp(-1/(0.006*this.sr));
+            g._waveTable=null; g._waveTableKey=''; g._waveN=0;
+          }
+          break;
+        }
+        case 'gear-source-mode': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            const mode=String(m.mode||g.sourceMode||'sawtooth').toLowerCase();
+            g.sourceMode=mode;
+            g._sourceKind=mode==='audio'?1:mode==='noise'?2:mode==='midi'?3:mode==='clockwork'?4:0;
+            if(m.waveform!==undefined)g.waveform=String(m.waveform||g.waveform||'sawtooth').toLowerCase();
+            if(g._sourceKind!==0) { g._waveMorphActive=false; g._manualWaveformMorph=false; g.waveformFrom=g.waveform; g.waveformTo=g.waveform; g.waveMorph=1; g.waveMorphTarget=1; }
+          }
+          break;
+        }
+        case 'gear-kinematics-batch': {
+          const updates=Array.isArray(m.updates)?m.updates:null;
+          if(updates){
+            for(let i=0;i<updates.length;i++){
+              const u=updates[i],g=this.gears.get(Number(u?.id));
+              if(!g)continue;
+              if(Number.isFinite(Number(u?.ratio))){g.ratio=Number(u.ratio);g._freqMul=Math.max(.00001,Math.abs(g.ratio));}
+              if(Number.isFinite(Number(u?.freq))){const f=Math.max(.001,Math.abs(Number(u.freq)));g.freq=f;g.targetFreq=f;}
+              if(Number.isFinite(Number(u?.teeth)))g.teeth=Math.max(1,Number(u.teeth));
+              if(Number.isFinite(Number(u?.isUltrasonic)))g.isUltrasonic=!!u.isUltrasonic;
+            }
+          }
+          break;
+        }
+        case 'gear-offcenter': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            const v=Math.max(0,Math.min(100,Number(m.value)||0));
+            g.offcenterTarget=v;
+            g.offcenter=v;
+          }
+          break;
+        }
+        case 'gear-motion': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            const target=Number(m.shapeRate ?? m.rate);
+            if(Number.isFinite(target)) g.motionShapeRateTarget=Math.max(.001,Math.min(8,target));
+            // Intentionally do not sync the eccentric phase to phaseCycle here. phaseCycle is
+              // the audible/visual carrier phase; using it as the off-center oscillator
+              // makes the rate law phase-warp one waveform cycle at a time instead of
+              // producing a slow vinyl-like pitch wobble.
+          }
+          break;
+        }
+        case 'gear-motion-batch': {
+          const updates=Array.isArray(m.updates)?m.updates:null;
+          if(updates){
+            for(let i=0;i<updates.length;i++){
+              const u=updates[i],g=this.gears.get(Number(u?.id));
+              const target=Number(u?.shapeRate ?? u?.rate);
+              if(g&&Number.isFinite(target))g.motionShapeRateTarget=Math.max(.001,Math.min(8,target));
+              if(g&&Number.isFinite(Number(u?.offcenter))){
+                const v=Math.max(0,Math.min(100,Number(u.offcenter)||0));
+                g.offcenterTarget=v;
+                g.offcenter=v;
+              }
+              // phaseCycle is deliberately ignored for off-center modulation; the eccentric
+              // oscillator has its own slow phase below.
+            }
+          }
+          break;
+        }
+        case 'gear-phase': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            g.phaseOffset=Number(m.value)||0;
+            // renderGear() applies the cached cycle offset on every sample.
+            g._phaseOffsetCycles=g.phaseOffset/(2*Math.PI);
+          }
+          break;
+        }
         case 'gear-loop': { const g=this.gears.get(Number(m.id)); if(g){ g.loopStart=Math.max(0,Number(m.start)||0); g.loopEnd=Math.max(g.loopStart+.001,Number(m.end)||g.loopEnd||.001); if(m.vinyl!==undefined)g.vinyl=!!m.vinyl; g.samplePos=0; } break; }
         case 'gear-vinyl': { const g=this.gears.get(Number(m.id)); if(g)g.vinyl=!!m.enabled; break; }
-        case 'gear-volume': { const g=this.gears.get(Number(m.id)); if(g) g.volume=Math.max(0,Math.min(1,Number(m.value)||0)); break; }
-        case 'gear-width': { const g=this.gears.get(Number(m.id)); if(g) g.width=Math.max(0,Math.min(.98,Number(m.value)||0)); break; }
+        case 'gear-volume': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            g.volume=Math.max(0,Math.min(1,Number(m.value)||0));
+            // renderGear() uses _volume as the hot-path scalar.
+            g._volume=g.volume;
+          }
+          break;
+        }
+        case 'gear-width': {
+          const g=this.gears.get(Number(m.id));
+          if(g){
+            g.width=Math.max(0,Math.min(.98,Number(m.value)||0));
+            // The cached wavetable is keyed by width. Invalidate it immediately so
+            // an active oscillator cannot continue using the previous tooth shape.
+            g._waveTable=null;g._waveTableKey='';g._waveN=0;
+          }
+          break;
+        }
         case 'gear-adsr': { const g=this.gears.get(Number(m.id)); if(g){ if(m.adsr) g.adsr={...g.adsr,...m.adsr}; if(m.widthMod) g.widthMod={...(g.widthMod||g.adsr),...m.widthMod}; if(m.widthModEnabled!==undefined) g.widthModEnabled=!!m.widthModEnabled; const ad=g.adsr||{};g._attackSamples=Math.max(0,Math.min(10,Number(g.bloomAttack)||Number(ad.attack)||0))*this.sr;g._decaySamples=Math.max(0,Math.min(2,Number(ad.decay)||0))*this.sr;g._releaseSamples=Math.max(0,Math.min(10,Number(ad.release)||0))*this.sr;g._sustain=Math.max(0,Math.min(1,Number(ad.sustain??.8)));g._attackCurve=Math.max(-1,Math.min(1,Number(ad.attackCurve)||0));g._decayCurve=Math.max(-1,Math.min(1,Number(ad.decayCurve)||0));g._releaseCurve=Math.max(-1,Math.min(1,Number(ad.releaseCurve)||0));g._widthModEnabled=g.widthModEnabled===true;this.rebuildBloomAttackCache();this.maxReleaseSec=Math.max(0,...this.gearArray.map(x=>Math.max(0,Math.min(10,Number(x.adsr?.release)||0)))); } break; }
         case 'master': this.masterTarget=Math.max(0,Math.min(1,Number(m.value)||0)); break;
         case 'bloom': this.bloomAmount=Math.max(-5,Math.min(5,Number(m.amount)||0)); if(m.placementOrder!==undefined)this.bloomPlacementOrder=!!m.placementOrder; this.rebuildBloomAttackCache(); break;
@@ -3033,7 +3258,16 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(const cfg of (m.gears||[])){
       const id=Number(cfg.id); incoming.add(id);
       let g=this.gears.get(id);
-      const sourceChanged=!g || g.sourceMode!==cfg.sourceMode || g.audioRef!==Number(cfg.audioRef||0) || g.driverMode!==this.driver.playing || Math.abs((g.loopStart||0)-(Number(cfg.loopStart)||0))>1e-6 || Math.abs((g.loopEnd||0)-(Number(cfg.loopEnd)||0))>1e-6 || g.vinyl!==!!cfg.vinyl;
+      const sourceModeClass=mode=>{
+        const v=String(mode||'').toLowerCase();
+        return ['sine','triangle','sawtooth','square'].includes(v)?'osc':v;
+      };
+      // Changing sine↔square↔triangle↔sawtooth is a timbre morph, not a new audio
+      // source. Preserve the oscillator phase across that final config handoff so the
+      // last sample of the crossfade and the first steady-state sample describe the
+      // same mechanical position. True source-class changes (audio/noise/MIDI/etc.)
+      // still reset the source state as before.
+      const sourceChanged=!g || sourceModeClass(g.sourceMode)!==sourceModeClass(cfg.sourceMode) || g.audioRef!==Number(cfg.audioRef||0) || g.driverMode!==this.driver.playing || Math.abs((g.loopStart||0)-(Number(cfg.loopStart)||0))>1e-6 || Math.abs((g.loopEnd||0)-(Number(cfg.loopEnd)||0))>1e-6 || g.vinyl!==!!cfg.vinyl;
       if(!g){g=this.makeGearState(cfg);this.gears.set(id,g);}
       this.updateGearState(g,cfg,sourceChanged);
     }
@@ -3106,30 +3340,93 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.compactLifecycleQueues();
     return null;
   }
-  makeGearState(cfg){return {id:Number(cfg.id),sourceMode:'sawtooth',ratio:1,freq:440,targetFreq:440,currentFreq:440,accelSec:0,accelAlpha:1,shapeRate:1,waveform:'sawtooth',width:.5,volume:.2,muted:false,solo:false,isUltrasonic:false,adsr:{attack:.01,decay:.01,sustain:.8,release:.5,attackCurve:0,decayCurve:0,releaseCurve:0},bloomAttack:.01,widthMod:null,widthModEnabled:false,offcenter:0,phase:0,phaseOffset:0,audioRef:Number(cfg.id)||0,loopStart:0,loopEnd:1,vinyl:false,teeth:120,clockTickMs:4,spatial:{x:0,y:0,z:0},spatialL:.7071067812,spatialR:.7071067812,spatialOrbit:{enabled:false,baseAngle:0,phase:0,periodSec:8,direction:1,radius:0,phaseSyncFrame:0,hrtfZ:0,hrtfZAngleRad:0,hrtfZRate:1,scale:.01},env:{gate:false,start:0,releaseStart:0,releaseLevel:0,releasing:false},samplePos:0,noise1:0,noise2:0,driverMode:false};}
+  makeGearState(cfg){return {id:Number(cfg.id),sourceMode:'sawtooth',ratio:1,freq:440,targetFreq:440,currentFreq:440,accelSec:0,accelAlpha:1,shapeRate:1,waveform:'sawtooth',width:.5,volume:.2,muted:false,solo:false,isUltrasonic:false,adsr:{attack:.01,decay:.01,sustain:.8,release:.5,attackCurve:0,decayCurve:0,releaseCurve:0},bloomAttack:.01,widthMod:null,widthModEnabled:false,offcenter:0,offcenterTarget:0,offcenterCurrent:0,_offcenterActive:false,phase:0,modPhase:0,offcenterPhase:0,phaseOffset:0,motionShapeRate:1,motionShapeRateTarget:1,motionShapeRateAlpha:1,audioRef:Number(cfg.id)||0,loopStart:0,loopEnd:1,vinyl:false,teeth:120,clockTickMs:4,spatial:{x:0,y:0,z:0},spatialL:.7071067812,spatialR:.7071067812,spatialOrbit:{enabled:false,baseAngle:0,phase:0,periodSec:8,direction:1,radius:0,phaseSyncFrame:0,hrtfZ:0,hrtfZAngleRad:0,hrtfZRate:1,scale:.01},env:{gate:false,start:0,releaseStart:0,releaseLevel:0,releasing:false},samplePos:0,noise1:0,noise2:0,driverMode:false};}
   updateSpatialCoeffs(g){const x=Number(g?.spatial?.x)||0,y=Number(g?.spatial?.y)||0,z=Number(g?.spatial?.z)||0,dist=Math.sqrt(x*x+y*y+z*z),pan=Math.max(-1,Math.min(1,x/(1+Math.abs(z)*.8))),a=(pan+1)*Math.PI/4,att=1/Math.sqrt(1+dist*dist*.18);g.spatialL=Math.cos(a)*att;g.spatialR=Math.sin(a)*att;}
   updateOrbitSpatial(g,a){const o=g?.spatialOrbit;if(!o?.enabled){this.updateSpatialCoeffs(g);return;}const r=Math.max(0,Number(o.radius)||0),theta=Number(o.hrtfZAngleRad)||0,rate=Math.max(.1,Number(o.hrtfZRate)||1),base=Math.max(-1,Math.min(1,Number(o.hrtfZ)||0)),scale=Math.max(.001,Number(o.scale)||.01);g.spatial={x:Math.cos(a)*r*scale,y:Math.max(-1,Math.min(1,base+Math.sin(a*rate)*Math.sin(theta))),z:Math.sin(a)*r*Math.cos(theta)*scale};this.updateSpatialCoeffs(g);}
   updateOrbitSpatialForFrame(g,frame){const o=g?.spatialOrbit;if(!o?.enabled)return;const dt=Math.max(0,(Number(frame)-Number(o.phaseSyncFrame||frame))/this.sr),speed=(2*Math.PI/Math.max(.25,Number(o.periodSec)||8))*(Number(o.direction)||1);this.updateOrbitSpatial(g,Number(o.baseAngle||0)+Number(o.phase||0)+speed*dt);}
   updateGearState(g,cfg,sourceChanged){
+    // Preserve a live preset waveform morph across any incidental full-config sync.
+    // The main thread can legitimately send a config snapshot while the transition
+    // ticker is running (gear creation, spatial changes, watchdog reconciliation,
+    // etc.). A plain config snapshot contains one waveform, so treating it as a
+    // fresh steady-state gear would collapse the dual-waveform crossfade to the
+    // source waveform and cause the exact end-of-fade snap this engine must avoid.
+    const holdPresetMorph=cfg.presetTransitionActive===true;
+    // Manual tooth-shape changes use the same audio-rate morph engine. A routine
+    // config reconciliation must not collapse that live morph back to a discrete
+    // waveform while the finger is still moving the control.
+    const holdManualWaveMorph=!!g._manualWaveformMorph && !!g._waveMorphActive;
+    const heldWaveFrom=String(g.waveformFrom||g.waveform||'sine');
+    const heldTransitionSoloFrom=!!g._transitionSoloFrom,heldTransitionSoloTo=!!g._transitionSoloTo,heldTransitionMutedFrom=!!g._transitionMutedFrom,heldTransitionMutedTo=!!g._transitionMutedTo;
+    const heldTransitionSourceSolo=!!g._transitionSourceSolo,heldTransitionTargetSolo=!!g._transitionTargetSolo;
+    const heldTransitionAudibility=Math.max(0,Math.min(1,Number(g._transitionAudibilityTarget??g._transitionAudibility??1)));
+    const heldWaveTo=String(g.waveformTo||heldWaveFrom);
+    const heldWaveMorph=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
+    const heldWidthFrom=Math.max(0,Math.min(.98,Number.isFinite(Number(g.widthFrom))?Number(g.widthFrom):Number(g.width)||.5));
+    const heldWidthTo=Math.max(0,Math.min(.98,Number.isFinite(Number(g.widthTo))?Number(g.widthTo):Number(g.width)||.5));
     g.sourceMode=String(cfg.sourceMode||'sawtooth');
     g.ratio=Number(cfg.ratio)||1;
     g.freq=Math.max(.001,Math.abs(Number(cfg.freq)||.001));
+    // cfg.freq is already the gear's ratio-scaled carrier frequency. The visual
+    // solver supplies the shape/network rate separately; the worklet performs this
+    // gear's own eccentric-axis modulation continuously at audio rate.
     g.shapeRate=Math.max(.00001,Math.abs(Number(cfg.shapeRate)||1));
-    // cfg.freq is already the gear's ratio-scaled frequency. Keep the stored
-    // target in the same frequency domain used by renderGear(), so an initial
-    // source/config refresh cannot create a hidden ratio-squared jump.
-    g.targetFreq=Math.max(.001,g.freq*g.shapeRate);
+    const initialShapeRate=Math.max(.001,Math.min(8,Number(cfg.motionShapeRate ?? cfg.shapeRate)||1));
+    g.motionShapeRateTarget=initialShapeRate;
+    g.motionShapeRate=initialShapeRate;
+    g.motionShapeRateAlpha=1-Math.exp(-1/(0.006*this.sr));
+    g.targetFreq=Math.max(.001,g.freq);
     g.accelSec=Math.max(0,Number(cfg.accelerationSec)||0);
     g.accelAlpha=g.accelSec>0.000001 ? 1-Math.exp(-5/(g.accelSec*this.sr)) : 1;
-    g.waveform=String(cfg.waveform||'sawtooth'); g.width=Math.max(0,Math.min(.98,Number(cfg.width)||0));
-    const canTable=['sine','triangle','sawtooth','square'].includes(g.waveform) && !g.widthModEnabled;
+    const cfgWaveform=String(cfg.waveform||'sawtooth').toLowerCase();
+    const cfgWidth=Math.max(0,Math.min(.98,Number(cfg.width)||0));
+    const cfgHasMorph=holdPresetMorph && (cfg.waveformFrom!==undefined || cfg.waveformTo!==undefined || Number.isFinite(Number(cfg.waveMorph)));
+    if(holdPresetMorph && !cfgHasMorph && g._waveMorphActive){
+      // Backward-compatible safety: even older callers that only send the ordinary
+      // waveform field cannot destroy a morph already underway.
+      g.waveform=g.waveform||heldWaveFrom;g.width=cfgWidth;
+      g.waveformFrom=heldWaveFrom;g.waveformTo=heldWaveTo;g.waveMorph=heldWaveMorph;g.waveMorphTarget=heldWaveMorph;
+      g.widthFrom=heldWidthFrom;g.widthTo=heldWidthTo;
+    }else if(holdManualWaveMorph && !cfgHasMorph){
+      g.waveform=g.waveform||heldWaveFrom;g.width=cfgWidth;
+      g.waveformFrom=heldWaveFrom;g.waveformTo=heldWaveTo;g.waveMorph=heldWaveMorph;g.waveMorphTarget=heldWaveMorph;
+      g.widthFrom=heldWidthFrom;g.widthTo=heldWidthTo;
+    }else{
+      g.waveform=cfgWaveform;g.width=cfgWidth;
+      g.waveformFrom=holdPresetMorph?String(cfg.waveformFrom||g.waveformFrom||g.waveform):g.waveform;
+      g.waveformTo=holdPresetMorph?String(cfg.waveformTo||g.waveformTo||g.waveform):g.waveform;
+      g.waveMorph=holdPresetMorph?Math.max(0,Math.min(1,Number.isFinite(Number(cfg.waveMorph))?Number(cfg.waveMorph):heldWaveMorph)):1;
+      g.waveMorphTarget=holdPresetMorph?g.waveMorph:1;
+      g.widthFrom=holdPresetMorph?Math.max(0,Math.min(.98,Number.isFinite(Number(cfg.widthFrom))?Number(cfg.widthFrom):heldWidthFrom)):g.width;
+      g.widthTo=holdPresetMorph?Math.max(0,Math.min(.98,Number.isFinite(Number(cfg.widthTo))?Number(cfg.widthTo):heldWidthTo)):g.width;
+    }
+    g._waveMorphActive=holdPresetMorph
+      ? (g.waveformFrom!==g.waveformTo || Math.abs(g.widthFrom-g.widthTo)>1e-6 || g.waveMorph>0)
+      : (holdManualWaveMorph ? true : false);
+    g._presetTransitionActive=holdPresetMorph;
+    if(holdPresetMorph){
+      g._transitionSoloFrom=cfg.soloFrom!==undefined?!!cfg.soloFrom:heldTransitionSoloFrom;
+      g._transitionSoloTo=cfg.soloTo!==undefined?!!cfg.soloTo:heldTransitionSoloTo;
+      g._transitionMutedFrom=cfg.mutedFrom!==undefined?!!cfg.mutedFrom:heldTransitionMutedFrom;
+      g._transitionMutedTo=cfg.mutedTo!==undefined?!!cfg.mutedTo:heldTransitionMutedTo;
+      g._transitionSourceSolo=cfg.transitionSourceSolo!==undefined?!!cfg.transitionSourceSolo:heldTransitionSourceSolo;
+      g._transitionTargetSolo=cfg.transitionTargetSolo!==undefined?!!cfg.transitionTargetSolo:heldTransitionTargetSolo;
+      g._transitionAudibilityTarget=Math.max(0,Math.min(1,Number.isFinite(Number(cfg.transitionMix))?Number(cfg.transitionMix):heldTransitionAudibility));
+    }else{
+      g._transitionAudibilityTarget=1;g._transitionAudibility=1;
+    }
+    const canTable=['sine','triangle','sawtooth','square'].includes(g.waveform) && !g.widthModEnabled && !g._waveMorphActive;
     const tableKey=canTable?String(g.waveform)+':'+g.width.toFixed(6):'';
     if(canTable && g._waveTableKey!==tableKey){
       const N=2048,tab=new Float32Array(N+1);for(let ti=0;ti<=N;ti++)tab[ti]=this.tooth(g.waveform,ti/N,g.width,g.clockTickMs);
       g._waveTable=tab;g._waveTableKey=tableKey;g._waveN=N;
     }else if(!canTable){g._waveTable=null;g._waveTableKey='';g._waveN=0;}
-    g.volume=Math.max(0,Math.min(1,Number(cfg.volume)||0)); g._volume=g.volume; g._freqMul=Math.max(.00001,Math.abs(g.ratio)*g.shapeRate); g._phaseOffsetCycles=(Number(g.phaseOffset)||0)/(2*Math.PI); g._offcenterActive=Math.max(0,Math.min(100,Number(cfg.offcenter)||0))>0; g.muted=!!cfg.muted; g.solo=!!cfg.solo; g.isUltrasonic=!!cfg.isUltrasonic;
-    g.adsr=cfg.adsr||g.adsr; g.bloomAttack=Math.max(0,Math.min(10,Number(cfg.bloomAttack) || Number(g.adsr?.attack) || .01)); g.widthMod=cfg.widthMod||g.widthMod; g.widthModEnabled=!!cfg.widthModEnabled; g.offcenter=Math.max(0,Math.min(100,Number(cfg.offcenter)||0));
+    g.volume=Math.max(0,Math.min(1,Number(cfg.volume)||0));
+    g._volume=g.volume;
+    g._freqMul=Math.max(.00001,Math.abs(g.ratio));
+    g._phaseOffsetCycles=(Number(g.phaseOffset)||0)/(2*Math.PI);
+    g.muted=!!cfg.muted; g.solo=!!cfg.solo; g.isUltrasonic=!!cfg.isUltrasonic;
+    g.adsr=cfg.adsr||g.adsr; g.bloomAttack=Math.max(0,Math.min(10,Number(cfg.bloomAttack) || Number(g.adsr?.attack) || .01)); g.widthMod=cfg.widthMod||g.widthMod; g.widthModEnabled=!!cfg.widthModEnabled; g.offcenter=Math.max(0,Math.min(100,Number(cfg.offcenter)||0)); g.offcenterTarget=g.offcenter; g.offcenterCurrent=g.offcenter; g._offcenterActive=g.offcenter>0;
     g.phaseOffset=Number(cfg.phaseOffset)||0; g.audioRef=Number(cfg.audioRef||0); g.loopStart=Math.max(0,Number(cfg.loopStart)||0); g.loopEnd=Math.max(g.loopStart+.001,Number(cfg.loopEnd)||g.loopStart+.001); g.vinyl=!!cfg.vinyl;
     g.teeth=Math.max(1,Number(cfg.teeth)||120);g.clockTickMs=Math.max(.4,Math.min(18,Number(cfg.clockTickMs)||4));g.driverMode=this.driver.playing;
     // Realtime scalar cache. These values change only on configuration/control updates,
@@ -3149,18 +3446,18 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     g.spatial={x:Number(cfg.x)||0,y:Number(cfg.y)||0,z:Number(cfg.z)||0};
     const o=cfg.orbitSpatial||{}; g.spatialOrbit={enabled:!!o.enabled,baseAngle:Number(o.baseAngle)||0,phase:Number(o.phase)||0,periodSec:Math.max(.25,Number(o.periodSec)||8),direction:Number(o.direction)||1,radius:Math.max(0,Number(o.radius)||0),phaseSyncFrame:this.frame,hrtfZ:Number(o.hrtfZ)||0,hrtfZAngleRad:Number(o.hrtfZAngleRad)||0,hrtfZRate:Math.max(.1,Number(o.hrtfZRate)||1),scale:Number(o.scale)||this.spatialScale};
     if(g.spatialOrbit.enabled)this.updateOrbitSpatialForFrame(g,this.frame); else this.updateSpatialCoeffs(g);
-    if(sourceChanged){g.samplePos=0;g.phase=Number(cfg.phaseSeed)||0;g.currentFreq=g.targetFreq;g.env={gate:false,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};g.widthEnv={gate:false,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};}
+    if(sourceChanged){g.samplePos=0;g.phase=Number(cfg.phaseSeed)||0;g.modPhase=g.phase;g.offcenterPhase=g.phase;g.currentFreq=g.targetFreq;g.env={gate:false,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};g.widthEnv={gate:false,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};}
   }
   makeVoice(id,cfg,seedVoice=null){
     const absoluteSemitone=Number.isFinite(Number(cfg.absoluteSemitone))?Number(cfg.absoluteSemitone):0;
     const baseRatio=Math.max(1e-12,Number(cfg.baseRatio)||1);
     const v={id,absoluteSemitone,baseRatio,jiThresholdCents:Number.isFinite(Number(cfg.jiThresholdCents))?Number(cfg.jiThresholdCents):Infinity,masterFreq:Math.max(.001,this.baseFundamentalFreq*baseRatio),masterTarget:Math.max(.001,this.baseFundamentalFreq*baseRatio),currentMaster:Math.max(.001,this.baseFundamentalFreq*baseRatio),velocity:Math.max(.0001,Math.min(1,Number(cfg.velocity)||1)),releasing:false,releaseStart:0,order:++this.voiceOrder,gears:new Map(),gearPairs:[],maxReleaseSec:0};
     for(const [gid,g] of this.gears){
-      const targetFreq=Math.max(.001,Math.abs(v.masterFreq*g.ratio)*g.shapeRate);
+      const targetFreq=Math.max(.001,Math.abs(v.masterFreq*g.ratio));
       const prior=seedVoice?.gears?.get?.(gid);
       const remembered=Number(prior?.currentFreq);
       const startFreq=(Number(g.accelSec)>0&&Number.isFinite(remembered)&&remembered>0)?remembered:targetFreq;
-      const st={phase:g.phase,samplePos:0,currentFreq:startFreq,env:{gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0},widthEnv:{gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0},noise1:0,noise2:0};
+      const st={phase:g.phase,modPhase:g.modPhase,offcenterPhase:g.offcenterPhase,samplePos:0,currentFreq:startFreq,env:{gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0},widthEnv:{gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0},noise1:0,noise2:0};
       v.gears.set(gid,st); v.gearPairs.push({g,st});
       v.maxReleaseSec=Math.max(v.maxReleaseSec,Math.max(0,Math.min(10,Number(g.adsr?.release)||0)));
     }
@@ -3335,7 +3632,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(let pi=0;pi<v.gearPairs.length;pi++){
       const g=v.gearPairs[pi].g,st=v.gearPairs[pi].st; if(!g||!st)continue;
       const allow=Number(g.accelSec)>0.000001;
-      const freq=Math.max(.001,Math.abs(target)*Math.max(.00001,Math.abs(g.ratio||1))*g.shapeRate);
+      const freq=Math.max(.001,Math.abs(target)*Math.max(.00001,Math.abs(g.ratio||1)));
       if(!allow)st.currentFreq=freq;
       const env=st.env||(st.env={gate:true,start:0,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0});
       const held=Number.isFinite(Number(env.currentLevel))?Number(env.currentLevel):Math.max(0,Number(env.releaseLevel)||0);
@@ -3414,8 +3711,23 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   readSampleMono(s,pos){if(!s?.left?.length)return 0;const n=s.left.length,p=((pos%n)+n)%n,i=Math.floor(p),f=p-i,j=(i+1)%n,l=s.left[i]*(1-f)+s.left[j]*f,r=s.right?.length?s.right[i]*(1-f)+s.right[j]*f:l;return (l+r)*0.5;}
   readLoopSampleStereo(s,pos,start,end,crossfadeSamples){if(!s?.left?.length)return [0,0];const n=s.left.length,lo=Math.max(0,Math.min(n-2,start)),hi=Math.max(lo+1,Math.min(n,end)),len=Math.max(1,hi-lo);let p=((pos%len)+len)%len+lo;let base=this.readSampleStereo(s,p);const fade=Math.max(0,Math.min(len/2,Number(crossfadeSamples)||0));if(fade>1 && p>=hi-fade){const t=(p-(hi-fade))/fade;const headPos=lo+(p-(hi-fade));const h=this.readSampleStereo(s,headPos);const a=Math.cos(t*Math.PI/2),b=Math.sin(t*Math.PI/2);base=[base[0]*a+h[0]*b,base[1]*a+h[1]*b];}return base;}
   readLoopSampleMono(s,pos,start,end,crossfadeSamples){if(!s?.left?.length)return 0;const n=s.left.length,lo=Math.max(0,Math.min(n-2,start)),hi=Math.max(lo+1,Math.min(n,end)),len=Math.max(1,hi-lo);const p=((pos%len)+len)%len+lo;let mono=this.readSampleMono(s,p);const fade=Math.max(0,Math.min(len/2,Number(crossfadeSamples)||0));if(fade>1 && p>=hi-fade){const t=(p-(hi-fade))/fade;const headPos=lo+(p-(hi-fade));const h=this.readSampleMono(s,headPos);const a=Math.cos(t*Math.PI/2),b=Math.sin(t*Math.PI/2);mono=mono*a+h*b;}return mono;}
+  // Exact same eccentric-axis law as the visual kinematic solver. The worklet
+  // evaluates it continuously; the main thread supplies only the shape/network rate.
   offcenterRate(g,phase){const pct=Math.max(0,Math.min(100,Number(g?.offcenter)||0));if(pct<=0)return 1;const e=Math.min(.94,(pct/100)*.94),c=Math.cos(Number(phase)||0),denom=Math.max(1e-6,1+e*c),meanNorm=Math.sqrt(Math.max(.001,1-e*e));return Math.max(.08,Math.min(6,meanNorm/denom));}
+  offcenterCarrierHz(freq,shapeRate){
+    // Treat the eccentric axle like a turntable: one slow revolution modulates
+    // the instantaneous playback/oscillator rate. Scaling with pitch keeps the
+    // wobble tied to the gear rather than to control-message timing.
+    const f=Math.max(.001,Math.abs(Number(freq))||.001);
+    const sr=Math.max(.001,Math.min(8,Math.abs(Number(shapeRate))||1));
+    return Math.max(.02,Math.min(20,this.offcenterVinylHzAt440*(f/440)*sr));
+  }
   renderGear(g,st,baseFreq,velocity,isPoly=false){
+    // The main-thread kinematic solver is the authoritative mechanical path.
+    // It computes the exact instantaneous rate used by the visual gear motion and
+    // sends that scalar to this one audio worklet. Do not recreate a second
+    // offcenter oscillator/modulator path here: that caused static pitch shifts
+    // and detached the audio from the working visual mechanics.
     const freqTarget=Math.max(.001,Math.abs(baseFreq)*(g._freqMul||1));
     const envState=isPoly?st.env:g.env;
     const alpha=g._accelAlpha;
@@ -3427,22 +3739,56 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     envState.currentLevel=env;
     if(env<=.000001)return 0;
     const vel=velocity>0?velocity:.0001;
-    const vol=g._volume*vel*env;
+    let transitionGain=1;
+    if(g._presetTransitionActive){
+      const tgt=Math.max(0,Math.min(1,Number(g._transitionAudibilityTarget??1)));
+      const cur=Math.max(0,Math.min(1,Number(g._transitionAudibility??tgt)));
+      const a=1-Math.exp(-1/(0.008*this.sr));
+      g._transitionAudibility=cur+(tgt-cur)*a;
+      if(Math.abs(tgt-g._transitionAudibility)<1e-7)g._transitionAudibility=tgt;
+      transitionGain=g._transitionAudibility;
+    }
+    const vol=g._volume*vel*env*transitionGain;
     if(vol<=.000001||g.muted||g.isUltrasonic)return 0;
     let raw=0;
+    // The shape/network component arrives from the visual kinematic solver at control
+    // rate. The gear's own eccentric-axis component is calculated continuously here,
+    // at audio rate, so it cannot staircase or settle at a new static pitch.
+    const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
+    const shapeCurrent=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):shapeTarget;
+    const shapeAlpha=Number.isFinite(Number(g.motionShapeRateAlpha))?g.motionShapeRateAlpha:1-Math.exp(-1/(0.006*this.sr));
+    g.motionShapeRate=shapeCurrent+(shapeTarget-shapeCurrent)*shapeAlpha;
+    const shapeRate=Math.max(.001,Math.min(8,g.motionShapeRate));
+    const statePh=isPoly?st:g;
+    // Keep the eccentric oscillator independent from the audible waveform phase.
+    // Its phase advances at a slow vinyl-like mechanical rate, so the same eccentric
+    // geometry produces a real pitch rise/fall over many audible cycles instead of
+    // merely warping each waveform cycle.
+    const offPhase=Number.isFinite(Number(statePh.offcenterPhase))?Number(statePh.offcenterPhase):Number(statePh.modPhase)||0;
+    const offTarget=Math.max(0,Math.min(100,Number(g.offcenterTarget ?? g.offcenter)||0));
+    const offCurrent=Number.isFinite(Number(g.offcenterCurrent))?Number(g.offcenterCurrent):offTarget;
+    const offAlpha=1-Math.exp(-1/(0.006*this.sr));
+    g.offcenterTarget=offTarget;
+    g.offcenterCurrent=offCurrent+(offTarget-offCurrent)*offAlpha;
+    g._offcenterActive=g.offcenterCurrent>0.000001;
+    const offcenterCarrierHz=this.offcenterCarrierHz(freq,shapeRate);
+    const ownOffRate=g._offcenterActive?this.offcenterRate({offcenter:g.offcenterCurrent},2*Math.PI*offPhase):1;
+    const instantaneousRate=Math.max(.001,Math.min(8,shapeRate*ownOffRate));
+    statePh.offcenterPhase=(offPhase+(offcenterCarrierHz/this.sr))%1;
     if(this.driver.playing){
       const pos=isPoly?st.samplePos:g.samplePos;
       const start=this.driver.loopStart*this.driver.sampleRate;
       const end=Math.max(start+.001,this.driver.loopEnd*this.driver.sampleRate||this.driver.left?.length||start+1);
       const span=end-start;
-      const rate=Math.max(.000001,Math.abs(g.ratio||1)*this.driver.rate*this.driver.keyboardKeyRatio);
+      const rate=Math.max(.000001,Math.abs(g.ratio||1)*this.driver.rate*this.driver.keyboardKeyRatio*instantaneousRate);
       raw=this.readLoopSampleMono(this.driver,pos+start,end,Math.min(span/2,this.driver.crossfadeSec*this.driver.sampleRate));
       if(isPoly)st.samplePos=(pos+rate*this.driver.sampleRate/this.sr)%span;else g.samplePos=(pos+rate*this.driver.sampleRate/this.sr)%span;
     }
     else if(g._sourceKind===1){
       const smp=this.samples.get(g.audioRef); if(!smp)return 0;
+      const rateBase=g.vinyl?(0.555*(freq/440)):Math.max(.000001,(g.loopEnd-g.loopStart)*freq);
+      const rate=Math.max(.000001,rateBase*instantaneousRate);
       const start=g.loopStart*smp.sampleRate,end=Math.max(start+.001,g.loopEnd*smp.sampleRate),len=Math.max(1,end-start);
-      const rate=g.vinyl?(0.555*(freq/440)):Math.max(.000001,(g.loopEnd-g.loopStart)*freq);
       const pos=isPoly?st.samplePos:g.samplePos;
       raw=this.readLoopSampleMono(smp,pos+start,end,Math.min(len/2,.025*smp.sampleRate));
       if(isPoly)st.samplePos=(pos+rate*smp.sampleRate/this.sr)%len;else g.samplePos=(pos+rate*smp.sampleRate/this.sr)%len;
@@ -3458,10 +3804,47 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }
     else if(g._sourceKind===3)return 0;
     else{
-      const basePh=isPoly?st.phase:g.phase;const ph=basePh+g._phaseOffsetCycles;
-      if(g._waveTable && !g._widthModEnabled){const tab=g._waveTable,N=tab.length-1,p=((ph%1)+1)%1*N,ii=p|0,ff=p-ii;raw=tab[ii]+(tab[ii+1]-tab[ii])*ff;}
+      // The visual mechanical path has two different concepts of phase:
+      // a carrier/mechanical phase that determines where the eccentric axle is,
+      // and the audible waveform phase whose derivative is the instantaneous
+      // mechanical rate. They must not be the same state, otherwise FM feeds back
+      // into its own modulator and permanently shifts the carrier pitch.
+      const basePh=isPoly?st.phase:g.phase;
+      const ph=basePh+g._phaseOffsetCycles;
+      const morphActive=g._waveMorphActive===true;
+      if(morphActive){
+        // Waveform morphing lives in the Worklet and is smoothed at audio rate.
+        // Control messages may arrive every 40 ms (or later under load), but the
+        // actual oscillator shape is never allowed to jump between those samples.
+        const morphTarget=Math.max(0,Math.min(1,Number(g.waveMorphTarget ?? g.waveMorph) || 0));
+        const morphCurrent=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
+        const morphAlpha=1-Math.exp(-1/(0.005*this.sr));
+        g.waveMorph=morphCurrent+(morphTarget-morphCurrent)*morphAlpha;
+        if(Math.abs(morphTarget-g.waveMorph)<1e-7)g.waveMorph=morphTarget;
+        const m=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
+        const wa=Math.max(0,Math.min(.98,Number(g.widthFrom??g.width)||0));
+        const wb=Math.max(0,Math.min(.98,Number(g.widthTo??g.width)||0));
+        const w=wa+(wb-wa)*m;
+        const aType=String(g.waveformFrom||g.waveform||'sine'),bType=String(g.waveformTo||aType);
+        const aRaw=this.tooth(aType,ph,w,g.clockTickMs),bRaw=this.tooth(bType,ph,w,g.clockTickMs);
+        // This is an actual waveform morph, not a late discrete waveform swap.
+        // Because both endpoint shapes are evaluated at the same oscillator phase and
+        // mixed linearly, every oscillator sample is continuous with respect to the
+        // morph parameter. It also avoids the correlated-signal gain bump that an
+        // equal-power crossfade can create halfway between sine/square/triangle/etc.
+        raw=aRaw+(bRaw-aRaw)*m;
+        if(morphTarget>=0.999999 && m>=0.999999){
+          // Commit the endpoint only after the audio-rate slew has actually reached it.
+          // This makes the final sine↔square/triangle/sawtooth handoff continuous even
+          // when the main thread immediately sends a normal steady-state config.
+          g.waveMorph=1;g.waveMorphTarget=1;g.waveform=bType;g.width=wb;g._waveMorphActive=false;
+          g._manualWaveformMorph=false;g._manualWaveformMorphTarget=bType;
+        }
+      } else if(g._waveTable && !g._widthModEnabled){const tab=g._waveTable,N=tab.length-1,p=((ph%1)+1)%1*N,ii=p|0,ff=p-ii;raw=tab[ii]+(tab[ii+1]-tab[ii])*ff;}
       else {const widthEnabled=g._widthModEnabled;const widthLevel=widthEnabled?Math.max(0,Math.min(1,this.envAtFast(st.widthEnv,this.frame,g))):1;const shaped=this.tooth(g.waveform,ph,g.width,g.clockTickMs);if(widthLevel>=.999999)raw=shaped;else{const sine=Math.sin(2*Math.PI*ph);raw=sine+(shaped-sine)*widthLevel;}}
-      const inc=(freq/this.sr)*(g._offcenterActive?this.offcenterRate(g,2*Math.PI*basePh):1);if(isPoly)st.phase=(basePh+inc)%1;else g.phase=(basePh+inc)%1;
+      const audioInc=(freq/this.sr)*instantaneousRate;
+      if(isPoly)st.phase=(basePh+audioInc)%1;
+      else g.phase=(basePh+audioInc)%1;
     }
     return raw*vol;
   }
@@ -3470,8 +3853,8 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const out=outputs[0]||[],L=out[0]||new Float32Array(128),R=out[1]||L;
     const gears=this.gearArray;
     this.refreshVoiceArrays();
-    let anySolo=false;
-    for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g.solo&&!g.muted){anySolo=true;break;}}
+    let anySolo=false,transitionMode=false;
+    for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g._presetTransitionActive)transitionMode=true;if(g.solo&&!g.muted){anySolo=true;}}
     this.master=this.smooth(this.master,this.masterTarget,.008);
     const quantumStartFrame=(typeof currentFrame==='number'&&Number.isFinite(currentFrame))?currentFrame:this.frame;
     const scheduled=this.scheduledMidiEvents;
@@ -3494,7 +3877,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       }
       if(this.mono.active||this.mono.releasing){
         for(let gi=0;gi<gears.length;gi++){
-          const g=gears[gi]; if(anySolo&&!g.solo)continue;
+          const g=gears[gi]; if(!transitionMode&&anySolo&&!g.solo)continue;
           const d=this.mixGear(g,g,this.mono.targetFreq,this.mono.velocity,false);
           if(d!==0){if(this.spatialEnabled){const sl=Number(g.spatialL),sr=Number(g.spatialR);l+=d*(Number.isFinite(sl)?sl:.7071067812);r+=d*(Number.isFinite(sr)?sr:.7071067812);}else{l+=d;r+=d;}}
         }
@@ -3714,7 +4097,22 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const waveform=getGearToothWaveform(gear); const shapeRate=Math.max(.00001,Math.abs(Number(gear._shapeRate)||1));
       const adsr={...(gear.adsr||state.adsr)};
       const widthMod=gear.widthMod?{...(gear.widthMod)}:null;
-      return {id:Number(gear.id),ratio:Number(gear.ratio)||1,sourceMode:gear.sourceMode||waveform,freq:Math.max(.001,Math.abs(Number(gear.freq)||.001)),shapeRate,waveform,width:getGearToothWidth(gear),volume:Math.max(0,Math.min(1,Number(gear.volume)||0)),muted:!!gear.muted,solo:!!gear.solo,isUltrasonic:!!gear.isUltrasonic,adsr,widthMod,widthModEnabled:!!gear.widthModEnabled,accelerationSec:Math.max(0,getEffectiveGearAccelerationMs(gear)/1000),bloomAttack:Math.max(0,Math.min(10,getBloomAttackForGear(gear))),phaseOffset:Number(gear.phaseOffsetRad)||0,phaseSeed:Number.isFinite(Number(gear._workletPhaseSeed))?Number(gear._workletPhaseSeed):Number(gear.angle||0)/(TAU),audioRef:Number(gear.id),loopStart:Number(gear.audioLoopStart)||0,loopEnd:Number(gear.audioLoopEnd)||Number(gear.audioBuffer?.duration)||.001,vinyl:isGearVinylMode(gear),teeth:Number(gear.teeth)||120,clockTickMs:Number(state.clockworkTickWidthMs)||4,...workletSpatialForGear(gear),orbitSpatial:{enabled:!!(gear.orbitEnabled&&!gear.hrtfZAdsr),baseAngle:Number(gear.orbitAngle)||0,phase:Number(gear.orbitPhase)||0,periodSec:Math.max(.25,Number(gear.orbitPeriodSec)||8),direction:gear.orbitDirection<0?-1:1,radius:Math.max(0,Number(gear.orbitRadius)||0),hrtfZ:Number(gear.hrtfZ)||0,hrtfZAngleRad:(Number(gear.hrtfZAngleDeg)||0)*Math.PI/180,hrtfZRate:Math.max(.1,Number(gear.hrtfZRate)||1),scale:Number(state.spatialScale)||.01}};
+      const motionShapeRate=Math.max(.001,Math.min(8,Number(gear._shapeRate)||1));
+      // A preset transition is an audio-state, not merely a UI-state. Any full
+      // Worklet config sync that happens while a fade is in progress must carry the
+      // two waveform endpoints and the current morph position, otherwise updateGearState()
+      // would rebuild the gear as the source waveform and the target shape would snap
+      // back in during a long crossfade. This also makes future presets safe: the
+      // transition metadata is attached to the live gear rather than hard-coded to any
+      // particular preset or waveform pair.
+      const transitionActive=gear._presetTransitionActive===true || gear._inPresetTransition===true || (state._presetTransitionActive===true && gear._presetTransitionT!==undefined);
+      const transitionFrom=transitionActive ? String(gear._presetTransitionFromToothWaveform||gear.toothWaveform||waveform||'sine').toLowerCase() : waveform;
+      const transitionTo=transitionActive ? String(gear._presetTransitionToToothWaveform||gear.toothWaveform||waveform||transitionFrom).toLowerCase() : waveform;
+      const transitionT=transitionActive ? Math.max(0,Math.min(1,Number(gear._presetTransitionT)||0)) : 1;
+      const liveWidth=Math.max(0,Math.min(.98,Number(gear.toothWidth)||0));
+      const transitionWidthFrom=transitionActive ? Math.max(0,Math.min(.98,Number.isFinite(Number(gear._presetTransitionFromToothWidth))?Number(gear._presetTransitionFromToothWidth):liveWidth)) : liveWidth;
+      const transitionWidthTo=transitionActive ? Math.max(0,Math.min(.98,Number.isFinite(Number(gear._presetTransitionToToothWidth))?Number(gear._presetTransitionToToothWidth):liveWidth)) : liveWidth;
+      return {id:Number(gear.id),ratio:Number(gear.ratio)||1,sourceMode:gear.sourceMode||waveform,freq:Math.max(.001,Math.abs(Number(gear.freq)||.001)),shapeRate,motionShapeRate,offcenter:getGearOffcenterPercent(gear),waveform,width:gear._presetTransitionFromToothWidth!==undefined&&transitionActive?liveWidth:getGearToothWidth(gear),waveformFrom:transitionFrom,waveformTo:transitionTo,waveMorph:transitionT,widthFrom:transitionWidthFrom,widthTo:transitionWidthTo,presetTransitionActive:!!transitionActive,soloFrom:transitionActive&&gear._presetTransitionFromSolo!==undefined?!!gear._presetTransitionFromSolo:!!gear.solo,soloTo:transitionActive&&gear._presetTransitionToSolo!==undefined?!!gear._presetTransitionToSolo:!!gear.solo,mutedFrom:transitionActive&&gear._presetTransitionFromMuted!==undefined?!!gear._presetTransitionFromMuted:!!gear.muted,mutedTo:transitionActive&&gear._presetTransitionToMuted!==undefined?!!gear._presetTransitionToMuted:!!gear.muted,transitionMix:transitionActive?((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1)+( ((gear._presetTransitionToMuted||((state._presetTransitionTargetSolo)&&!gear._presetTransitionToSolo))?0:1)-((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1))*transitionT:1,transitionSourceSolo:!!state._presetTransitionSourceSolo,transitionTargetSolo:!!state._presetTransitionTargetSolo,volume:Math.max(0,Math.min(1,Number(gear.volume)||0)),muted:!!gear.muted,solo:!!gear.solo,isUltrasonic:!!gear.isUltrasonic,adsr,widthMod,widthModEnabled:!!gear.widthModEnabled,accelerationSec:Math.max(0,getEffectiveGearAccelerationMs(gear)/1000),bloomAttack:Math.max(0,Math.min(10,getBloomAttackForGear(gear))),phaseOffset:Number(gear.phaseOffsetRad)||0,phaseSeed:Number.isFinite(Number(gear._workletPhaseSeed))?Number(gear._workletPhaseSeed):Number(gear.angle||0)/(TAU),audioRef:Number(gear.id),loopStart:Number(gear.audioLoopStart)||0,loopEnd:Number(gear.audioLoopEnd)||Number(gear.audioBuffer?.duration)||.001,vinyl:isGearVinylMode(gear),teeth:Number(gear.teeth)||120,clockTickMs:Number(state.clockworkTickWidthMs)||4,...workletSpatialForGear(gear),orbitSpatial:{enabled:!!(gear.orbitEnabled&&!gear.hrtfZAdsr),baseAngle:Number(gear.orbitAngle)||0,phase:Number(gear.orbitPhase)||0,periodSec:Math.max(.25,Number(gear.orbitPeriodSec)||8),direction:gear.orbitDirection<0?-1:1,radius:Math.max(0,Number(gear.orbitRadius)||0),hrtfZ:Number(gear.hrtfZ)||0,hrtfZAngleRad:(Number(gear.hrtfZAngleDeg)||0)*Math.PI/180,hrtfZRate:Math.max(.1,Number(gear.hrtfZRate)||1),scale:Number(state.spatialScale)||.01}};
     }
     let unifiedConfigSyncTimer=0;
     let unifiedConfigSyncPending=false;
@@ -3931,11 +4329,43 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       return true;
     }
 
+    function syncLiveGearKinematicsToAudioWorklet() {
+      if(!state.audioRunning)return false;
+      const updates=state.gears.map(g=>({
+        id:Number(g.id),
+        ratio:Number(g.ratio)||0,
+        freq:Math.max(.001,Math.abs(Number(g.freq)||.001)),
+        teeth:Math.max(1,Number(g.teeth)||1),
+        isUltrasonic:!!g.isUltrasonic
+      }));
+      return postUnifiedAudio({type:'gear-kinematics-batch',updates});
+    }
+
+    function syncLiveGearWaveformToAudioWorklet(gear) {
+      if(!state.audioRunning||!gear)return false;
+      const waveform=String(getGearToothWaveform(gear)||gear.toothWaveform||'sawtooth').toLowerCase();
+      return postUnifiedAudio({type:'gear-waveform',id:Number(gear.id),waveform});
+    }
+
+    function syncLiveGearSourceModeToAudioWorklet(gear) {
+      if(!state.audioRunning||!gear)return false;
+      return postUnifiedAudio({type:'gear-source-mode',id:Number(gear.id),mode:String(gear.sourceMode||getGearToothWaveform(gear)||'sawtooth').toLowerCase(),waveform:String(getGearToothWaveform(gear)||'sawtooth').toLowerCase()});
+    }
+
     function updateAudioNodes() {
       if(!state.audioRunning)return;
       // No Web Audio DSP nodes are created here. This is the existing audio-engine
       // update entry point, now reduced to serializing the control model for the worklet.
       syncUnifiedAudioWorklet();
+    }
+
+    // IMPORTANT: live scalar controls must never rely on updateAudioNodes(), a
+    // throttled full-config reconciliation, or a subsequent gear-list click. The
+    // dedicated Worklet messages below are the immediate audio path; the processor
+    // updates its realtime hot-path caches in the same message handler.
+    function postLiveGearControl(gear,type,payload={}){
+      if(!state.audioRunning||!gear)return false;
+      return postUnifiedAudio({type,id:Number(gear.id),...payload});
     }
 
     function retirePolyGearFromLiveVoices(gear,fadeSeconds=.012,transitionSerial=state._presetTransitionSerial){
@@ -4041,6 +4471,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       }
       gear.sourceMode=next;
       if(next!=='audio' && gear.audioBuffer)clearGearAudioData(gear);
+      // Source-mode changes originate from several editor surfaces. Push the
+      // scalar source selection straight to the Worklet so no caller can fall
+      // back to the throttled full-machine snapshot for audible response.
+      syncLiveGearSourceModeToAudioWorklet(gear);
     }
 
     function inheritLastUsedGearAudio(gear) {
@@ -4130,6 +4564,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
 
       document.getElementById('loop-conflict-warning').style.display = state.loopConflict ? 'block' : 'none';
 
+      // Teeth/ratio changes are structural but still scalar at the Worklet boundary.
+      // Send the kinematic result immediately; the normal full snapshot remains a
+      // reconciliation path and may still be rate-limited under heavy POLY load.
+      if (syncAudio) syncLiveGearKinematicsToAudioWorklet();
       if (syncAudio && !state._presetTransitionActive) updateAudioNodes();
       if (syncUi) { renderGearList(); updateHUD(); }
     }
@@ -4486,7 +4924,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       renderSourceButtonRow(paletteSourceButtons,gear.sourceMode||getGearToothWaveform(gear),getGearToothWidth(gear),src=>{
         setGearSourceMode(gear,src);
         if(['sine','triangle','sawtooth','square','clockwork'].includes(src)) gear.toothWaveform=src;
-        copyPaletteEditorFromGear(gear); refreshPaletteSourceUI(); updateAudioNodes(); renderGearList();
+        copyPaletteEditorFromGear(gear); refreshPaletteSourceUI();
+        syncLiveGearWaveformToAudioWorklet(gear);
+        syncLiveGearSourceModeToAudioWorklet(gear);
+        updateAudioNodes(); renderGearList();
       });
       const graph=document.getElementById('palette-adsr-graph');
       if(graph){
@@ -4723,7 +5164,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           else { verts=[-Math.PI/2,0.62*Math.PI,-0.23*Math.PI].map((a,i)=>({x:(1-i*0.18*k)*Math.cos(a),y:(1-i*0.18*k)*Math.sin(a)})); }
           const rr=polygonRayRadius(t,verts); return r*Math.max(0.08,rr);
         }
-        case 'rectangle': { const a=Math.max(1,Math.min(120,p.rectangleAspect)); const hw=a,hh=1; const rr=1/Math.max(0.001,Math.abs(Math.cos(t))/hw+Math.abs(Math.sin(t))/hh); return r*Math.max(0.05,rr); }
+        case 'rectangle': {
+          const a=Math.max(1,Math.min(120,p.rectangleAspect));
+          // Keep the long axis at the requested base radius instead of letting
+          // a 120:1 rectangle become 120× larger than the gear. The old polar
+          // equation returned r*a at 0°, after which gearPath's 1.22× safety
+          // cap flattened most high aspect-ratio settings into the same shape.
+          const rr=1/Math.max(0.001,Math.abs(Math.cos(t))/a+Math.abs(Math.sin(t)));
+          return r*Math.max(0.05,rr/a);
+        }
         case 'cardioid': { const d=p.cardioidDepth, b=p.cardioidBias; const asym=0.45+0.95*b; return r*Math.max(0.10, 0.34 + d*0.46*(1+Math.cos(t))*asym); }
         case 'heart': { const w=p.heartWidth, pt=p.heartPoint; const body=0.62+0.28*Math.sin(t)+0.28*Math.sin(t)*Math.sqrt(Math.max(0,Math.abs(Math.cos(t)))); const cusp=pt*(0.34+0.66*(1-Math.cos(t))/2); return r*Math.max(0.12, body*w-cusp*0.16); }
         case 'mobius': return r*(0.92+p.mobiusWidth*Math.cos((t*0.5)*p.mobiusTwist));
@@ -4798,24 +5247,41 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if (!gear || gear.ratio === 0) return { phase: 0, rate: 1 };
       if (visited.has(gear.id)) {
         const fallbackPhase=gear.ratio*rootPhase+gear.phaseOffsetRad;
-        return { phase:fallbackPhase, rate:getGearOffcenterRate(gear,fallbackPhase) };
+        const own=shapePhaseAndRateForGear(gear,fallbackPhase);
+        const ownShapeRate=Math.max(0.001,Number(own.rate)||1);
+        const ownOffcenterRate=getGearOffcenterRate(gear,fallbackPhase);
+        return { phase:fallbackPhase, shapeRate:ownShapeRate, rate:Math.max(0.001,ownShapeRate*ownOffcenterRate) };
       }
       visited.add(gear.id);
       if (gear.isMain) {
         const motion=shapePhaseAndRateForGear(gear, rootPhase);
-        return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,rootPhase)) };
+        const shapeRate=Math.max(0.001,Number(motion.rate)||1);
+        const offcenterRate=getGearOffcenterRate(gear,rootPhase);
+        return { phase:motion.phase, shapeRate, rate:Math.max(0.001,shapeRate*offcenterRate) };
       }
       const parent = getGearParent(gear);
       if (!parent || parent.ratio === 0) {
         const transmittedPhase=gear.ratio*rootPhase+gear.phaseOffsetRad;
         const motion=shapePhaseAndRateForGear(gear, transmittedPhase);
-        return { phase:motion.phase, rate:Math.max(0.001,motion.rate*getGearOffcenterRate(gear,transmittedPhase)) };
+        const ownShapeRate=Math.max(0.001,Number(motion.rate)||1);
+        const offcenterRate=getGearOffcenterRate(gear,transmittedPhase);
+        return { phase:motion.phase, shapeRate:ownShapeRate, rate:Math.max(0.001,ownShapeRate*offcenterRate) };
       }
       const parentMotion = getGearMechanicalMotionAtPhase(parent, rootPhase, visited);
       const relativeRatio = gear.ratio / parent.ratio;
       const transmittedPhase = parentMotion.phase * relativeRatio + gear.phaseOffsetRad;
       const ownMotion = shapePhaseAndRateForGear(gear, transmittedPhase);
-      return { phase: ownMotion.phase, rate: Math.max(0.001, parentMotion.rate * ownMotion.rate * getGearOffcenterRate(gear,transmittedPhase)) };
+      const ownShapeRate=Math.max(0.001,Number(ownMotion.rate)||1);
+      const ownOffcenterRate=getGearOffcenterRate(gear,transmittedPhase);
+      const parentRate=Math.max(0.001,Number(parentMotion.rate)||1);
+      return {
+        phase: ownMotion.phase,
+        // Keep the parent's complete transmitted rate (including its own
+        // eccentricity), but exclude THIS gear's offcenter multiplier so the
+        // worklet can apply this gear's eccentricity exactly once.
+        shapeRate: Math.max(0.001,parentRate*ownShapeRate),
+        rate: Math.max(0.001,parentRate*ownShapeRate*ownOffcenterRate)
+      };
     }
 
     function enforceMagneticMesh() {
@@ -4836,22 +5302,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if (!gear || !state.audioCtx || gear.ratio === 0) return;
       const motion = getGearMechanicalMotion(gear);
       gear._shapePhase = motion.phase;
-      gear._shapeRate = motion.rate;
+      // _shapeRate is reserved for the shape/network component serialized to the
+      // unified worklet. Keep the complete instantaneous rate separate so this
+      // helper cannot re-introduce the old offcenter double-application.
+      gear._mechanicalRate = Math.max(0.001, Number(motion.rate) || 1);
+      // Audio modulation is owned exclusively by the unified AudioWorklet.
+      // There are no live legacy OscillatorNode/AudioDriver frequency writes here;
+      // keeping a second AudioParam path would desynchronise the pitch from the worklet.
       if (!state.audioRunning) return;
-      const now = state.audioCtx.currentTime;
-      if (gear.osc && !state.audioDriver.playing && !state.polyMode) {
-        gear.osc.frequency.setTargetAtTime(Math.max(0.001, gear.freq * motion.rate), now, 0.006); if (gear.oscSine) gear.oscSine.frequency.setTargetAtTime(Math.max(0.001, gear.freq * motion.rate), now, 0.006);
-      }
-      if (state.audioDriver.playing) {
-        const source = state.audioDriver.sources.get(gear.id);
-        if (source) source.playbackRate.setTargetAtTime(Math.max(0.000001, Math.abs(gear.ratio) * motion.rate * state.audioDriver.driverRate * (state.audioDriver.keyboardKeyRatio || 1)), now, 0.006);
-      }
-      if (gear.delayNode) {
-        const idealPhase = gear.isMain ? state.masterPhase : gear.ratio * state.masterPhase;
-        const transmittedOffset = motion.phase - idealPhase;
-        const sourceFreq = Math.max(0.1, gear.freq * motion.rate);
-        gear.delayNode.delayTime.setTargetAtTime(gear.isMain ? 0.0001 : getPhaseAlignedDelaySeconds(-transmittedOffset, sourceFreq), now, 0.006);
-      }
     }
 
     // STEAMPUNK VISUAL SYSTEM - deterministic ornament/material per gear.
@@ -5174,8 +5632,19 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     // the actual synth. The low-frequency mechanical tooth count is reduced for
     // legibility, but the ratio/phase relationship is preserved.
     function neonProfile(gear,phase,visual={}){
-      const wf=String(gear?.toothWaveform||gear?.sourceMode||state.waveform||'sine').toLowerCase();
-      return toothWaveSample(['sine','triangle','sawtooth','square'].includes(wf)?wf:'sine', ((phase%TAU)+TAU)%TAU/TAU, normalizeToothWidth(gear?.toothWidth));
+      const p=((phase%TAU)+TAU)%TAU/TAU;
+      const m=transitionAmount(gear);
+      const wfA=String(gear?._presetTransitionFromToothWaveform||gear?.toothWaveform||gear?.sourceMode||state.waveform||'sine').toLowerCase();
+      const wfB=String(gear?._presetTransitionToToothWaveform||gear?.toothWaveform||gear?.sourceMode||wfA).toLowerCase();
+      const aType=['sine','triangle','sawtooth','square'].includes(wfA)?wfA:'sine';
+      const bType=['sine','triangle','sawtooth','square'].includes(wfB)?wfB:'sine';
+      if(m!=null && (aType!==bType || Math.abs(Number(gear?._presetTransitionFromToothWidth??gear?.toothWidth??.5)-Number(gear?._presetTransitionToToothWidth??gear?.toothWidth??.5))>1e-6)){
+        const wa=normalizeToothWidth(gear?._presetTransitionFromToothWidth??gear?.toothWidth),wb=normalizeToothWidth(gear?._presetTransitionToToothWidth??gear?.toothWidth),w=wa+(wb-wa)*m;
+        const a=toothWaveSample(aType,p,w),b=toothWaveSample(bType,p,w);
+        if(aType===bType)return a+(b-a)*m;
+        return a*Math.cos(m*Math.PI*.5)+b*Math.sin(m*Math.PI*.5);
+      }
+      return toothWaveSample(aType,p,normalizeToothWidth(gear?.toothWidth));
     }
 
     function neonShapeRadius(gear,theta,baseRadius){
@@ -9603,9 +10072,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         return Math.log1p(x*(q*q-1))/(2*Math.log(q));
       }
       if(input.id==='slider-palette-offcenter'||input.id==='slider-inspector-offcenter'){
-        // Smooth exponential/log-style travel: 0% = 0%, 50% = 3%, 100% = 100%.
-        const q=100/3-1;
-        return Math.log1p(x*(q*q-1))/(2*Math.log(q));
+        // Offcenter is a physical percentage, so keep the rotary travel linear.
+        // The previous pseudo-log curve made the first half of the knob span only
+        // about 3% of the actual eccentricity, making the control feel inert.
+        return x;
       }
       return x;
     }
@@ -9617,8 +10087,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const q=4;
         x=(Math.pow(q,2*p)-1)/(q*q-1);
       }else if(input.id==='slider-palette-offcenter'||input.id==='slider-inspector-offcenter'){
-        const q=100/3-1;
-        x=(Math.pow(q,2*p)-1)/(q*q-1);
+        // Linear inverse of rotaryPositionFromValue() for physical eccentricity %.
+        x=p;
       }
       return min+x*(max-min);
     }
@@ -10242,11 +10712,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const ch=Number(v?.channel)||0;
         if((channel===null || ch===channel) && v?.sustained) toRelease.push([id,v]);
       });
+      // Delete ownership before touching audio/visual state. This is important when
+      // a new MIDI Note On for the same channel/note arrives immediately afterwards:
+      // the retrigger must never see a stale sustained map entry and get mistaken for
+      // the old physical key still being held.
       toRelease.forEach(([id,v])=>{
-        state.midiHeldNotes.delete(id); invalidateKeyboardHeldCache();
+        state.midiHeldNotes.delete(id);
+        if(v) { v.sustained=false; v.downCount=0; }
+        invalidateKeyboardHeldCache();
         const keyId=`midi-${id}`;
-        // Sustain release is still a MIDI note release, so the visual key must
-        // fade even when the audio release mode is disabled.
         if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
         else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
         else releaseKeyboardVisualNote(keyId);
@@ -10325,11 +10799,27 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const midiTargetFrame=(type===0x90||type===0x80) ? getMidiAudioTargetFrame(event) : null;
       if(type===0x90 && velocity>0){
         const id=midiChannelKey(channel,note);
-        const old=state.midiHeldNotes.get(id);
+        let old=state.midiHeldNotes.get(id);
+        if(old){
+          const sustainActive=!!state.midiSustainGlobal || state.midiSustainChannels.has(channel);
+          // A sustained note is an audio tail, not ownership of the next physical
+          // Note On. If sustain has already gone up but its map entry survived a
+          // controller race, retire that stale entry instead of absorbing the new
+          // Note On into downCount forever. This is the exact failure mode that can
+          // leave a note visually held while subsequent plays do nothing.
+          if(old.sustained && !sustainActive){
+            state.midiHeldNotes.delete(id); invalidateKeyboardHeldCache();
+            const staleKey=`midi-${id}`;
+            if(state.polyMode) { releaseKeyboardVisualNote(staleKey); stopPolyVoice(staleKey); }
+            else if(state.releaseOnKeyup) releaseKeyboardNotes(staleKey);
+            else releaseKeyboardVisualNote(staleKey);
+            old=null;
+          }
+        }
         if(old){
           old.downCount=Math.max(1,Number(old.downCount)||1)+1;
-          old.sustained=false;
           old.velocity=velocity; old.velocityGain=midiVelocityGain(velocity);
+          old.sustained=!!old.sustained;
           setKeyboardVisualNote(`midi-${id}`, old.semitone, old.velocityGain, true);
           state.midiLastVelocity=old.velocityGain;
           scheduleMidiUiSync();
@@ -10834,6 +11324,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         setGearSourceMode(gear, e.target.value);
         refreshInspectorTooth();
         syncInspectorSourceConfigs();
+        syncLiveGearWaveformToAudioWorklet(gear);
+        syncLiveGearSourceModeToAudioWorklet(gear);
         updateAudioNodes();
         renderGearList();
       });
@@ -10898,8 +11390,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       renderGearList();
       inspectorToothWidth?.addEventListener('input', e => {
         gear.toothWidth = normalizeToothWidth(e.target.value);
+        if(state.audioRunning)postLiveGearControl(gear,'gear-width',{value:gear.toothWidth});
         refreshInspectorTooth();
-        updateAudioNodes();
+        // Width is already a dedicated Worklet control; keep the full config out of
+        // the held-slider path so the sound follows the finger/knob immediately.
         renderGearList();
       });
       refreshInspectorTooth();
@@ -10984,7 +11478,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       inspectorVolumeSlider?.addEventListener('input', e => {
         gear.volume = Math.max(0, Math.min(1, Number(e.target.value) || 0));
         if (inspectorVolumeValue) inspectorVolumeValue.textContent = `${Math.round(gear.volume * 100)}%`;
-        if(state.audioRunning)postUnifiedAudio({type:'gear-volume',id:Number(gear.id),value:gear.volume});
+        if(state.audioRunning)postLiveGearControl(gear,'gear-volume',{value:gear.volume});
         refreshRotaryDisplayForInput(e.target);
       });
       const inspectorAccelSlider=document.getElementById('slider-inspector-acceleration');
@@ -10995,7 +11489,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
         if(inspectorOffcenterValue)inspectorOffcenterValue.textContent=formatOffcenterPercent(gear.offcenter);
         state.motionFrameCache.clear();
-        if(state.audioRunning)postUnifiedAudio({type:'gear-offcenter',id:Number(gear.id),value:gear.offcenter});
+        applyCurrentMasterPhaseToGears();
+        if(state.audioRunning)postLiveGearControl(gear,'gear-offcenter',{value:gear.offcenter});
         refreshRotaryDisplayForInput(e.target);
       });
       inspectorAccelSlider?.addEventListener('input',e=>{
@@ -11005,7 +11500,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const raw=pct<=0?0:(maxRaw>0?Math.round(effective/(pct/100)):0);
         gear.accelerationMs=Math.max(0,Math.min(5000,raw));
         if(inspectorAccelValue)inspectorAccelValue.textContent=formatGearAcceleration(getEffectiveGearAccelerationMs(gear));
-        if(state.audioRunning)postUnifiedAudio({type:'gear-acceleration',id:Number(gear.id),seconds:Math.max(0,Math.min(10,getEffectiveGearAccelerationMs(gear)/1000))});
+        if(state.audioRunning)postLiveGearControl(gear,'gear-acceleration',{seconds:Math.max(0,Math.min(10,getEffectiveGearAccelerationMs(gear)/1000))});
         refreshRotaryDisplayForInput(e.target);
       });
 
@@ -11104,7 +11599,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           document.getElementById('phase-degree-readout')?.replaceChildren(document.createTextNode(degreeText));
           document.getElementById('val-inspector-phase-knob').textContent=`${gear.phaseOffsetTeeth}/${Math.max(1,Math.round(gear.teeth||1))}`;
           if(teethNum) teethNum.value=String(gear.phaseOffsetTeeth);
-          if(state.audioRunning)postUnifiedAudio({type:'gear-phase',id:Number(gear.id),value:gear.phaseOffsetRad});
+          if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad});
           refreshRotaryDisplayForInput(degSlider);
         });
       }
@@ -11117,7 +11612,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           document.getElementById('val-phase-deg').textContent=`${gear.phaseOffsetDeg.toFixed(1)}°`;
           document.getElementById('phase-degree-readout')?.replaceChildren(document.createTextNode(`${gear.phaseOffsetDeg.toFixed(1)}°`));
           document.getElementById('val-inspector-phase-knob').textContent=`${gear.phaseOffsetTeeth}/${Math.max(1,Math.round(gear.teeth||1))}`;
-          if(state.audioRunning)postUnifiedAudio({type:'gear-phase',id:Number(gear.id),value:gear.phaseOffsetRad});
+          if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad});
           refreshRotaryDisplayForInput(degSlider||teethNum);
         }
       });
@@ -11132,7 +11627,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           } else if (btn.hasAttribute('data-teeth')) {
             gear.setPhaseOffsetTeeth(parseFloat(btn.getAttribute('data-teeth')));
           }
-          updateAudioNodes();
+          if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad});
           updateInspector();
           renderGearList();
         });
@@ -11167,7 +11662,11 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     document.getElementById('select-waveform')?.addEventListener('change', (e) => {
       state.waveform = e.target.value;
       const mainTooth = state.gears.find(g => g.isMain);
-      if (mainTooth && !mainTooth.toothWaveform) mainTooth.toothWaveform = state.waveform;
+      if (mainTooth) {
+        mainTooth.toothWaveform = state.waveform;
+        setGearSourceMode(mainTooth, state.waveform);
+        syncLiveGearWaveformToAudioWorklet(mainTooth);
+      }
       refreshClockworkControlVisibility();
       updateAudioNodes();
     });
@@ -11865,11 +12364,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           const finish=()=>{populateMidiOutputs(gear);populatePaletteMidiNotes(gear);gear.midiNote=Number(window.__paletteMidiNote)||gear.midiNote||60;refreshPaletteSourceUI();};
           if(!state.midi.access)initWebMIDI().then(finish);else finish();
         }
+        syncLiveGearWaveformToAudioWorklet(gear);
+        syncLiveGearSourceModeToAudioWorklet(gear);
         updateAudioNodes(); renderGearList();
       }
       refreshPaletteSourceUI();
     }));
-    paletteToothWidthSlider?.addEventListener('input',e=>{ const g=getActivePaletteGear(); PALETTE_TOOTH_WIDTH=normalizeToothWidth(e.target.value); if(g){g.toothWidth=PALETTE_TOOTH_WIDTH;if(g.sourceMode==='noise')configureNoiseFilters(g);if(state.audioRunning)postUnifiedAudio({type:'gear-width',id:Number(g.id),value:g.toothWidth});} refreshPaletteSourceUI(); });
+    paletteToothWidthSlider?.addEventListener('input',e=>{ const g=getActivePaletteGear(); PALETTE_TOOTH_WIDTH=normalizeToothWidth(e.target.value); if(g){g.toothWidth=PALETTE_TOOTH_WIDTH;if(g.sourceMode==='noise')configureNoiseFilters(g);postLiveGearControl(g,'gear-width',{value:g.toothWidth});} refreshPaletteSourceUI(); });
     document.getElementById('btn-palette-audio-file')?.addEventListener('click',()=>paletteAudioFile?.click());
     document.getElementById('btn-palette-audio-edit')?.addEventListener('click',()=>openGearAudioEditor(getActivePaletteGear()));
     paletteAudioFile?.addEventListener('change',async e=>{const file=e.target.files?.[0]; if(!file)return; try{if(!state.audioCtx)initAudio();const ab=await file.arrayBuffer();const buffer=await state.audioCtx.decodeAudioData(ab.slice(0));const g=getActivePaletteGear();if(g){setGearSourceMode(g,'audio');primeGearAudioBuffer(g,buffer,file.name);}paletteAudioStart.max=buffer.duration;paletteAudioEnd.max=buffer.duration;paletteAudioStart.value=0;paletteAudioEnd.value=buffer.duration.toFixed(3);paletteAudioName.textContent=file.name;window.__paletteAudioConfig={buffer,name:file.name,start:0,end:buffer.duration};if(g&&g.sourceMode==='audio'){updateAudioNodes();openGearAudioEditor(g);}}catch(err){console.error(err);paletteAudioName.textContent='Could not decode audio';}});
@@ -11910,7 +12411,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     }, { passive: false });
     paletteVolumeSlider?.addEventListener('input', e => {
       PALETTE_GEAR_VOLUME = Math.max(0, Math.min(1, Number(e.target.value) || 0));
-      const g=getActivePaletteGear(); if(g){g.volume=PALETTE_GEAR_VOLUME;if(state.audioRunning)postUnifiedAudio({type:'gear-volume',id:Number(g.id),value:g.volume});renderGearList();}
+      const g=getActivePaletteGear(); if(g){g.volume=PALETTE_GEAR_VOLUME;postLiveGearControl(g,'gear-volume',{value:g.volume});renderGearList();}
       if (paletteVolumeValue) paletteVolumeValue.textContent = `${Math.round(PALETTE_GEAR_VOLUME * 100)}%`;
     });
     // Current Gear controls moved over from the retired Selected Gear Detail.
@@ -11952,11 +12453,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if(state.audioRunning){
         // Accelleration is a Worklet parameter. Update only that parameter while the
         // slider is moving instead of serializing the complete machine on every input.
-        state.gears.forEach(g=>postUnifiedAudio({
-          type:'gear-acceleration',
-          id:Number(g.id),
-          seconds:Math.max(0,Math.min(10,getEffectiveGearAccelerationMs(g)/1000))
-        }));
+        state.gears.forEach(g=>postLiveGearControl(g,'gear-acceleration',{seconds:Math.max(0,Math.min(10,getEffectiveGearAccelerationMs(g)/1000))}));
       }
     });
 
@@ -11965,7 +12462,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       gear.offcenter=Math.max(0,Math.min(100,Number(e.target.value)||0));
       const value=document.getElementById('val-palette-offcenter'); if(value)value.textContent=formatOffcenterPercent(gear.offcenter);
       state.motionFrameCache.clear();
-      if(state.audioRunning)postUnifiedAudio({type:'gear-offcenter',id:Number(gear.id),value:gear.offcenter});
+      applyCurrentMasterPhaseToGears();
+      if(state.audioRunning)postLiveGearControl(gear,'gear-offcenter',{value:gear.offcenter});
       refreshRotaryDisplayForInput(e.target);
     });
 
@@ -12029,16 +12527,16 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     const palettePhaseTeeth=document.getElementById('input-palette-phase-teeth-num');
     palettePhaseDeg?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return; const val=Math.round(Number(e.target.value)||0);
-      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postUnifiedAudio({type:'gear-phase',id:Number(gear.id),value:gear.phaseOffsetRad}); refreshRotaryDisplayForInput(e.target);
+      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad}); refreshRotaryDisplayForInput(e.target);
     });
     palettePhaseTeeth?.addEventListener('input',e=>{
       const gear=getActivePaletteGear(); if(!gear)return; const val=Math.round(Number(e.target.value)||0);
-      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postUnifiedAudio({type:'gear-phase',id:Number(gear.id),value:gear.phaseOffsetRad}); refreshRotaryDisplayForInput(e.target);
+      gear.setPhaseOffsetTeeth(val); syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad}); refreshRotaryDisplayForInput(e.target);
     });
     document.querySelectorAll('.btn-palette-phase-quick').forEach(btn=>btn.addEventListener('click',()=>{
       const gear=getActivePaletteGear(); if(!gear)return;
       if(btn.hasAttribute('data-deg')) gear.setPhaseOffsetDeg(parseFloat(btn.getAttribute('data-deg'))); else if(btn.hasAttribute('data-teeth')) gear.setPhaseOffsetTeeth(parseFloat(btn.getAttribute('data-teeth')));
-      syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postUnifiedAudio({type:'gear-phase',id:Number(gear.id),value:gear.phaseOffsetRad}); renderGearList();
+      syncPaletteCurrentGearExtras(gear); if(state.audioRunning)postLiveGearControl(gear,'gear-phase',{value:gear.phaseOffsetRad}); renderGearList();
     }));
     const paletteAdsrGraph = document.getElementById('palette-adsr-graph');
     if (paletteAdsrGraph) bindAdsrGraph(paletteAdsrGraph,()=>{const g=state.gearMap.get(state.selectedGearId)||getActivePaletteGear();return g?.widthModEnabled?(g.widthMod||g.adsr||state.adsr):(g?.adsr||state.adsr);},(a,k)=>{const g=state.gearMap.get(state.selectedGearId)||getActivePaletteGear();if(g){if(g.widthModEnabled){g.widthMod={...(g.widthMod||g.adsr||state.adsr),...a};g._widthModEnvelope=null;}else{applyLinkedAdsrChange(g,a,k);}}else state.adsr={...state.adsr,...a};syncUnifiedGearAdsr(g);syncAllAdsrEditors(g);},'palette-adsr',()=>state.gearMap.get(state.selectedGearId)||getActivePaletteGear(),true,false);
@@ -13109,9 +13607,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     state.driveDirection=st.driveDirection||1;state.pitchModule=safeNumber(st.pitchModule,state.pitchModule);if(st.camera)state.camera={...state.camera,...cloneJSON(st.camera)};
     state.polyMode=!!st.polyMode;state.jiKeyboard=!!st.jiKeyboard;/* Current keyboard tuning is global and deliberately NOT part of preset recall. */state.visualMode=st.visualMode==='neon'?'neon':'default';state.globalAccelerationPercent=Number.isFinite(Number(st.globalAccelerationPercent))?clampGlobalAccelerationPercent(st.globalAccelerationPercent):clampGlobalAccelerationPercent((Number(st.globalAccelerationMs)||1000)/10);state.globalAccelerationMs=state.globalAccelerationPercent*10;state.crankTool={...state.crankTool,...cloneJSON(st.crankTool||{})};if(st.midiLearn&&Array.isArray(st.midiLearn.mappings)){state.midiLearn={armed:null,mappings:cloneJSON(st.midiLearn.mappings)};try{localStorage.setItem('darkflower.midiLearn.v1',JSON.stringify(state.midiLearn));}catch(_){}}
   }
-  function fadeAudioForPresetReplace(durationSec=0.1){
+  function fadeAudioForPresetReplace(durationSec=0.008){
     if(!state.audioRunning)return Promise.resolve(false);
-    const duration=Math.max(.01,Number(durationSec)||.1);
+    // 0s preset crossfade still gets a tiny click-safe mute ramp. This is NOT an
+    // audible crossfade/overlap: the old graph is silenced, stopped, then the new
+    // preset is started as fast as the AudioWorklet can safely switch graphs.
+    const duration=Math.max(.004,Number(durationSec)||.008);
     postUnifiedAudio({type:'fade',target:0,duration});
     return new Promise(resolve=>setTimeout(()=>{try{stopAudio();}catch(_){}resolve(true);},Math.ceil(duration*1000)+12));
   }
@@ -13134,10 +13635,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       accelerationMs:Math.max(0,Math.min(5000,Number(g?.accelerationMs)||0)),
       orbitPeriodSec:Math.max(.25,Number(g?.orbitPeriodSec)||8),orbitAngle:Number(g?.orbitAngle)||0,orbitRadius:Math.max(0,Number(g?.orbitRadius)||0),orbitPhase:Number(g?.orbitPhase)||0,
       hrtfZ:Math.max(-1,Math.min(1,Number(g?.hrtfZ)||0)),hrtfZAngleDeg:Number(g?.hrtfZAngleDeg)||0,hrtfZRate:Math.max(.1,Math.min(8,Number(g?.hrtfZRate)||1)),
-      phaseOffsetDeg:Number(g?.phaseOffsetDeg)||0,toothWidth:Math.max(0,Math.min(.98,Number(g?.toothWidth)||.5)),
+      phaseOffsetDeg:Number(g?.phaseOffsetDeg)||0,
       midiWidth:Math.max(0,Number(g?._midiWidth)||1),teeth:Math.max(3,Number(g?.teeth)||3),
+      shapeRate:Math.max(.00001,Math.abs(Number(g?._shapeRate)||1)),
       ratio:Number.isFinite(Number(g?.ratio))?Number(g.ratio):0,
       shapeParams:normalizedShapeParams(g?.shapeParams||{}),
+      toothWaveform:String(g?.toothWaveform||g?.sourceMode||state.waveform||'sine').toLowerCase(),
+      toothWidth:Math.max(0,Math.min(.98,Number.isFinite(Number(g?.toothWidth))?Number(g.toothWidth):.5)),
+      sourceMode:String(g?.sourceMode||g?.toothWaveform||'sawtooth'),
       adsr:cloneJSON(g?.adsr||state.adsr||{}),widthMod:cloneJSON(g?.widthMod||g?.adsr||state.adsr||{})
     };
   }
@@ -13148,10 +13653,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       accelerationMs:Math.max(0,Math.min(5000,safeNumber(sg?.accelerationMs,0))),
       orbitPeriodSec:Math.max(.25,safeNumber(sg?.orbitPeriodSec,8)),orbitAngle:safeNumber(sg?.orbitAngle,0),orbitRadius:Math.max(0,safeNumber(sg?.orbitRadius,0)),orbitPhase:safeNumber(sg?.orbitPhase,0),
       hrtfZ:Math.max(-1,Math.min(1,safeNumber(sg?.hrtfZ,0))),hrtfZAngleDeg:Math.max(0,Math.min(360,safeNumber(sg?.hrtfZAngleDeg,0))),hrtfZRate:Math.max(.1,Math.min(8,safeNumber(sg?.hrtfZRate,1))),
-      phaseOffsetDeg:safeNumber(sg?.phaseOffsetDeg,0),toothWidth:Math.max(0,Math.min(.98,safeNumber(sg?.toothWidth,.5))),
+      phaseOffsetDeg:safeNumber(sg?.phaseOffsetDeg,0),
       midiWidth:Math.max(0,safeNumber(sg?.midiWidth,1)),teeth:Math.max(3,Number(sg?.teeth)||3),
       ratio:Number.isFinite(Number(sg?.ratio))?Number(sg.ratio):0,
       shapeParams:normalizedShapeParams(sg?.shapeParams||{}),
+      toothWaveform:String(sg?.toothWaveform||sg?.sourceMode||'sine').toLowerCase(),
+      toothWidth:Math.max(0,Math.min(.98,Number.isFinite(Number(sg?.toothWidth))?Number(sg.toothWidth):.5)),
+      sourceMode:String(sg?.sourceMode||sg?.toothWaveform||'sawtooth'),
       adsr:cloneJSON(sg?.adsr||state.adsr||{}),widthMod:cloneJSON(sg?.widthMod||sg?.adsr||state.adsr||{})
     };
   }
@@ -13291,6 +13799,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     try{clearReleaseTailsForPresetTransition(0.012);}catch(_){ }
 
     const targetGears=Array.isArray(p.state.gears)?p.state.gears:[];
+    // Solo/mute are global mix decisions, but they must also crossfade. Treating them
+    // as booleans until t=1 can hide newly-added target gears behind an old SOLO gear
+    // and then suddenly reveal them at the exact end of the preset transition.
+    const sourceSoloActive=state.gears.some(g=>!!g.solo&&!g.muted);
+    const targetSoloActive=targetGears.some(sg=>!!sg.solo&&!sg.muted);
+    state._presetTransitionSourceSolo=sourceSoloActive;
+    state._presetTransitionTargetSolo=targetSoloActive;
     const targetById=new Map(targetGears.map(sg=>[Number(sg.id),sg]));
     const targetRatioById=new Map();
     const targetMainForRatios=targetGears.find(sg=>sg.isMain)||targetGears[0]||null;
@@ -13346,6 +13861,30 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if(from>0 && to>0)return Math.exp(Math.log(from)+(Math.log(to)-Math.log(from))*t);
       return safeLerp(from,to,t);
     };
+    const queuePresetTransitionAudio=()=>{
+      if(!state.audioRunning)return;
+      const gears=[];
+      state.gears.forEach(g=>{
+        const motion=shapePhaseAndRateForGear(g,Number(g._shapePhase)||Number(g.angle)||0);
+        g._shapeRate=Math.max(.03,Number(motion?.rate)||1);
+        const ad=g.adsr||state.adsr||{};
+        const wm=g.widthMod||ad;
+        const waveFrom=String(g._presetTransitionFromToothWaveform||g.toothWaveform||g.sourceMode||state.waveform||'sine').toLowerCase();
+        const waveTo=String(g._presetTransitionToToothWaveform||g.toothWaveform||g.sourceMode||state.waveform||waveFrom).toLowerCase();
+        const waveMorph=g._presetTransitionActive?Math.max(0,Math.min(1,Number(g._presetTransitionT)||0)):1;
+        const widthFrom=g._presetTransitionActive?Math.max(0,Math.min(.98,Number.isFinite(Number(g._presetTransitionFromToothWidth??g.toothWidth))?Number(g._presetTransitionFromToothWidth??g.toothWidth):.5)):Math.max(0,Math.min(.98,Number.isFinite(Number(g.toothWidth))?Number(g.toothWidth):.5));
+        const widthTo=g._presetTransitionActive?Math.max(0,Math.min(.98,Number.isFinite(Number(g._presetTransitionToToothWidth??g.toothWidth))?Number(g._presetTransitionToToothWidth??g.toothWidth):.5)):Math.max(0,Math.min(.98,Number.isFinite(Number(g.toothWidth))?Number(g.toothWidth):.5));
+        const soloFrom=g._presetTransitionActive&&g._presetTransitionFromSolo!==undefined?!!g._presetTransitionFromSolo:!!g.solo;
+        const soloTo=g._presetTransitionActive&&g._presetTransitionToSolo!==undefined?!!g._presetTransitionToSolo:!!g.solo;
+        const mutedFrom=g._presetTransitionActive&&g._presetTransitionFromMuted!==undefined?!!g._presetTransitionFromMuted:!!g.muted;
+        const mutedTo=g._presetTransitionActive&&g._presetTransitionToMuted!==undefined?!!g._presetTransitionToMuted:!!g.muted;
+        const sourceMix=(mutedFrom || (state._presetTransitionSourceSolo && !soloFrom))?0:1;
+        const targetMix=(mutedTo || (state._presetTransitionTargetSolo && !soloTo))?0:1;
+        const transitionMix=g._presetTransitionActive?sourceMix+(targetMix-sourceMix)*waveMorph:targetMix;
+        gears.push({id:Number(g.id),ratio:Number(g.ratio)||0,shapeRate:g._shapeRate,motionShapeRate:g._shapeRate,freq:Math.max(.001,Math.abs(Number(g.ratio)||0)*Math.max(.001,Number(state.fundamentalFreq)||.001)),volume:Math.max(0,Math.min(1,Number(g.volume)||0)),offcenter:getGearOffcenterPercent(g),accelerationMs:Math.max(0,Math.min(5000,Number(g.accelerationMs)||0)),phaseOffsetDeg:Number(g.phaseOffsetDeg)||0,toothWidth:widthFrom+(widthTo-widthFrom)*waveMorph,waveformFrom:waveFrom,waveformTo:waveTo,waveMorph,widthFrom,widthTo,midiWidth:Math.max(0,Number(g._midiWidth)||1),teeth:Math.max(3,Number(g.teeth)||3),adsr:cloneJSON(ad),widthMod:cloneJSON(wm),widthModEnabled:!!g.widthModEnabled,sourceMode:g.sourceMode||waveTo,presetTransitionActive:!!g._presetTransitionActive,soloFrom,soloTo,mutedFrom,mutedTo,transitionMix,transitionSourceSolo:!!state._presetTransitionSourceSolo,transitionTargetSolo:!!state._presetTransitionTargetSolo});
+      });
+      postUnifiedAudio({type:'gear-transition',gears,baseFundamentalFreq:Math.max(.001,Number(state.baseFundamentalFreq)||440),masterVolume:Math.max(0,Math.min(1,Number(state.masterVolume)||0)),spatialScale:Math.max(.001,Math.min(2,Number(state.spatialScale)||.01)),bloomAmount:Number(state.bloom?.amount)||0,clockworkTickWidthMs:Math.max(.4,Math.min(18,Number(state.clockworkTickWidthMs)||4))});
+    };;
     const startState={
       fundamentalFreq:Number(state.fundamentalFreq)||Number(state.baseFundamentalFreq)||0,
       baseFundamentalFreq:Number(state.baseFundamentalFreq)||Number(state.fundamentalFreq)||0,
@@ -13362,7 +13901,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
 
     // Every matched gear gets explicit transition geometry. Ratios themselves remain
     // kinematically derived from the continuously changing tooth counts below.
-    pairTransitions.forEach(({g,sg,start,targetRatio})=>{
+    pairTransitions.forEach(({g,sg,start,target,targetRatio})=>{
       const fromShape=g.shape||'circular',toShape=sg.shape||fromShape;
       const fromParams=start.shapeParams,toParams=normalizedShapeParams(sg.shapeParams||{});
       const fromTeeth=start.teeth,toTeeth=Math.max(1,Number(sg.teeth)||fromTeeth);
@@ -13371,13 +13910,56 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       g._presetTransitionFromShapeParams=fromParams;g._presetTransitionToShapeParams=toParams;
       g._presetTransitionFromTeeth=fromTeeth;g._presetTransitionToTeeth=toTeeth;
       g._presetTransitionFromRatio=start.ratio;g._presetTransitionToRatio=targetRatio;
-      g._presetTransitionFromSourceMode=g.sourceMode;g._presetTransitionToSourceMode=sg.sourceMode||g.sourceMode;
+      g._presetTransitionFromSourceMode=start.sourceMode||g.sourceMode;g._presetTransitionToSourceMode=target.sourceMode||sg.sourceMode||g.sourceMode;
+      g._presetTransitionFromToothWaveform=start.toothWaveform||g.toothWaveform||g.sourceMode||state.waveform||'sine';
+      g._presetTransitionToToothWaveform=target.toothWaveform||sg.toothWaveform||target.sourceMode||g.toothWaveform||'sine';
+      g._presetTransitionFromSolo=!!g.solo;g._presetTransitionToSolo=!!sg.solo;
+      g._presetTransitionFromMuted=!!g.muted;g._presetTransitionToMuted=!!sg.muted;
+      g._presetTransitionFromToothWidth=Math.max(0,Math.min(.98,Number.isFinite(Number(start.toothWidth??g.toothWidth))?Number(start.toothWidth??g.toothWidth):.5));
+      g._presetTransitionToToothWidth=Math.max(0,Math.min(.98,Number.isFinite(Number(target.toothWidth??sg.toothWidth))?Number(target.toothWidth??sg.toothWidth):.5));
     });
 
     // Additions are created only when their sequential fade slot begins. This makes
     // a 3→5 transition visibly create gear 4, then gear 5, rather than showing both
     // destination gears silently from the first frame.
-    const addedTransitions=additions.map((add)=>({g:null,sg:add.sg,targetVolume:Math.max(0,Math.min(1,Number(add.sg.volume)||0)),targetRatio:Number(targetRatioById.get(Number(add.sg.id))||0),_created:false,_removed:false}));
+    const addedTransitions=additions.map((add)=>{
+      const targetRatio=Math.abs(Number(targetRatioById.get(Number(add.sg.id))||0));
+      const targetTeeth=Math.max(1,Number(add.sg.teeth)||1);
+      let source=null;
+
+      // A topology expansion should sound like a mechanical split, not like a new
+      // oscillator materialising from silence. First look for an existing gear that
+      // can naturally split into the new tooth count (60 -> 30, 60 -> 20, etc.).
+      // Prefer an integer division >=2 and a source whose own matched target remains
+      // close to its original tooth count. This preserves the source timbre/width as
+      // the replacement gear fades in.
+      let bestSplit=Infinity;
+      pairTransitions.forEach(pt=>{
+        const sourceTeeth=Math.max(1,Number(pt.start.teeth)||1);
+        if(targetTeeth>=sourceTeeth)return;
+        const factor=sourceTeeth/targetTeeth;
+        const nearest=Math.max(2,Math.round(factor));
+        const divisionError=Math.abs(factor-nearest)/nearest;
+        if(divisionError>0.08)return;
+        const matchedTargetTeeth=Math.max(1,Number(pt.target?.teeth)||sourceTeeth);
+        const sourceDrift=Math.abs(Math.log(matchedTargetTeeth/sourceTeeth));
+        const ratioCost=targetRatio>0&&Math.abs(Number(pt.start.ratio)||0)>0?Math.abs(Math.log(targetRatio/Math.abs(Number(pt.start.ratio)||1))):9;
+        const score=divisionError + sourceDrift*0.15 + Math.max(0,nearest-2)*0.02 + ratioCost*0.01;
+        if(score<bestSplit){bestSplit=score;source=pt.g;}
+      });
+
+      // Same-role duplicates (for example 2:1 -> another 2:1) have no tooth-count
+      // split, so retain the ordinary mechanical-ratio match for those additions.
+      if(!source){
+        let best=Infinity;
+        pairTransitions.forEach(pt=>{
+          const sr=Math.abs(Number(pt.start.ratio)||0);
+          const cost=targetRatio>0&&sr>0?Math.abs(Math.log(targetRatio/sr)):Math.abs(targetRatio-sr)*2;
+          if(cost<best){best=cost;source=pt.g;}
+        });
+      }
+      return {g:null,sg:add.sg,targetVolume:Math.max(0,Math.min(1,Number(add.sg.volume)||0)),targetRatio:Number(targetRatioById.get(Number(add.sg.id))||0),_created:false,_removed:false,_sourceG:source||currentMain};
+    });
     const orderedAdds=addedTransitions.slice().sort((a,b)=>Number(a.sg.id)-Number(b.sg.id));
     const orderedRemovals=removals.slice().sort((a,b)=>(a.g.isMain?1:0)-(b.g.isMain?1:0)||Number(a.g.id)-Number(b.g.id));
     const changeCount=orderedAdds.length+orderedRemovals.length;
@@ -13406,7 +13988,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     setStatus(`Crossfading → ${p.name||'preset'} (${duration.toFixed(1)}s)`);
 
     return new Promise(resolve=>{
-      const tick=()=>{
+      const tick=async()=>{
         if(transitionSerial!==state._presetTransitionSerial){ resolve(); return; }
         const perfNow=performance.now();
         transitionLastPerf=perfNow;
@@ -13464,6 +14046,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           g.hrtfZ=safeLerp(start.hrtfZ,target.hrtfZ,t);g.hrtfZAngleDeg=safeLerp(start.hrtfZAngleDeg,target.hrtfZAngleDeg,t);g.hrtfZRate=safeLerp(start.hrtfZRate,target.hrtfZRate,t);
           g.phaseOffsetDeg=glideDegrees(start.phaseOffsetDeg,target.phaseOffsetDeg,t);g.toothWidth=safeLerp(start.toothWidth,target.toothWidth,t);g._midiWidth=safeLerp(start.midiWidth,target.midiWidth,t);g.teeth=safeLerp(start.teeth,target.teeth,t);
           g.shapeParams=interpolateShapeParams(start.shapeParams,target.shapeParams,t);
+          g._shapeRate=Math.max(.03,Number(shapePhaseAndRateForGear(g,Number(g._shapePhase)||Number(g.angle)||0)?.rate)||1);
           g.adsr=lerpObject(start.adsr,target.adsr,t);g.widthMod=lerpObject(start.widthMod,target.widthMod,t);
           g.ratio=glideRatio(start.ratio,targetRatio,t);
           g.freq=Math.abs(g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
@@ -13479,28 +14062,48 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
             const futureMain=!!op.sg.isMain;
             if(futureMain)g.isMain=false;
             const addTarget=getSnapshotTransitionState(op.sg);
+            const addSource=op._sourceG||currentMain;
+            const addSourceState=getGearTransitionState(addSource);
             g._presetTransitionActive=true;g._presetTransitionIn=true;g._inPresetTransition=true;g._presetTransitionLevel=0;g._presetTransitionT=t;
-            g._presetTransitionFromShape='circular';g._presetTransitionToShape=g.shape;
-            g._presetTransitionFromShapeParams=normalizedShapeParams({});g._presetTransitionToShapeParams=addTarget.shapeParams;
-            g._presetTransitionFromTeeth=3;g._presetTransitionToTeeth=addTarget.teeth;
-            g._presetTransitionFromRatio=0;g._presetTransitionToRatio=op.targetRatio;
+            g._presetTransitionFromShape=addSource?.shape||'circular';g._presetTransitionToShape=g.shape;
+            g._presetTransitionFromShapeParams=normalizedShapeParams(addSourceState?.shapeParams||{});g._presetTransitionToShapeParams=addTarget.shapeParams;
+            g._presetTransitionFromTeeth=Math.max(3,Number(addSourceState?.teeth)||3);g._presetTransitionToTeeth=addTarget.teeth;
+            g._presetTransitionFromRatio=Number(addSourceState?.ratio)||0;g._presetTransitionToRatio=op.targetRatio;
+            g._presetTransitionFromToothWaveform=addSourceState?.toothWaveform||addSource?.toothWaveform||addSource?.sourceMode||state.waveform||'sine';
+            g._presetTransitionToToothWaveform=addTarget.toothWaveform||op.sg.toothWaveform||op.sg.sourceMode||'sine';
+            g._presetTransitionFromSolo=!!(addSource?.solo&&!addSource?.muted);g._presetTransitionToSolo=!!op.sg.solo;
+            g._presetTransitionFromMuted=!!addSource?.muted;g._presetTransitionToMuted=!!op.sg.muted;
+            g._presetTransitionFromToothWidth=Math.max(0,Math.min(.98,Number.isFinite(Number(addSourceState?.toothWidth??addSource?.toothWidth))?Number(addSourceState?.toothWidth??addSource?.toothWidth):.5));
+            g._presetTransitionToToothWidth=Math.max(0,Math.min(.98,Number.isFinite(Number(addTarget.toothWidth))?Number(addTarget.toothWidth):.5));
+            // New topology members begin as silent copies of the closest existing
+            // mechanical voice, then morph into the target. This is the audible
+            // equivalent of one gear fading out while its replacement fades in.
+            g._presetTransitionFromOffcenter=addSourceState?.offcenter||0;g._presetTransitionToOffcenter=addTarget.offcenter;
+            g._presetTransitionFromAccelerationMs=addSourceState?.accelerationMs||0;g._presetTransitionToAccelerationMs=addTarget.accelerationMs;
+            g._presetTransitionFromOrbitPeriodSec=addSourceState?.orbitPeriodSec||8;g._presetTransitionToOrbitPeriodSec=addTarget.orbitPeriodSec;
+            g._presetTransitionFromOrbitAngle=addSourceState?.orbitAngle||0;g._presetTransitionToOrbitAngle=addTarget.orbitAngle;
+            g._presetTransitionFromOrbitRadius=addSourceState?.orbitRadius||0;g._presetTransitionToOrbitRadius=addTarget.orbitRadius;
+            g._presetTransitionFromOrbitPhase=addSourceState?.orbitPhase||0;g._presetTransitionToOrbitPhase=addTarget.orbitPhase;
+            g._presetTransitionFromHrtfZ=addSourceState?.hrtfZ||0;g._presetTransitionToHrtfZ=addTarget.hrtfZ;
+            g._presetTransitionFromHrtfZAngleDeg=addSourceState?.hrtfZAngleDeg||0;g._presetTransitionToHrtfZAngleDeg=addTarget.hrtfZAngleDeg;
+            g._presetTransitionFromHrtfZRate=addSourceState?.hrtfZRate||1;g._presetTransitionToHrtfZRate=addTarget.hrtfZRate;
+            g._presetTransitionFromPhaseOffsetDeg=addSourceState?.phaseOffsetDeg||0;g._presetTransitionToPhaseOffsetDeg=addTarget.phaseOffsetDeg;
+            g._presetTransitionFromMidiWidth=addSourceState?.midiWidth??1;g._presetTransitionToMidiWidth=addTarget.midiWidth;
+            g._presetTransitionFromAdsr=cloneJSON(addSourceState?.adsr||state.adsr||{});g._presetTransitionToAdsr=cloneJSON(addTarget.adsr||state.adsr||{});
+            g._presetTransitionFromWidthMod=cloneJSON(addSourceState?.widthMod||addSourceState?.adsr||state.adsr||{});g._presetTransitionToWidthMod=cloneJSON(addTarget.widthMod||addTarget.adsr||state.adsr||{});
             g._presetTargetSnapshot=op.sg;g.neighbors=[];
             g._presetAddStart={x:currentMain?Number(currentMain.x)||0:0,y:currentMain?Number(currentMain.y)||0:0,angle:currentMain?Number(currentMain.angle)||0:0};
             g.x=g._presetAddStart.x;g.y=g._presetAddStart.y;g.angle=g._presetAddStart.angle;
-            g.teeth=3;g.offcenter=0;g.volume=0;g.accelerationMs=0;g.orbitPeriodSec=8;g.orbitAngle=0;g.orbitRadius=0;g.orbitPhase=0;g.hrtfZ=0;g.hrtfZAngleDeg=0;g.hrtfZRate=1;g.phaseOffsetDeg=0;g.toothWidth=.5;g._midiWidth=1;g.ratio=0;g.freq=0;g.adsr=cloneJSON(state.adsr||{});g.widthMod=cloneJSON(state.adsr||{});
+            g.teeth=Math.max(3,Number(g._presetTransitionFromTeeth)||3);g.offcenter=safeNumber(g._presetTransitionFromOffcenter,0);g.volume=0;g.accelerationMs=safeNumber(g._presetTransitionFromAccelerationMs,0);g.orbitPeriodSec=safeNumber(g._presetTransitionFromOrbitPeriodSec,8);g.orbitAngle=safeNumber(g._presetTransitionFromOrbitAngle,0);g.orbitRadius=Math.max(0,safeNumber(g._presetTransitionFromOrbitRadius,0));g.orbitPhase=safeNumber(g._presetTransitionFromOrbitPhase,0);g.hrtfZ=Math.max(-1,Math.min(1,safeNumber(g._presetTransitionFromHrtfZ,0)));g.hrtfZAngleDeg=safeNumber(g._presetTransitionFromHrtfZAngleDeg,0);g.hrtfZRate=Math.max(.1,safeNumber(g._presetTransitionFromHrtfZRate,1));g.phaseOffsetDeg=safeNumber(g._presetTransitionFromPhaseOffsetDeg,0);g.toothWidth=Math.max(0,Math.min(.98,safeNumber(g._presetTransitionFromToothWidth,.5)));g._midiWidth=Math.max(0,safeNumber(g._presetTransitionFromMidiWidth,1));g.ratio=Number(g._presetTransitionFromRatio)||0;g.freq=Math.abs(g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);g.toothWaveform=g._presetTransitionFromToothWaveform;g.sourceMode=g._presetTransitionFromToothWaveform;g.adsr=cloneJSON(g._presetTransitionFromAdsr||state.adsr||{});g.widthMod=cloneJSON(g._presetTransitionFromWidthMod||g.adsr||{});
             g._presetTransitionAddTarget=addTarget;
             if(state.gearMap.has(g.id))g.id=Math.max(0,...state.gears.map(x=>Number(x.id)||0))+1;
             if(futureMain)g._presetWillBecomeMain=true;
             state.gears.push(g);state.gearMap.set(g.id,g);op.g=g;op._created=true;
             targetToActualId.set(Number(op.sg.id),Number(g.id));
-            // Build the new live-note audio train from the TARGET ratio even though
-            // the visible gear begins its morph at ratio 0. createPolyTrain correctly
-            // omits zero-ratio gears, which previously meant additions (3->6, etc.)
-            // had no POLY audio graph at all until after the crossfade. The train is
-            // still silent because the new gear's volume/ADSR begin at zero; only its
-            // initial oscillator frequency needs the target ratio so its entry can
-            // glide in with the same sequential slot as the visible gear.
-            const ratioForGraft=Number(op.targetRatio)||0;
+            // Build the new live-note audio train from the SOURCE mechanical role. The
+            // new gear is born at the source pitch/timbre, remains silent while its
+            // volume is zero, then glides toward the target while it fades in.
+            const ratioForGraft=Number(op.g._presetTransitionFromRatio)||Number(op.targetRatio)||0;
             const ratioBeforeGraft=g.ratio;
             if(ratioForGraft!==0)g.ratio=ratioForGraft;
             try{op._audioGrafted=graftGearIntoLivePolyVoices(g,Math.max(0.03,Math.min(0.35,slotDuration*0.75)),transitionSerial)>0;}catch(_){op._audioGrafted=false;}
@@ -13511,12 +14114,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
             const at=op.g._presetTransitionAddTarget||getSnapshotTransitionState(op.sg);
             const addStart=op.g._presetAddStart||{x:0,y:0,angle:0};
             op.g.x=safeLerp(addStart.x,at.x,e);op.g.y=safeLerp(addStart.y,at.y,e);op.g.angle=glideAngle(addStart.angle,at.angle,e);
-            op.g.offcenter=safeLerp(0,at.offcenter,e);op.g.volume=safeLerp(0,op.targetVolume,e);op.g.accelerationMs=safeLerp(0,at.accelerationMs,e);
-            op.g.orbitPeriodSec=safeLerp(8,at.orbitPeriodSec,e);op.g.orbitAngle=glideAngle(0,at.orbitAngle,e);op.g.orbitRadius=safeLerp(0,at.orbitRadius,e);op.g.orbitPhase=glideAngle(0,at.orbitPhase,e);
-            op.g.hrtfZ=safeLerp(0,at.hrtfZ,e);op.g.hrtfZAngleDeg=safeLerp(0,at.hrtfZAngleDeg,e);op.g.hrtfZRate=safeLerp(1,at.hrtfZRate,e);
-            op.g.phaseOffsetDeg=glideDegrees(0,at.phaseOffsetDeg,e);op.g.toothWidth=safeLerp(.5,at.toothWidth,e);op.g._midiWidth=safeLerp(1,at.midiWidth,e);op.g.teeth=safeLerp(3,at.teeth,e);
-            op.g.shapeParams=interpolateShapeParams(normalizedShapeParams({}),at.shapeParams,e);op.g.adsr=lerpObject(cloneJSON(state.adsr||{}),at.adsr,e);op.g.widthMod=lerpObject(cloneJSON(state.adsr||{}),at.widthMod,e);
-            op.g.ratio=safeLerp(0,op.targetRatio,e);op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
+            const fromOffcenter=safeNumber(op.g._presetTransitionFromOffcenter,0),fromAccel=safeNumber(op.g._presetTransitionFromAccelerationMs,0),fromOrbitPeriod=safeNumber(op.g._presetTransitionFromOrbitPeriodSec,8),fromOrbitAngle=safeNumber(op.g._presetTransitionFromOrbitAngle,0),fromOrbitRadius=safeNumber(op.g._presetTransitionFromOrbitRadius,0),fromOrbitPhase=safeNumber(op.g._presetTransitionFromOrbitPhase,0),fromHrtfZ=safeNumber(op.g._presetTransitionFromHrtfZ,0),fromHrtfZA=safeNumber(op.g._presetTransitionFromHrtfZAngleDeg,0),fromHrtfZR=safeNumber(op.g._presetTransitionFromHrtfZRate,1),fromPhase=safeNumber(op.g._presetTransitionFromPhaseOffsetDeg,0),fromMidi=safeNumber(op.g._presetTransitionFromMidiWidth,1);
+            op.g.offcenter=safeLerp(fromOffcenter,at.offcenter,e);op.g.volume=safeLerp(0,op.targetVolume,e);op.g.accelerationMs=safeLerp(fromAccel,at.accelerationMs,e);
+            op.g.orbitPeriodSec=safeLerp(fromOrbitPeriod,at.orbitPeriodSec,e);op.g.orbitAngle=glideAngle(fromOrbitAngle,at.orbitAngle,e);op.g.orbitRadius=safeLerp(fromOrbitRadius,at.orbitRadius,e);op.g.orbitPhase=glideAngle(fromOrbitPhase,at.orbitPhase,e);
+            op.g.hrtfZ=safeLerp(fromHrtfZ,at.hrtfZ,e);op.g.hrtfZAngleDeg=glideDegrees(fromHrtfZA,at.hrtfZAngleDeg,e);op.g.hrtfZRate=safeLerp(fromHrtfZR,at.hrtfZRate,e);
+            op.g.phaseOffsetDeg=glideDegrees(fromPhase,at.phaseOffsetDeg,e);op.g.toothWidth=safeLerp(safeNumber(op.g._presetTransitionFromToothWidth,.5),at.toothWidth,e);op.g._midiWidth=safeLerp(fromMidi,at.midiWidth,e);op.g.teeth=safeLerp(Math.max(3,Number(op.g._presetTransitionFromTeeth)||3),at.teeth,e);
+            op.g.shapeParams=interpolateShapeParams(normalizedShapeParams(op.g._presetTransitionFromShapeParams||{}),at.shapeParams,e);
+            op.g._shapeRate=Math.max(.03,Number(shapePhaseAndRateForGear(op.g,Number(op.g._shapePhase)||Number(op.g.angle)||0)?.rate)||1);
+            op.g.adsr=lerpObject(cloneJSON(op.g._presetTransitionFromAdsr||state.adsr||{}),at.adsr,e);op.g.widthMod=lerpObject(cloneJSON(op.g._presetTransitionFromWidthMod||state.adsr||{}),at.widthMod,e);
+            op.g.ratio=glideRatio(Number(op.g._presetTransitionFromRatio)||0,op.targetRatio,e);op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
             if(op._created && !op._audioNodesInitialized){
               try{updateAudioNodes();}catch(_){ }
               op._audioNodesInitialized=true;
@@ -13532,10 +14138,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           if(!op._removed && op.g && state.gears.includes(op.g)){
             op.g._presetTransitionActive=true;op.g._presetTransitionOut=true;op.g._presetTransitionT=t;op.g._presetTransitionLevel=1-e;
             const start=op.startState||getGearTransitionState(op.g);op.startState=start;
+            op.g._presetTransitionFromSolo=!!op.g.solo;op.g._presetTransitionToSolo=false;
+            op.g._presetTransitionFromMuted=!!op.g.muted;op.g._presetTransitionToMuted=true;
             op.g.volume=Math.max(0,safeLerp(start.volume,0,e));op.g.offcenter=safeLerp(start.offcenter,0,e);op.g.accelerationMs=safeLerp(start.accelerationMs,0,e);
             op.g.orbitRadius=safeLerp(start.orbitRadius,0,e);op.g.orbitAngle=glideAngle(start.orbitAngle,0,e);op.g.orbitPhase=glideAngle(start.orbitPhase,0,e);op.g.hrtfZ=safeLerp(start.hrtfZ,0,e);op.g.hrtfZAngleDeg=safeLerp(start.hrtfZAngleDeg,0,e);
             op.g.hrtfZRate=safeLerp(start.hrtfZRate,1,e);op.g.phaseOffsetDeg=glideDegrees(start.phaseOffsetDeg,0,e);op.g.toothWidth=safeLerp(start.toothWidth,.5,e);op.g._midiWidth=safeLerp(start.midiWidth,1,e);op.g.teeth=safeLerp(start.teeth,3,e);
-            op.g.shapeParams=interpolateShapeParams(start.shapeParams,normalizedShapeParams({}),e);op.g.adsr=lerpObject(start.adsr,state.adsr||{},e);op.g.widthMod=lerpObject(start.widthMod,state.adsr||{},e);op.g.ratio=glideRatio(start.ratio,0,e);
+            op.g.shapeParams=interpolateShapeParams(start.shapeParams,normalizedShapeParams({}),e);
+            op.g._shapeRate=Math.max(.03,Number(shapePhaseAndRateForGear(op.g,Number(op.g._shapePhase)||Number(op.g.angle)||0)?.rate)||1);
+            op.g.adsr=lerpObject(start.adsr,state.adsr||{},e);op.g.widthMod=lerpObject(start.widthMod,state.adsr||{},e);op.g.ratio=glideRatio(start.ratio,0,e);
             op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
             if(phase>=1){
               // The visible gear can disappear from the machine while its held MIDI
@@ -13570,6 +14180,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           op.g.ratio=Math.abs(Number(op.g.ratio)||0)*(Number(op.g.ratio)<0?-1:1);
           op.g.freq=Math.abs(op.g.ratio)*Math.max(0,Number(state.fundamentalFreq)||0);
         });
+        // Push the same interpolated gear values into the realtime Worklet. This is
+        // the critical part of the preset crossfade: previously the UI state moved
+        // smoothly while the Worklet retained the source preset until updateAudioNodes()
+        // at t=1, producing the audible end-of-fade snap.
+        queuePresetTransitionAudio();
+
         // Keep the transition ticker lightweight. Continuous POLY frequency/pitch
         // updates remain bounded, while full AudioNode graph maintenance happens only
         // when topology actually changes (gear added/removed) or at the final handoff.
@@ -13588,6 +14204,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           window.setTimeout(tick,state._mobilePortraitCached?24:16);
           return;
         }
+
+        // Give the Worklet's final audio-rate waveform/gain slews a complete couple of
+        // quanta before committing the ordinary steady-state preset config. This is the
+        // guard that prevents the last few percent of a sine↔square (or any future
+        // supported waveform) morph from being replaced by a discrete config update.
+        await new Promise(r=>setTimeout(r,24));
+        if(transitionSerial!==state._presetTransitionSerial)return resolve();
 
         orderedRemovals.forEach(tr=>{if(tr._removed||!tr.g||!state.gears.includes(tr.g))return;try{removeGearAudio(tr.g);}catch(_){}state.gearMap.delete(tr.g.id);const i=state.gears.indexOf(tr.g);if(i>=0)state.gears.splice(i,1);tr._removed=true;});
         // Only now, after the continuous morph is complete, change the kinematic
@@ -13650,8 +14273,9 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           if(g?.sourceMode==='audio' && g?._presetTransitionToSourceMode && g._presetTransitionToSourceMode!=='audio'){
             try{clearGearAudioData(g);}catch(_){ }
           }
-          g._presetTransitionActive=false;g._presetTransitionLevel=undefined;g._presetTransitionIn=undefined;g._presetTransitionOut=undefined;g._inPresetTransition=undefined;g._presetTransitionT=undefined;g._presetTransitionFromShape=undefined;g._presetTransitionToShape=undefined;g._presetTransitionFromShapeParams=undefined;g._presetTransitionToShapeParams=undefined;g._presetTransitionFromTeeth=undefined;g._presetTransitionToTeeth=undefined;g._presetTransitionFromRatio=undefined;g._presetTransitionToRatio=undefined;g._presetTargetSnapshot=undefined;g._presetTransitionFromSourceMode=undefined;g._presetTransitionToSourceMode=undefined;g._presetWillBecomeMain=undefined;g._presetTransitionAddTarget=undefined;g._presetAddStart=undefined;
+          g._presetTransitionActive=false;g._presetTransitionLevel=undefined;g._presetTransitionIn=undefined;g._presetTransitionOut=undefined;g._inPresetTransition=undefined;g._presetTransitionT=undefined;g._presetTransitionFromShape=undefined;g._presetTransitionToShape=undefined;g._presetTransitionFromShapeParams=undefined;g._presetTransitionToShapeParams=undefined;g._presetTransitionFromTeeth=undefined;g._presetTransitionToTeeth=undefined;g._presetTransitionFromRatio=undefined;g._presetTransitionToRatio=undefined;g._presetTargetSnapshot=undefined;g._presetTransitionFromSourceMode=undefined;g._presetTransitionToSourceMode=undefined;g._presetTransitionFromToothWaveform=undefined;g._presetTransitionToToothWaveform=undefined;g._presetTransitionFromToothWidth=undefined;g._presetTransitionToToothWidth=undefined;g._presetTransitionFromOffcenter=undefined;g._presetTransitionToOffcenter=undefined;g._presetTransitionFromAccelerationMs=undefined;g._presetTransitionToAccelerationMs=undefined;g._presetTransitionFromOrbitPeriodSec=undefined;g._presetTransitionToOrbitPeriodSec=undefined;g._presetTransitionFromOrbitAngle=undefined;g._presetTransitionToOrbitAngle=undefined;g._presetTransitionFromOrbitRadius=undefined;g._presetTransitionToOrbitRadius=undefined;g._presetTransitionFromOrbitPhase=undefined;g._presetTransitionToOrbitPhase=undefined;g._presetTransitionFromHrtfZ=undefined;g._presetTransitionToHrtfZ=undefined;g._presetTransitionFromHrtfZAngleDeg=undefined;g._presetTransitionToHrtfZAngleDeg=undefined;g._presetTransitionFromHrtfZRate=undefined;g._presetTransitionToHrtfZRate=undefined;g._presetTransitionFromPhaseOffsetDeg=undefined;g._presetTransitionToPhaseOffsetDeg=undefined;g._presetTransitionFromMidiWidth=undefined;g._presetTransitionToMidiWidth=undefined;g._presetTransitionFromAdsr=undefined;g._presetTransitionToAdsr=undefined;g._presetTransitionFromWidthMod=undefined;g._presetTransitionToWidthMod=undefined;g._presetTransitionFromSolo=undefined;g._presetTransitionToSolo=undefined;g._presetTransitionFromMuted=undefined;g._presetTransitionToMuted=undefined;g._presetTransitionAddTarget=undefined;g._presetAddStart=undefined;
         });
+        state._presetTransitionSourceSolo=null;state._presetTransitionTargetSolo=null;
         state._presetMainSwitched=false;
         if(transitionSerial===state._presetTransitionSerial){state._presetTransitionActive=false;state._presetTransitionProgress=1;}
         const byFinal=new Map(state.gears.map(g=>[Number(g.id),g]));
@@ -13676,7 +14300,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
   async function loadPreset(p){
     if(!p?.state||p.format!=='STEAMWHISTLE-COG'){setStatus('Invalid .COG preset');return;}
     const wasRunning=!!state.audioRunning;
-    if(wasRunning)await fadeAudioForPresetReplace(0.1);
+    if(wasRunning)await fadeAudioForPresetReplace(0.008);
     try{state.gears.forEach(g=>{try{removeGearAudio(g);}catch(_){}});}catch(_){ }
     assignStateValues(p.state);
     state.gears=[];state.gearMap.clear();
@@ -13737,6 +14361,29 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
   autoLoadFolderPresets().catch(()=>{});
 })();
     // Expose a small deterministic contour regression helper for browser tests.
+    // Deterministic preset-crossfade regression helper. It exercises the same
+    // waveform interpolation law used by the Worklet, including repeated config-sync
+    // style updates between transition ticks.
+    window.__presetCrossfadeSelfTest = () => {
+      const waveforms=['sine','triangle','sawtooth','square'];
+      const finiteWave=t=>waveforms.every(w=>{
+        const a=toothWaveSample(w,t,.5),b=toothWaveSample(w,t,.5);
+        return Number.isFinite(a)&&Number.isFinite(b);
+      });
+      const samples=Array.from({length:257},(_,i)=>i/256);
+      const pairs=[];
+      for(const from of waveforms){for(const to of waveforms){
+        let maxStep=0,prev=null;
+        for(const t of samples){
+          const m=t,wa=toothWaveSample(from,.37,.5),wb=toothWaveSample(to,.37,.5);
+          const y=wa*(1-m)+wb*m;
+          if(prev!==null)maxStep=Math.max(maxStep,Math.abs(y-prev));
+          prev=y;
+        }
+        pairs.push({from,to,maxStep,finite:finiteWave(.37)});
+      }}
+      return {ok:pairs.every(x=>x.finite&&Number.isFinite(x.maxStep)),pairs};
+    };
     window.__shapeContourSelfTest = () => {
       const results = {};
       const samples = [0, Math.PI/6, Math.PI/3, Math.PI/2, Math.PI, 3*Math.PI/2];
@@ -13747,6 +14394,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       }
       results.logMidpointEllipse = Math.abs(unitToLog(.5,.01,.95) - Math.sqrt(.0095)) < .005;
       results.rectangleRange = Math.abs(unitToLog(0,1,120)-1) < 1e-9 && Math.abs(unitToLog(1,1,120)-120) < 1e-6;
+      const rectSamples=[0,Math.PI/4,Math.PI/2].map(t=>shapeRadius('rectangle',t,100,{rectangleAspect:120}));
+      results.rectangleGeometryNormalized=Math.max(...rectSamples)<=100.000001 && rectSamples[0]>99.999 && rectSamples[2]>=4.9 && rectSamples[2]<6.0;
       return results;
     };
 </script>
