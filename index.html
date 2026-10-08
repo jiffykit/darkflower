@@ -2896,7 +2896,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.mono={active:false,gate:false,targetFreq:440,velocity:1,releasing:false,releaseStart:0};
     this.voices=new Map(); this.fadingTails=new Map(); this.voiceArray=[]; this.fadingTailArray=[]; this.voiceArraysDirty=true;
     // Fixed-capacity lifecycle queues keep bursty MIDI note changes allocation-free.
-    // There are never more than 10 held voices and 8 independent release tails.
+    // There are never more than 10 held voices. Release tails are deliberately kept
+    // tiny because every tail multiplies by the full gear count in the realtime DSP.
+    this.maxReleaseVoices=4;
     this.activeVoiceQueue=[]; this.activeVoiceHead=0; this.activeVoiceCount=0;
     this.releaseVoiceQueue=[]; this.releaseVoiceHead=0; this.polyReuseEnabled=false;
     this.voiceOrder=0; this.frame=0;
@@ -2911,6 +2913,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // Accelleration never needs to recycle the old voice or touch the hot render loop.
     this.lastPolyVoice=null; this.polyTuningDirty=false;
     this.panicSamples=0; this.panicTotal=1; this.panicStartGain=1; this.fadeSamples=0; this.fadeTotal=1; this.fadeStartGain=1; this.fadeTarget=1; this.processNotified=false;
+    // Realtime render caches: expensive control/envelope math is evaluated only
+    // once per active state per audio quantum (or after an in-quantum MIDI event).
+    this._rtBlockSerial=0; this._rtBlockStartFrame=0; this._rtBlockEndFrame=128; this._rtEpoch=0;
     this.port.onmessage=e=>this.message(e.data||{});
   }
   message(m){
@@ -3018,6 +3023,14 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             }
             if(p.widthMod&&typeof p.widthMod==='object')g.widthMod={...g.widthMod,...p.widthMod};
             if(p.widthModEnabled!==undefined)g.widthModEnabled=!!p.widthModEnabled;
+            const modAd=g.widthMod||g.adsr||{};
+            g._modAttackSamples=Math.max(0,Math.min(2,Number(modAd.attack)||0))*this.sr;
+            g._modDecaySamples=Math.max(0,Math.min(2,Number(modAd.decay)||0))*this.sr;
+            g._modReleaseSamples=Math.max(0,Math.min(10,Number(modAd.release)||0))*this.sr;
+            g._modSustain=Math.max(0,Math.min(1,Number(modAd.sustain??.8)));
+            g._modAttackCurve=Math.max(-1,Math.min(1,Number(modAd.attackCurve)||0));
+            g._modDecayCurve=Math.max(-1,Math.min(1,Number(modAd.decayCurve)||0));
+            g._modReleaseCurve=Math.max(-1,Math.min(1,Number(modAd.releaseCurve)||0));
             if(p.sourceMode!==undefined&&p.sourceMode===g.sourceMode){}
             // A transition may alter waveform/width continuously; disable the
             // quantized table only for this live morph so width never waits for the
@@ -3170,7 +3183,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
           }
           break;
         }
-        case 'gear-adsr': { const g=this.gears.get(Number(m.id)); if(g){ if(m.adsr) g.adsr={...g.adsr,...m.adsr}; if(m.widthMod) g.widthMod={...(g.widthMod||g.adsr),...m.widthMod}; if(m.widthModEnabled!==undefined) g.widthModEnabled=!!m.widthModEnabled; const ad=g.adsr||{};g._attackSamples=Math.max(0,Math.min(10,Number(g.bloomAttack)||Number(ad.attack)||0))*this.sr;g._decaySamples=Math.max(0,Math.min(2,Number(ad.decay)||0))*this.sr;g._releaseSamples=Math.max(0,Math.min(10,Number(ad.release)||0))*this.sr;g._sustain=Math.max(0,Math.min(1,Number(ad.sustain??.8)));g._attackCurve=Math.max(-1,Math.min(1,Number(ad.attackCurve)||0));g._decayCurve=Math.max(-1,Math.min(1,Number(ad.decayCurve)||0));g._releaseCurve=Math.max(-1,Math.min(1,Number(ad.releaseCurve)||0));g._widthModEnabled=g.widthModEnabled===true;this.rebuildBloomAttackCache();this.maxReleaseSec=Math.max(0,...this.gearArray.map(x=>Math.max(0,Math.min(10,Number(x.adsr?.release)||0)))); } break; }
+        case 'gear-adsr': { const g=this.gears.get(Number(m.id)); if(g){ if(m.adsr) g.adsr={...g.adsr,...m.adsr}; if(m.widthMod) g.widthMod={...(g.widthMod||g.adsr),...m.widthMod}; if(m.widthModEnabled!==undefined) g.widthModEnabled=!!m.widthModEnabled; const ad=g.adsr||{};g._attackSamples=Math.max(0,Math.min(10,Number(g.bloomAttack)||Number(ad.attack)||0))*this.sr;g._decaySamples=Math.max(0,Math.min(2,Number(ad.decay)||0))*this.sr;g._releaseSamples=Math.max(0,Math.min(10,Number(ad.release)||0))*this.sr;g._sustain=Math.max(0,Math.min(1,Number(ad.sustain??.8)));g._attackCurve=Math.max(-1,Math.min(1,Number(ad.attackCurve)||0));g._decayCurve=Math.max(-1,Math.min(1,Number(ad.decayCurve)||0));g._releaseCurve=Math.max(-1,Math.min(1,Number(ad.releaseCurve)||0)); const modAd=g.widthMod||ad;g._modAttackSamples=Math.max(0,Math.min(2,Number(modAd.attack)||0))*this.sr;g._modDecaySamples=Math.max(0,Math.min(2,Number(modAd.decay)||0))*this.sr;g._modReleaseSamples=Math.max(0,Math.min(10,Number(modAd.release)||0))*this.sr;g._modSustain=Math.max(0,Math.min(1,Number(modAd.sustain??.8)));g._modAttackCurve=Math.max(-1,Math.min(1,Number(modAd.attackCurve)||0));g._modDecayCurve=Math.max(-1,Math.min(1,Number(modAd.decayCurve)||0));g._modReleaseCurve=Math.max(-1,Math.min(1,Number(modAd.releaseCurve)||0));g._widthModEnabled=g.widthModEnabled===true;this.rebuildBloomAttackCache();this.maxReleaseSec=Math.max(0,...this.gearArray.map(x=>Math.max(0,Math.min(10,Number(x.adsr?.release)||0)))); } break; }
         case 'master': this.masterTarget=Math.max(0,Math.min(1,Number(m.value)||0)); break;
         case 'bloom': this.bloomAmount=Math.max(-5,Math.min(5,Number(m.amount)||0)); if(m.placementOrder!==undefined)this.bloomPlacementOrder=!!m.placementOrder; this.rebuildBloomAttackCache(); break;
         case 'spatial-scale': this.spatialScale=Math.max(.001,Math.min(2,Number(m.value)||.01)); break;
@@ -3415,7 +3428,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }else{
       g._transitionAudibilityTarget=1;g._transitionAudibility=1;
     }
-    const canTable=['sine','triangle','sawtooth','square'].includes(g.waveform) && !g.widthModEnabled && !g._waveMorphActive;
+    const canTable=['sine','triangle','sawtooth','square'].includes(g.waveform) && !g._waveMorphActive;
     const tableKey=canTable?String(g.waveform)+':'+g.width.toFixed(6):'';
     if(canTable && g._waveTableKey!==tableKey){
       const N=2048,tab=new Float32Array(N+1);for(let ti=0;ti<=N;ti++)tab[ti]=this.tooth(g.waveform,ti/N,g.width,g.clockTickMs);
@@ -3439,6 +3452,17 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     g._attackCurve=Math.max(-1,Math.min(1,Number(ad.attackCurve)||0));
     g._decayCurve=Math.max(-1,Math.min(1,Number(ad.decayCurve)||0));
     g._releaseCurve=Math.max(-1,Math.min(1,Number(ad.releaseCurve)||0));
+    // MOD WIDTH has its own ADSR state. Do not inherit the volume ADSR timing
+    // after the MOD envelope has been created, otherwise a 2s MOD attack can
+    // still render with the volume attack (for example 10ms).
+    const modAd=g.widthMod||ad;
+    g._modAttackSamples=Math.max(0,Math.min(2,Number(modAd.attack)||0))*this.sr;
+    g._modDecaySamples=Math.max(0,Math.min(2,Number(modAd.decay)||0))*this.sr;
+    g._modReleaseSamples=Math.max(0,Math.min(10,Number(modAd.release)||0))*this.sr;
+    g._modSustain=Math.max(0,Math.min(1,Number(modAd.sustain??.8)));
+    g._modAttackCurve=Math.max(-1,Math.min(1,Number(modAd.attackCurve)||0));
+    g._modDecayCurve=Math.max(-1,Math.min(1,Number(modAd.decayCurve)||0));
+    g._modReleaseCurve=Math.max(-1,Math.min(1,Number(modAd.releaseCurve)||0));
     g._sourceKind=g.sourceMode==='audio'?1:g.sourceMode==='noise'?2:g.sourceMode==='midi'?3:g.sourceMode==='clockwork'?4:0;
     g._widthModEnabled=g.widthModEnabled===true;
     g._volume=g.volume;
@@ -3577,11 +3601,11 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   noteOn(m){
     if(m.mode==='mono'){this.mono.targetFreq=Math.max(.001,Number(m.freq)||.001);this.mono.velocity=Math.max(.0001,Math.min(1,Number(m.velocity)||1));if(!this.mono.gate){this.mono.active=true;this.mono.gate=true;this.mono.releasing=false;for(const g of this.gearArray){g.env={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};g.widthEnv={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};}}return;}
     const id=String(m.keyId);if(this.voices.has(id))return;
-    // Keep no more than eight independent release tails. This is an O(1)-ish queue
+    // Keep a large bounded set of independent release tails. This is an O(1)-ish queue
     // walk instead of allocating/filtering/sorting the complete voice Map for every note.
     while(true){
       const oldTail=this.oldestReleaseVoice();
-      const maxTails=this.polyReuseEnabled?10:8;
+      const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
       if(this.countLiveReleaseVoices()<=maxTails){ if(oldTail)this.releaseVoiceHead--; break; }
       if(!oldTail)break;
       this.voices.delete(oldTail.id); oldTail._dead=true; oldTail._tailFadeSamples=Math.max(1,Math.ceil(this.sr*.008)); oldTail._tailFadeTotal=oldTail._tailFadeSamples; oldTail._tailFadeStart=1; this.fadingTails.set(String(oldTail.id),oldTail); this.voiceArraysDirty=true;
@@ -3657,12 +3681,17 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     env.releasing=true;env.gate=false;env.releaseStart=this.frame;
   }
   startVoiceRelease(v){if(v.releasing)return;const previousId=String(v.id);v.releasing=true;v.sourceKeyId=previousId;v.releaseStart=this.frame;this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);for(const [gid,st] of v.gears){const g=this.gears.get(gid);if(g){this.captureRelease(st.env,this.envAt(st.env,this.frame,g.adsr));if(st.widthEnv)this.captureRelease(st.widthEnv,this.envAt(st.widthEnv,this.frame,g.widthMod||g.adsr));}}
+    // An accelerated voice can be reopened repeatedly. It is the same object across
+    // those reopens, so stale release-queue references must be removed before this
+    // release is queued again; otherwise one tail is counted multiple times.
+    for(let qi=this.releaseVoiceQueue.length-1;qi>=this.releaseVoiceHead;qi--)if(this.releaseVoiceQueue[qi]===v)this.releaseVoiceQueue.splice(qi,1);
+    this.compactLifecycleQueues();
     const tailId=previousId+'#release-'+(++this.voiceOrder);
     if(this.voices.get(previousId)===v)this.voices.delete(previousId);
     v.id=tailId;v.order=this.voiceOrder;this.voices.set(tailId,v);this.releaseVoiceQueue.push(v);this.voiceArraysDirty=true;
-    // Enforce the same eight-tail cap without sorting. Older tails move to the
+    // Enforce the same large safety cap without sorting. Older tails move to the
     // short fade set so their energy decays instead of being hard-cut.
-    const maxTails=this.polyReuseEnabled?10:8;
+    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
     while(this.countLiveReleaseVoices()>maxTails){
       const ov=this.oldestReleaseVoice();
       if(!ov)break;
@@ -3672,11 +3701,20 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   envAt(env,frame,adsr,attackOverride=null){const attackSec=Number.isFinite(Number(attackOverride))?Math.max(0,Math.min(10,Number(attackOverride))):Math.max(0,Math.min(10,Number(adsr?.attack)||0));const a=attackSec*this.sr,d=Math.max(0,Math.min(2,Number(adsr?.decay)||0))*this.sr,s=Math.max(0,Math.min(1,Number(adsr?.sustain??.8))),r=Math.max(0,Math.min(10,Number(adsr?.release)||0))*this.sr;if(env.releasing){if(r<=1)return 0;const t=Math.max(0,Math.min(1,(frame-env.releaseStart)/r));return Math.max(0,env.releaseLevel*(1-this.curve(t,Number(adsr?.releaseCurve)||0)));}const elapsed=Math.max(0,frame-env.start);if(elapsed<a&&a>1){const u=this.curve(elapsed/a,Number(adsr?.attackCurve)||0);const start=env.reentry?Math.max(0,Math.min(1,Number(env.reentryLevel)||0)):0;return start+(1-start)*u;}if(elapsed<a+d&&d>1)return 1+(s-1)*this.curve((elapsed-a)/d,Number(adsr?.decayCurve)||0);return s;}
   curve(t,c){t=Math.max(0,Math.min(1,t));c=Math.max(-1,Math.min(1,Number(c)||0));if(Math.abs(c)<.001)return t*t*t*(t*(t*6-15)+10);const k=1+6*Math.abs(c);const v=c>0?1-Math.pow(1-t,k):Math.pow(t,k);return v*v*v*(v*(v*6-15)+10);}
   curveCached(t,c){if(Math.abs(c)<.001)return t*t*t*(t*(t*6-15)+10);const k=1+6*Math.abs(c);const v=c>0?1-Math.pow(1-t,k):Math.pow(t,k);return v*v*v*(v*(v*6-15)+10);}
-  envAtFast(env,frame,g){
-    if(env.releasing){const r=g._releaseSamples;if(r<=1)return 0;let t=(frame-env.releaseStart)/r;t=t<0?0:(t>1?1:t);return Math.max(0,env.releaseLevel*(1-this.curveCached(t,g._releaseCurve)));}
-    const elapsed=frame-env.start,a=g._attackSamples,d=g._decaySamples,s=g._sustain;
-    if(elapsed<a && a>1){let t=elapsed/a;t=t<0?0:(t>1?1:t);const u=this.curveCached(t,g._attackCurve);const start=env.reentry?Math.max(0,Math.min(1,env.reentryLevel||0)):0;return start+(1-start)*u;}
-    if(elapsed<a+d && d>1){let t=(elapsed-a)/d;t=t<0?0:(t>1?1:t);return 1+(s-1)*this.curveCached(t,g._decayCurve);}
+  envAtFast(env,frame,g,isMod=false){
+    // A MOD WIDTH envelope is a separate ADSR. The volume envelope path remains
+    // exactly as before when isMod=false.
+    const attackSamples=isMod?g._modAttackSamples:g._attackSamples;
+    const decaySamples=isMod?g._modDecaySamples:g._decaySamples;
+    const releaseSamples=isMod?g._modReleaseSamples:g._releaseSamples;
+    const sustain=isMod?g._modSustain:g._sustain;
+    const attackCurve=isMod?g._modAttackCurve:g._attackCurve;
+    const decayCurve=isMod?g._modDecayCurve:g._decayCurve;
+    const releaseCurve=isMod?g._modReleaseCurve:g._releaseCurve;
+    if(env.releasing){const r=releaseSamples;if(r<=1)return 0;let t=(frame-env.releaseStart)/r;t=t<0?0:(t>1?1:t);return Math.max(0,env.releaseLevel*(1-this.curveCached(t,releaseCurve)));}
+    const elapsed=frame-env.start,a=attackSamples,d=decaySamples,s=sustain;
+    if(elapsed<a && a>1){let t=elapsed/a;t=t<0?0:(t>1?1:t);const u=this.curveCached(t,attackCurve);const start=env.reentry?Math.max(0,Math.min(1,Number(env.reentryLevel)||0)):0;return start+(1-start)*u;}
+    if(elapsed<a+d && d>1){let t=(elapsed-a)/d;t=t<0?0:(t>1?1:t);return 1+(s-1)*this.curveCached(t,decayCurve);}
     return s;
   }
   rebuildBloomAttackCache(){
@@ -3713,7 +3751,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   readLoopSampleMono(s,pos,start,end,crossfadeSamples){if(!s?.left?.length)return 0;const n=s.left.length,lo=Math.max(0,Math.min(n-2,start)),hi=Math.max(lo+1,Math.min(n,end)),len=Math.max(1,hi-lo);const p=((pos%len)+len)%len+lo;let mono=this.readSampleMono(s,p);const fade=Math.max(0,Math.min(len/2,Number(crossfadeSamples)||0));if(fade>1 && p>=hi-fade){const t=(p-(hi-fade))/fade;const headPos=lo+(p-(hi-fade));const h=this.readSampleMono(s,headPos);const a=Math.cos(t*Math.PI/2),b=Math.sin(t*Math.PI/2);mono=mono*a+h*b;}return mono;}
   // Exact same eccentric-axis law as the visual kinematic solver. The worklet
   // evaluates it continuously; the main thread supplies only the shape/network rate.
-  offcenterRate(g,phase){const pct=Math.max(0,Math.min(100,Number(g?.offcenter)||0));if(pct<=0)return 1;const e=Math.min(.94,(pct/100)*.94),c=Math.cos(Number(phase)||0),denom=Math.max(1e-6,1+e*c),meanNorm=Math.sqrt(Math.max(.001,1-e*e));return Math.max(.08,Math.min(6,meanNorm/denom));}
+  offcenterRate(g,phase){const pct=Math.max(0,Math.min(100,typeof g==='number'?g:Number(g?.offcenter)||0));if(pct<=0)return 1;const e=Math.min(.94,(pct/100)*.94),c=Math.cos(Number(phase)||0),denom=Math.max(1e-6,1+e*c),meanNorm=Math.sqrt(Math.max(.001,1-e*e));return Math.max(.08,Math.min(6,meanNorm/denom));}
   offcenterCarrierHz(freq,shapeRate){
     // Treat the eccentric axle like a turntable: one slow revolution modulates
     // the instantaneous playback/oscillator rate. Scaling with pitch keeps the
@@ -3722,12 +3760,82 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const sr=Math.max(.001,Math.min(8,Math.abs(Number(shapeRate))||1));
     return Math.max(.02,Math.min(20,this.offcenterVinylHzAt440*(f/440)*sr));
   }
+  beginRealtimeBlock(length){
+    this._rtBlockSerial=(this._rtBlockSerial+1)|0;
+    this._rtBlockStartFrame=this.frame;
+    this._rtBlockEndFrame=this.frame+Math.max(0,(Number(length)||128)-1);
+    this._rtEpoch++;
+  }
+  getBlockEnvelope(env,g,isMod=false){
+    if(!env)return 0;
+    const now=this.frame, end=this._rtBlockEndFrame;
+    const key=isMod?'_rtWidthEnvelope':'_rtEnvelope';
+    let c=env[key];
+    // Reuse one cache object for the life of this envelope. Replacing the object on
+    // every 128-sample quantum created hundreds of thousands of short-lived objects
+    // per second at high polyphony and forced the realtime thread through MinorGC.
+    if(!c)c=env[key]={serial:-1,epoch:-1,frameStart:0,frameEnd:-1,start:0,step:0};
+    if(c.serial!==this._rtBlockSerial || c.epoch!==this._rtEpoch || c.frameStart>now || c.frameEnd<now){
+      const finish=Math.max(now,end);
+      const start=this.envAtFast(env,now,g,isMod);
+      const stop=this.envAtFast(env,finish,g,isMod);
+      const span=Math.max(1,finish-now);
+      c.serial=this._rtBlockSerial; c.epoch=this._rtEpoch;
+      c.frameStart=now; c.frameEnd=finish; c.start=start; c.step=(stop-start)/span;
+    }
+    const value=Math.max(0,Math.min(1,c.start+c.step*(now-c.frameStart)));
+    env.currentLevel=value;
+    return value;
+  }
+  getBlockMotion(statePh,g,freq){
+    const now=this.frame, end=this._rtBlockEndFrame;
+    // Same reuse rule as getBlockEnvelope(): mutate a stable cache object instead
+    // of allocating one every quantum for every voice/gear pair.
+    let c=statePh._rtMotion;
+    if(!c)c=statePh._rtMotion={serial:-1,epoch:-1,frameStart:0,frameEnd:-1,shapeStart:0,shapeStep:0,offStart:0,offStep:0,rateStart:1,rateStep:0,offPhaseStart:0,offPhaseStep:0};
+    if(c.serial!==this._rtBlockSerial || c.epoch!==this._rtEpoch || c.frameStart>now || c.frameEnd<now){
+      const finish=Math.max(now,end), span=Math.max(0,finish-now);
+      const shapeStart=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):1;
+      const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
+      const shapeTau=.006*Math.max(1e-6,this.sr);
+      const shapeAlpha=1-Math.exp(-Math.max(0,span)/(shapeTau));
+      const shapeEnd=shapeStart+(shapeTarget-shapeStart)*shapeAlpha;
+      const offTarget=Math.max(0,Math.min(100,Number(g.offcenterTarget ?? g.offcenter)||0));
+      const offStart=Number.isFinite(Number(g.offcenterCurrent))?Number(g.offcenterCurrent):offTarget;
+      const offTau=.006*Math.max(1e-6,this.sr);
+      const offAlpha=1-Math.exp(-Math.max(0,span)/(offTau));
+      const offEnd=offStart+(offTarget-offStart)*offAlpha;
+      const offPhaseStart=Number.isFinite(Number(statePh.offcenterPhase))?Number(statePh.offcenterPhase):0;
+      // The eccentric carrier is extremely slow. Its phase can be interpolated over
+      // the whole quantum while preserving the same continuous mechanical trajectory.
+      const carrierStart=this.offcenterCarrierHz(freq,shapeStart);
+      const carrierEnd=this.offcenterCarrierHz(freq,shapeEnd);
+      const offPhaseEnd=offPhaseStart+(carrierStart+carrierEnd)*.5*(span+1)/this.sr;
+      let rateStart=shapeStart,rateEnd=shapeEnd;
+      const offActive=(offStart>1e-6)||(offEnd>1e-6);
+      if(offActive){
+        // Numeric percentage input avoids two throwaway object literals per gear/voice.
+        const offRateStart=this.offcenterRate(offStart,2*Math.PI*offPhaseStart);
+        const offRateEnd=this.offcenterRate(offEnd,2*Math.PI*offPhaseEnd);
+        rateStart*=offRateStart; rateEnd*=offRateEnd;
+      }
+      c.serial=this._rtBlockSerial; c.epoch=this._rtEpoch; c.frameStart=now; c.frameEnd=finish;
+      c.shapeStart=shapeStart; c.shapeStep=span?(shapeEnd-shapeStart)/span:0;
+      c.offStart=offStart; c.offStep=span?(offEnd-offStart)/span:0;
+      c.rateStart=rateStart; c.rateStep=span?(rateEnd-rateStart)/span:0;
+      c.offPhaseStart=offPhaseStart; c.offPhaseStep=(span+1)?(offPhaseEnd-offPhaseStart)/Math.max(1,span+1):0;
+    }
+    const idx=Math.max(0,Math.min(c.frameEnd-c.frameStart,now-c.frameStart));
+    const shapeRate=c.shapeStart+c.shapeStep*idx;
+    const offCurrent=c.offStart+c.offStep*idx;
+    g.motionShapeRate=shapeRate;
+    g.offcenterCurrent=offCurrent;
+    g.offcenterTarget=Math.max(0,Math.min(100,Number(g.offcenterTarget ?? g.offcenter)||0));
+    g._offcenterActive=offCurrent>1e-6;
+    statePh.offcenterPhase=c.offPhaseStart+c.offPhaseStep*(idx+1);
+    return Math.max(.001,Math.min(8,c.rateStart+c.rateStep*idx));
+  }
   renderGear(g,st,baseFreq,velocity,isPoly=false){
-    // The main-thread kinematic solver is the authoritative mechanical path.
-    // It computes the exact instantaneous rate used by the visual gear motion and
-    // sends that scalar to this one audio worklet. Do not recreate a second
-    // offcenter oscillator/modulator path here: that caused static pitch shifts
-    // and detached the audio from the working visual mechanics.
     const freqTarget=Math.max(.001,Math.abs(baseFreq)*(g._freqMul||1));
     const envState=isPoly?st.env:g.env;
     const alpha=g._accelAlpha;
@@ -3735,46 +3843,32 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const next=cur+(freqTarget-cur)*alpha;
     if(isPoly)st.currentFreq=next;else g.currentFreq=next;
     const freq=next;
-    const env=this.envAtFast(envState,this.frame,g);
-    envState.currentLevel=env;
+
+    // Envelope evaluation is block-linear between exact endpoints. This preserves
+    // sample continuity while removing the expensive curve evaluation from 127/128
+    // samples in every voice/gear stream.
+    const env=this.getBlockEnvelope(envState,g,false);
     if(env<=.000001)return 0;
     const vel=velocity>0?velocity:.0001;
     let transitionGain=1;
     if(g._presetTransitionActive){
       const tgt=Math.max(0,Math.min(1,Number(g._transitionAudibilityTarget??1)));
-      const cur=Math.max(0,Math.min(1,Number(g._transitionAudibility??tgt)));
+      const curGain=Math.max(0,Math.min(1,Number(g._transitionAudibility??tgt)));
       const a=1-Math.exp(-1/(0.008*this.sr));
-      g._transitionAudibility=cur+(tgt-cur)*a;
+      g._transitionAudibility=curGain+(tgt-curGain)*a;
       if(Math.abs(tgt-g._transitionAudibility)<1e-7)g._transitionAudibility=tgt;
       transitionGain=g._transitionAudibility;
     }
     const vol=g._volume*vel*env*transitionGain;
     if(vol<=.000001||g.muted||g.isUltrasonic)return 0;
-    let raw=0;
-    // The shape/network component arrives from the visual kinematic solver at control
-    // rate. The gear's own eccentric-axis component is calculated continuously here,
-    // at audio rate, so it cannot staircase or settle at a new static pitch.
-    const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
-    const shapeCurrent=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):shapeTarget;
-    const shapeAlpha=Number.isFinite(Number(g.motionShapeRateAlpha))?g.motionShapeRateAlpha:1-Math.exp(-1/(0.006*this.sr));
-    g.motionShapeRate=shapeCurrent+(shapeTarget-shapeCurrent)*shapeAlpha;
-    const shapeRate=Math.max(.001,Math.min(8,g.motionShapeRate));
+
+    const shapeRate=this.getBlockMotion(isPoly?st:g,g,freq);
+    // getBlockMotion() owns the slow modulation state. Reconstruct the instantaneous
+    // rate locally from its cached linear ramp without any trig/exp in the sample loop.
+    const instantaneousRate=shapeRate;
     const statePh=isPoly?st:g;
-    // Keep the eccentric oscillator independent from the audible waveform phase.
-    // Its phase advances at a slow vinyl-like mechanical rate, so the same eccentric
-    // geometry produces a real pitch rise/fall over many audible cycles instead of
-    // merely warping each waveform cycle.
-    const offPhase=Number.isFinite(Number(statePh.offcenterPhase))?Number(statePh.offcenterPhase):Number(statePh.modPhase)||0;
-    const offTarget=Math.max(0,Math.min(100,Number(g.offcenterTarget ?? g.offcenter)||0));
-    const offCurrent=Number.isFinite(Number(g.offcenterCurrent))?Number(g.offcenterCurrent):offTarget;
-    const offAlpha=1-Math.exp(-1/(0.006*this.sr));
-    g.offcenterTarget=offTarget;
-    g.offcenterCurrent=offCurrent+(offTarget-offCurrent)*offAlpha;
-    g._offcenterActive=g.offcenterCurrent>0.000001;
-    const offcenterCarrierHz=this.offcenterCarrierHz(freq,shapeRate);
-    const ownOffRate=g._offcenterActive?this.offcenterRate({offcenter:g.offcenterCurrent},2*Math.PI*offPhase):1;
-    const instantaneousRate=Math.max(.001,Math.min(8,shapeRate*ownOffRate));
-    statePh.offcenterPhase=(offPhase+(offcenterCarrierHz/this.sr))%1;
+
+    let raw=0;
     if(this.driver.playing){
       const pos=isPoly?st.samplePos:g.samplePos;
       const start=this.driver.loopStart*this.driver.sampleRate;
@@ -3794,9 +3888,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       if(isPoly)st.samplePos=(pos+rate*smp.sampleRate/this.sr)%len;else g.samplePos=(pos+rate*smp.sampleRate/this.sr)%len;
     }
     else if(g._sourceKind===2){
-      const baseW=g.width;
       const widthEnabled=g._widthModEnabled;
-      const widthLevel=widthEnabled?Math.max(0,Math.min(1,this.envAtFast(st.widthEnv,this.frame,g))):1;
+      const widthLevel=widthEnabled?this.getBlockEnvelope(st.widthEnv,g,true):1;
+      const baseW=g.width;
       const wv=Math.max(.02,Math.min(.98,.02+(baseW-.02)*widthLevel));
       const hpf=Math.min(16000,40*Math.pow(120,1-wv)),lpf=Math.max(hpf+50,Math.min(18000,500+11500*wv));
       const stt=isPoly?st:g,s=Math.random()*2-1,hpA=Math.exp(-2*Math.PI*Math.min(.49,hpf/this.sr)),lpA=Math.exp(-2*Math.PI*Math.min(.49,lpf/this.sr));
@@ -3804,18 +3898,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }
     else if(g._sourceKind===3)return 0;
     else{
-      // The visual mechanical path has two different concepts of phase:
-      // a carrier/mechanical phase that determines where the eccentric axle is,
-      // and the audible waveform phase whose derivative is the instantaneous
-      // mechanical rate. They must not be the same state, otherwise FM feeds back
-      // into its own modulator and permanently shifts the carrier pitch.
       const basePh=isPoly?st.phase:g.phase;
       const ph=basePh+g._phaseOffsetCycles;
       const morphActive=g._waveMorphActive===true;
       if(morphActive){
-        // Waveform morphing lives in the Worklet and is smoothed at audio rate.
-        // Control messages may arrive every 40 ms (or later under load), but the
-        // actual oscillator shape is never allowed to jump between those samples.
         const morphTarget=Math.max(0,Math.min(1,Number(g.waveMorphTarget ?? g.waveMorph) || 0));
         const morphCurrent=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
         const morphAlpha=1-Math.exp(-1/(0.005*this.sr));
@@ -3827,31 +3913,52 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         const w=wa+(wb-wa)*m;
         const aType=String(g.waveformFrom||g.waveform||'sine'),bType=String(g.waveformTo||aType);
         const aRaw=this.tooth(aType,ph,w,g.clockTickMs),bRaw=this.tooth(bType,ph,w,g.clockTickMs);
-        // This is an actual waveform morph, not a late discrete waveform swap.
-        // Because both endpoint shapes are evaluated at the same oscillator phase and
-        // mixed linearly, every oscillator sample is continuous with respect to the
-        // morph parameter. It also avoids the correlated-signal gain bump that an
-        // equal-power crossfade can create halfway between sine/square/triangle/etc.
         raw=aRaw+(bRaw-aRaw)*m;
         if(morphTarget>=0.999999 && m>=0.999999){
-          // Commit the endpoint only after the audio-rate slew has actually reached it.
-          // This makes the final sine↔square/triangle/sawtooth handoff continuous even
-          // when the main thread immediately sends a normal steady-state config.
           g.waveMorph=1;g.waveMorphTarget=1;g.waveform=bType;g.width=wb;g._waveMorphActive=false;
           g._manualWaveformMorph=false;g._manualWaveformMorphTarget=bType;
         }
-      } else if(g._waveTable && !g._widthModEnabled){const tab=g._waveTable,N=tab.length-1,p=((ph%1)+1)%1*N,ii=p|0,ff=p-ii;raw=tab[ii]+(tab[ii+1]-tab[ii])*ff;}
-      else {const widthEnabled=g._widthModEnabled;const widthLevel=widthEnabled?Math.max(0,Math.min(1,this.envAtFast(st.widthEnv,this.frame,g))):1;const shaped=this.tooth(g.waveform,ph,g.width,g.clockTickMs);if(widthLevel>=.999999)raw=shaped;else{const sine=Math.sin(2*Math.PI*ph);raw=sine+(shaped-sine)*widthLevel;}}
+      } else if(g._waveTable){
+        const tab=g._waveTable,N=tab.length-1,p=((ph%1)+1)%1*N,ii=p|0,ff=p-ii;
+        const shaped=tab[ii]+(tab[ii+1]-tab[ii])*ff;
+        const widthEnabled=g._widthModEnabled;
+        if(widthEnabled){
+          const widthLevel=this.getBlockEnvelope(st.widthEnv,g,true);
+          if(widthLevel>=.999999)raw=shaped;
+          else { const sine=Math.sin(2*Math.PI*ph); raw=sine+(shaped-sine)*widthLevel; }
+        }else raw=shaped;
+      } else {
+        const widthEnabled=g._widthModEnabled;
+        const widthLevel=widthEnabled?this.getBlockEnvelope(st.widthEnv,g,true):1;
+        const shaped=this.tooth(g.waveform,ph,g.width,g.clockTickMs);
+        if(widthLevel>=.999999)raw=shaped;
+        else { const sine=Math.sin(2*Math.PI*ph); raw=sine+(shaped-sine)*widthLevel; }
+      }
       const audioInc=(freq/this.sr)*instantaneousRate;
-      if(isPoly)st.phase=(basePh+audioInc)%1;
-      else g.phase=(basePh+audioInc)%1;
+      let nextPhase=basePh+audioInc;
+      nextPhase-=Math.floor(nextPhase);
+      if(isPoly)st.phase=nextPhase;else g.phase=nextPhase;
     }
     return raw*vol;
   }
   mixGear(g,st,baseFreq,velocity,isPoly){return this.renderGear(g,st,baseFreq,velocity,isPoly);}
   process(_,outputs){
     const out=outputs[0]||[],L=out[0]||new Float32Array(128),R=out[1]||L;
+    this.beginRealtimeBlock(L.length);
     const gears=this.gearArray;
+    // Active notes always win. Old release tails are moved into the existing
+    // short-fade path before they can multiply the realtime workload.
+    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
+    while(this.countLiveReleaseVoices()>maxTails){
+      const oldTail=this.oldestReleaseVoice();
+      if(!oldTail)break;
+      this.voices.delete(oldTail.id); oldTail._dead=true;
+      oldTail._tailFadeSamples=Math.max(1,Math.ceil(this.sr*.008));
+      oldTail._tailFadeTotal=oldTail._tailFadeSamples;
+      oldTail._tailFadeStart=1;
+      this.fadingTails.set(String(oldTail.id),oldTail);
+      this.voiceArraysDirty=true;
+    }
     this.refreshVoiceArrays();
     let anySolo=false,transitionMode=false;
     for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g._presetTransitionActive)transitionMode=true;if(g.solo&&!g.muted){anySolo=true;}}
@@ -3863,7 +3970,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       let scheduledPolyChanged=false;
       while(this.scheduledMidiHead<scheduled.length && scheduled[this.scheduledMidiHead].targetFrame<=audioFrame){
         const ev=this.scheduledMidiEvents[this.scheduledMidiHead++];
-        try{ if(ev.type==='noteOn')this.noteOn(ev.message); else if(ev.type==='reopen')this.reopenVoice(ev.message); else this.noteOff(ev.message); scheduledPolyChanged=true; if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??'')); }
+        try{ if(ev.type==='noteOn')this.noteOn(ev.message); else if(ev.type==='reopen')this.reopenVoice(ev.message); else this.noteOff(ev.message); scheduledPolyChanged=true; this._rtEpoch++; if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??'')); }
         catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
       }
       if(scheduledPolyChanged || this.polyTuningDirty){ this.recomputePolyTuningTargets(); this.polyTuningDirty=false; }
@@ -7927,15 +8034,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       voice.slot = voice.optimized ? voice.slot : (voice._legacyPooled ? voice.slot : null);
     }
 
-    // POLY voice budget: hard-cap NOTES CURRENTLY HELD at 8. Release tails are
+    // POLY voice budget: hard-cap NOTES CURRENTLY HELD at 10. Release tails are
     // independent and are cleaned up when their ADSR completes (with a separate
-    // bounded safety cap so pathological long-release sessions cannot grow forever).
+    // bounded safety cap of 256 so pathological long-release sessions cannot grow forever).
     const POLY_MAX_VOICES = 10;
     const POLY_STEAL_FADE = 0.100;
     const POLY_SAME_NOTE_FADE = 0.100;
     const POLY_OLD_TAIL_FADE = 0.100;
-    const POLY_MAX_RELEASE_TAILS = 8;
-    const POLY_MAX_ACCEL_REUSE_TAILS = 10;
+    const POLY_MAX_RELEASE_TAILS = 256;
+    const POLY_MAX_ACCEL_REUSE_TAILS = 256;
 
     function polyLiveVoices() {
       return [
@@ -7952,60 +8059,64 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
 
     function forceStopPolyVoice(voice, fadeSeconds=POLY_STEAL_FADE, reason='voice-budget') {
       if (!voice || voice._forceStopped) return;
+      // AUDIO IS KING: this path is only used when a voice must be sacrificed.
+      // The audio resource must be returned immediately. Visual release/fade state
+      // is deliberately not allowed to own the lifetime of the audio slot.
       voice._forceStopped = true;
       voice.releasing = true;
       voice.keyHeld = false;
       const now = state.audioCtx?.currentTime || 0;
       const fade = Math.max(0.001, Number(fadeSeconds) || POLY_STEAL_FADE);
+
       if (voice._legacyPooled) {
         const pool=state.legacyPolyVoicePool;
-        try{voice.masterGain?.gain.cancelScheduledValues(now);voice.masterGain?.gain.setValueAtTime(Math.max(0,Number(voice.masterGain.gain.value)||1),now);voice.masterGain?.gain.linearRampToValueAtTime(0,now+fade);}catch(_){}
+        try {
+          voice.masterGain?.gain.cancelScheduledValues(now);
+          voice.masterGain?.gain.setValueAtTime(0,now);
+        } catch(_){}
         if(voice._cleanupTimer)clearTimeout(voice._cleanupTimer);
-        voice._cleanupTimer=setTimeout(()=>{state.polyReleaseTails?.delete(voice);resetLegacyPooledVoice(voice);},Math.ceil(fade*1000)+8);
-        state.polyVoices.delete(voice.keyId);state.polyReleaseTails?.delete(voice);
+        // Return the legacy resource immediately. The old visual release bookkeeping
+        // is allowed to finish independently and can never block a new note.
+        state.polyVoices.delete(voice.keyId);
+        state.polyReleaseTails?.delete(voice);
+        resetLegacyPooledVoice(voice);
         if(reason==='same-note')voice._sameNoteInterrupted=true;
         return;
       }
+
       if (voice.optimized) {
         const slot = voice.slot;
         if (slot?.busy && slot.voice === voice) {
+          // Do not wait for the configured release time or interruption fade.
+          // Silence and stop the sacrificed audio voice immediately, then make the
+          // Worklet slot available for the incoming note in the same event turn.
           try {
             slot.voiceGain.gain.cancelScheduledValues(now);
-            slot.voiceGain.gain.setValueAtTime(Math.max(0, Number(slot.voiceGain.gain.value) || 1), now);
-            slot.voiceGain.gain.linearRampToValueAtTime(0, now + fade);
+            slot.voiceGain.gain.setValueAtTime(0, now);
           } catch (_) {}
-          // Let the outer gain perform the tiny steal/interruption fade first.
-          // Do not hard-stop the AudioWorklet at note-on time, because doing so
-          // would throw away the fade and can create a discontinuity.
-          if (voice._cleanupTimer) clearTimeout(voice._cleanupTimer);
-          voice._cleanupTimer = setTimeout(() => {
-            const pool=state.polyAudioPool, s=voice.slot;
-            if (!s || s.voice !== voice) return;
-            try { s.voiceGain.gain.cancelScheduledValues(state.audioCtx?.currentTime || 0); s.voiceGain.gain.setValueAtTime(0,state.audioCtx?.currentTime || 0); } catch (_) {}
-            try { s.node.port.postMessage({type:'stop'}); } catch (_) {}
-            s.busy=false; s.voice=null;
-            if (!pool.free.includes(s)) pool.free.push(s);
-            state.polyReleaseTails?.delete(voice);
-            state.polyVoiceRegistry?.delete(voice);
-          }, Math.ceil(fade*1000)+24);
+          try { slot.node.port.postMessage({type:'stop'}); } catch (_) {}
+          slot.busy=false;
+          slot.voice=null;
+          const pool=state.polyAudioPool;
+          if (pool && !pool.free.includes(slot)) pool.free.push(slot);
         }
-      } else {
-        try {
-          voice.masterGain.gain.cancelScheduledValues(now);
-          voice.masterGain.gain.setValueAtTime(Math.max(0, Number(voice.masterGain.gain.value) || 1), now);
-          voice.masterGain.gain.linearRampToValueAtTime(0, now + fade);
-        } catch (_) {}
         if (voice._cleanupTimer) clearTimeout(voice._cleanupTimer);
-        voice._cleanupTimer = setTimeout(() => {
-          disposePolyVoiceGraph(voice);
-          if (state.polyVoices.get(voice.keyId) === voice) state.polyVoices.delete(voice.keyId);
-          state.polyReleaseTails?.delete(voice);
-          state.polyVoiceRegistry?.delete(voice);
-          if (state.polyMode) updateAudioNodes();
-        }, Math.ceil(fade*1000)+24);
+        voice._cleanupTimer=null;
+      } else {
+        // Non-pooled fallback: disconnect immediately as well. Its visual release
+        // state is not permitted to delay audio resource reclamation.
+        try {
+          voice.masterGain?.gain.cancelScheduledValues(now);
+          voice.masterGain?.gain.setValueAtTime(0, now);
+        } catch (_) {}
+        try { disposePolyVoiceGraph(voice); } catch (_) {}
+        if (voice._cleanupTimer) clearTimeout(voice._cleanupTimer);
+        voice._cleanupTimer=null;
       }
+
       state.polyVoices.delete(voice.keyId);
       state.polyReleaseTails?.delete(voice);
+      state.polyVoiceRegistry?.delete(voice);
       if (reason === 'same-note') voice._sameNoteInterrupted = true;
     }
 
@@ -10729,47 +10840,22 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       syncKeyboardAudioGate();
       syncMidiControllerUI();
     }
-    const MIDI_AUDIO_LOOKAHEAD_SEC = 0.003;
-    const MIDI_AUDIO_LATE_THRESHOLD_SEC = 0.006;
-    const MIDI_AUDIO_REBASE_HOLD_MS = 180;
-    function getMidiAudioTargetFrame(event){
+    const MIDI_AUDIO_LOOKAHEAD_SEC = 0.00075;
+    const MIDI_AUDIO_TRANSIENT_LOOKAHEAD_SEC = 0.00025;
+    const MIDI_AUDIO_TRANSIENT_ATTACK_SEC = 0.050;
+    const MIDI_AUDIO_LATE_THRESHOLD_SEC = 0.003;
+    const MIDI_AUDIO_REBASE_HOLD_MS = 60;
+    function getMidiAudioTargetFrame(_event){
       const ctx=state.audioCtx;
       if(!ctx || !Number.isFinite(Number(ctx.sampleRate)) || ctx.sampleRate<=0)return null;
       const now=Math.max(0,Number(ctx.currentTime)||0);
-      const nowPerf=performance.now();
-      const ts=Number(event?.timeStamp);
-      const out=ctx.getOutputTimestamp?.();
-      let mapped=now;
-      const timestampLooksLikePerformance=Number.isFinite(ts) && Number.isFinite(Number(out?.performanceTime)) && Math.abs(ts-Number(out.performanceTime))<60000;
-      if(timestampLooksLikePerformance && Number.isFinite(Number(out?.contextTime))){
-        mapped=Number(out.contextTime)+(ts-Number(out.performanceTime))/1000;
-      }
-      let shift=Number(state._midiAudioRebaseSec)||0;
-      // When the main thread has been blocked, several MIDI messages can arrive in
-      // one burst with timestamps that are already in the audio past. Rebase the
-      // burst once, preserving the timestamp intervals instead of collapsing every
-      // event onto the same render quantum.
-      if(mapped < now-MIDI_AUDIO_LATE_THRESHOLD_SEC){
-        const needed=now+MIDI_AUDIO_LOOKAHEAD_SEC-(mapped+shift);
-        if(needed>0)shift+=needed;
-        state._midiAudioRebaseSec=shift;
-        state._midiAudioRebaseUntilPerf=nowPerf+MIDI_AUDIO_REBASE_HOLD_MS;
-      }else if(state._midiAudioRebaseUntilPerf && nowPerf>state._midiAudioRebaseUntilPerf){
-        state._midiAudioRebaseSec=0; shift=0;
-      }
-      if(shift>0)state._midiAudioRebaseUntilPerf=nowPerf+MIDI_AUDIO_REBASE_HOLD_MS;
-      let target=Math.max(now+MIDI_AUDIO_LOOKAHEAD_SEC,mapped+shift);
-      // Audio events must never be scheduled backwards relative to the previous
-      // MIDI event. Equal timestamps remain simultaneous because they may share the
-      // exact same target frame. A monotonic target also makes recovery from a long
-      // main-thread pause deterministic when the MIDI burst ends.
-      const lastTs=state._midiAudioLastTimestamp;
-      const lastTargetFrame=Number(state._midiAudioLastTargetFrame)||0;
-      if(Number.isFinite(lastTargetFrame))target=Math.max(target,lastTargetFrame/ctx.sampleRate);
-      if(Number.isFinite(ts) && Number.isFinite(lastTs) && ts<lastTs) target=Math.max(target,now+MIDI_AUDIO_LOOKAHEAD_SEC);
-      const targetFrame=Math.max(0,Math.round(target*ctx.sampleRate));
+
+      // This is already a live MIDI callback: the event has reached the browser, so
+      // scheduling it from event.timeStamp/getOutputTimestamp can move the note tens
+      // of milliseconds into the future when those clocks are offset. Use the current
+      // AudioContext clock and only the existing sub-millisecond safety lookahead.
+      const targetFrame=Math.max(0,Math.round((now+MIDI_AUDIO_TRANSIENT_LOOKAHEAD_SEC)*ctx.sampleRate));
       state._midiAudioLastTargetFrame=targetFrame;
-      if(Number.isFinite(ts))state._midiAudioLastTimestamp=ts;
       return targetFrame;
     }
     function queueMidiStoredMapping(d,status,channel){
@@ -10909,7 +10995,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       try {
         state.midi.access = await navigator.requestMIDIAccess({ sysex: false });
         state.midi.enabled = true;
-        if(state.polyMode && state.audioRunning){ try{ensureUnifiedAudioWorklet();}catch(_){} }
+        // Finish the one-time audio warm-up before attaching the physical MIDI input.
+        // This removes the first-note Worklet construction race without putting any
+        // asynchronous work into the live MIDI note handler.
+        if(state.audioRunning){
+          try{ if(state.audioCtx?.state==='suspended') await state.audioCtx.resume(); }catch(_){}
+          try{ await ensureUnifiedAudioWorklet(); syncUnifiedAudioWorklet(true); }catch(_){}
+        }
         state.midi.access.onstatechange = () => { populateMidiInputs(); populateMidiOutputs(); };
         populateMidiInputs(); populateMidiOutputs();
         const count = state.midi.access.inputs.size;
