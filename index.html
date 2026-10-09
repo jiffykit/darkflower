@@ -2896,9 +2896,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.mono={active:false,gate:false,targetFreq:440,velocity:1,releasing:false,releaseStart:0};
     this.voices=new Map(); this.fadingTails=new Map(); this.voiceArray=[]; this.fadingTailArray=[]; this.voiceArraysDirty=true;
     // Fixed-capacity lifecycle queues keep bursty MIDI note changes allocation-free.
-    // There are never more than 10 held voices. Release tails are deliberately kept
-    // tiny because every tail multiplies by the full gear count in the realtime DSP.
-    this.maxReleaseVoices=4;
+    // Keep up to 10 independently releasing voices alongside the 10 held voices.
+    // Excess tails use the short safety-fade path instead of being cut abruptly.
+    this.maxReleaseVoices=10;
     this.activeVoiceQueue=[]; this.activeVoiceHead=0; this.activeVoiceCount=0;
     this.releaseVoiceQueue=[]; this.releaseVoiceHead=0; this.polyReuseEnabled=false;
     this.voiceOrder=0; this.frame=0;
@@ -3605,7 +3605,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // walk instead of allocating/filtering/sorting the complete voice Map for every note.
     while(true){
       const oldTail=this.oldestReleaseVoice();
-      const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
+      const maxTails=Math.max(1,Number(this.maxReleaseVoices)||10);
       if(this.countLiveReleaseVoices()<=maxTails){ if(oldTail)this.releaseVoiceHead--; break; }
       if(!oldTail)break;
       this.voices.delete(oldTail.id); oldTail._dead=true; oldTail._tailFadeSamples=Math.max(1,Math.ceil(this.sr*.008)); oldTail._tailFadeTotal=oldTail._tailFadeSamples; oldTail._tailFadeStart=1; this.fadingTails.set(String(oldTail.id),oldTail); this.voiceArraysDirty=true;
@@ -3640,12 +3640,15 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       if(candidate&&!candidate._dead&&candidate.releasing&&candidate.sourceKeyId===sourceId&&this.voices.get(candidate.id)===candidate){v=candidate;this.releaseVoiceQueue[i]._reopened=true;break;}
     }
     if(!v){
-      for(let i=this.releaseVoiceHead;i<this.releaseVoiceQueue.length;i++){
-        const candidate=this.releaseVoiceQueue[i];
-        if(candidate&&!candidate._dead&&candidate.releasing&&this.voices.get(candidate.id)===candidate){v=candidate;this.releaseVoiceQueue[i]._reopened=true;break;}
-      }
+      // A main-thread release can be selected for acceleration before its Note-Off
+      // has reached the Worklet release queue. Never steal an unrelated tail to cover
+      // that timing gap, and never swallow the incoming note: retain the old voice and
+      // create a fresh independent voice when the requested source tail is not ready.
+      const occupied=this.voices.get(newId);
+      if(occupied&&!occupied.releasing)this.startVoiceRelease(occupied);
+      this.noteOn({type:'noteOn',mode:'poly',keyId:newId,masterFreq:m.masterFreq,absoluteSemitone:m.absoluteSemitone,baseRatio:m.baseRatio,jiThresholdCents:m.jiThresholdCents,velocity:m.velocity});
+      return this.voices.has(newId);
     }
-    if(!v)return false;
     this.voices.delete(v.id);
     v.id=newId;v.sourceKeyId=newId;v.absoluteSemitone=Number.isFinite(Number(m.absoluteSemitone))?Number(m.absoluteSemitone):v.absoluteSemitone;
     v.baseRatio=Math.max(1e-12,Number(m.baseRatio)||v.baseRatio||1);
@@ -3691,7 +3694,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     v.id=tailId;v.order=this.voiceOrder;this.voices.set(tailId,v);this.releaseVoiceQueue.push(v);this.voiceArraysDirty=true;
     // Enforce the same large safety cap without sorting. Older tails move to the
     // short fade set so their energy decays instead of being hard-cut.
-    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
+    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||10);
     while(this.countLiveReleaseVoices()>maxTails){
       const ov=this.oldestReleaseVoice();
       if(!ov)break;
@@ -3948,7 +3951,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const gears=this.gearArray;
     // Active notes always win. Old release tails are moved into the existing
     // short-fade path before they can multiply the realtime workload.
-    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||4);
+    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||10);
     while(this.countLiveReleaseVoices()>maxTails){
       const oldTail=this.oldestReleaseVoice();
       if(!oldTail)break;
@@ -4012,7 +4015,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         if(!alive){v._dead=true;this.voices.delete(v.id);this.voiceArraysDirty=true;}
       }
       const fadingTails=this.fadingTailArray;
-      for(let fi=0;fi<fadingTails.length;fi++){ const v=fadingTails[fi]; if(!v||v._dead)continue;
+      // These voices are _dead only in the main voice map; their safety fade must
+      // still render from this separate list until _tailFadeSamples reaches zero.
+      for(let fi=0;fi<fadingTails.length;fi++){ const v=fadingTails[fi]; if(!v)continue;
         let alive=true;
         const tailFade=v._tailFadeSamples>0?Math.max(0,Math.min(1,v._tailFadeSamples/Math.max(1,v._tailFadeTotal||1))):1;
         const masterForAudio=Math.max(.001,Number(v.masterTarget)||Number(v.masterFreq)||440);
@@ -8034,15 +8039,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       voice.slot = voice.optimized ? voice.slot : (voice._legacyPooled ? voice.slot : null);
     }
 
-    // POLY voice budget: hard-cap NOTES CURRENTLY HELD at 10. Release tails are
-    // independent and are cleaned up when their ADSR completes (with a separate
-    // bounded safety cap of 256 so pathological long-release sessions cannot grow forever).
+    // POLY voice budget: hard-cap notes currently held at 10, with up to 10
+    // independent release tails retained alongside them. The oldest excess tail
+    // is sent through the worklet safety fade when this bounded cap is exceeded.
     const POLY_MAX_VOICES = 10;
     const POLY_STEAL_FADE = 0.100;
     const POLY_SAME_NOTE_FADE = 0.100;
     const POLY_OLD_TAIL_FADE = 0.100;
-    const POLY_MAX_RELEASE_TAILS = 256;
-    const POLY_MAX_ACCEL_REUSE_TAILS = 256;
+    const POLY_MAX_RELEASE_TAILS = 10;
+    const POLY_MAX_ACCEL_REUSE_TAILS = 10;
 
     function polyLiveVoices() {
       return [
@@ -9527,15 +9532,18 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
 
     function startPolyVoice(semitone,keyId,velocity=1,noteSource='keyboard',midiTargetFrame=null){
       if(!state.audioRunning)initAudio(); if(state.polyVoices.has(keyId))return;
-      // Floating Gears uses acceleration during fast voice-leading. Reopen the nearest
-      // release train instead of allocating another complete voice when an accelerated
-      // tail is available. With acceleration disabled, full independent releases remain.
-      if(reviveBestPolyReleaseTail(semitone,keyId,velocity,false,midiTargetFrame))return state.polyVoices.get(keyId);
+      // Enforce the held-note ceiling before acceleration can reopen a release tail.
+      // Move the oldest held note into its normal ADSR release, rather than cutting it
+      // short. At the 10-tail ceiling, trimPolyReleaseTails sacrifices only the oldest
+      // excess tail; otherwise this released note remains independently audible.
       if(state.polyVoices.size>=POLY_MAX_VOICES){
-        // With Accelleration at zero, never recycle a release tail into a new note.
-        // Preserve the requested first-eight independent release behaviour.
-        const oldest=[...state.polyVoices.values()].sort((a,b)=>(a._polyVoiceOrder||0)-(b._polyVoiceOrder||0))[0]; if(oldest){hardStopPolyVoice(oldest,.008);}
+        const oldest=[...state.polyVoices.values()].sort((a,b)=>(a._polyVoiceOrder||0)-(b._polyVoiceOrder||0))[0];
+        if(oldest)stopPolyVoice(oldest.keyId);
       }
+      // Acceleration may reuse a matching released voice, but only after a held slot
+      // is available. If the Worklet has not released that source yet, it now starts
+      // a new note rather than consuming an unrelated tail or dropping the note.
+      if(reviveBestPolyReleaseTail(semitone,keyId,velocity,false,midiTargetFrame))return state.polyVoices.get(keyId);
       const absoluteSemitone=Number(semitone)+state.octaveShift*12;
       const baseRatioForVoice=Math.max(1e-12,getKeyboardBaseTuningRatio(absoluteSemitone));
       const masterFreq=state.baseFundamentalFreq*baseRatioForVoice*midiPitchBendRatio();
@@ -9580,7 +9588,9 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         state._polyVoiceRequestedAt = performance.now();
         const midiHotStart=source==='midi'?performance.now():0;
         startPolyVoice(semitone, keyId, velocity, source, midiTargetFrame);
-        if(source==='midi')setKeyboardVisualNote(keyId, semitone, velocity, true);
+        // Overlapping same-pitch MIDI instances use suffixed audio IDs, but share one
+        // keyboard key visual. The pitch-level held-note tracker owns that visual.
+        if(source==='midi' && !/#\d+$/.test(String(keyId)))setKeyboardVisualNote(keyId, semitone, velocity, true);
         if(source==='midi'){
           const hotMs=performance.now()-midiHotStart; if(hotMs>state._midiHotPathMaxMs)state._midiHotPathMaxMs=hotMs; if(hotMs>12)state._midiHotPathSlowCount++;
         }
@@ -10817,7 +10827,48 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         else setFundamentalFrequency(freq,false,false,true);
       }
     }
+    // In POLY mode, MIDI Note On/Off pairs for the same channel/pitch must own
+    // separate voices. MIDI does not carry per-instance IDs, so releases are paired
+    // LIFO with the most recent still-held instance. The map still has one pitch entry
+    // for keyboard-state/UI compatibility; these instances own the actual audio IDs.
+    function midiPolyVoiceInstances(id,note) {
+      if(!Array.isArray(note._midiPolyVoiceInstances)){
+        note._midiPolyVoiceInstances=[{keyId:`midi-${id}`,held:!note.sustained,sustained:!!note.sustained}];
+      }
+      return note._midiPolyVoiceInstances;
+    }
+    function syncMidiPolyHeldNote(id,note) {
+      const instances=midiPolyVoiceInstances(id,note);
+      note.downCount=instances.reduce((n,inst)=>n+(inst.held?1:0),0);
+      note.sustained=instances.some(inst=>inst.sustained);
+      if(!instances.length){
+        if(state.midiHeldNotes.get(id)===note) state.midiHeldNotes.delete(id);
+        invalidateKeyboardHeldCache();
+        releaseKeyboardVisualNote(`midi-${id}`);
+        return false;
+      }
+      setKeyboardVisualNote(`midi-${id}`,note.semitone,Number(note.velocityGain)||1,true);
+      return true;
+    }
     function releaseSustainedMidiNotes(channel=null) {
+      if(state.polyMode){
+        state.midiHeldNotes.forEach((v,id)=>{
+          const ch=Number(v?.channel)||0;
+          if(channel!==null && ch!==channel)return;
+          const instances=midiPolyVoiceInstances(id,v);
+          for(let i=instances.length-1;i>=0;i--){
+            const inst=instances[i];
+            if(!inst.sustained)continue;
+            instances.splice(i,1);
+            stopPolyVoice(inst.keyId);
+          }
+          syncMidiPolyHeldNote(id,v);
+        });
+        if(state.midiHeldNotes.size===0)state._midiInputVelocity=1;
+        syncKeyboardAudioGate();
+        syncMidiControllerUI();
+        return;
+      }
       const toRelease=[];
       state.midiHeldNotes.forEach((v,id)=>{
         const ch=Number(v?.channel)||0;
@@ -10832,8 +10883,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         if(v) { v.sustained=false; v.downCount=0; }
         invalidateKeyboardHeldCache();
         const keyId=`midi-${id}`;
-        if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
-        else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
+        if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
         else releaseKeyboardVisualNote(keyId);
       });
       if(state.midiHeldNotes.size===0) state._midiInputVelocity=1;
@@ -10888,31 +10938,48 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         let old=state.midiHeldNotes.get(id);
         if(old){
           const sustainActive=!!state.midiSustainGlobal || state.midiSustainChannels.has(channel);
-          // A sustained note is an audio tail, not ownership of the next physical
-          // Note On. If sustain has already gone up but its map entry survived a
-          // controller race, retire that stale entry instead of absorbing the new
-          // Note On into downCount forever. This is the exact failure mode that can
-          // leave a note visually held while subsequent plays do nothing.
-          if(old.sustained && !sustainActive){
+          // Retire only stale sustained instances. Other overlapping same-pitch voices
+          // may still be physically held and must keep their own IDs and gate state.
+          if(state.polyMode && !sustainActive){
+            const instances=midiPolyVoiceInstances(id,old);
+            for(let i=instances.length-1;i>=0;i--){
+              if(!instances[i].sustained)continue;
+              const [stale]=instances.splice(i,1);
+              stopPolyVoice(stale.keyId);
+            }
+            syncMidiPolyHeldNote(id,old);
+            old=state.midiHeldNotes.get(id)||null;
+          } else if(old.sustained && !sustainActive){
             state.midiHeldNotes.delete(id); invalidateKeyboardHeldCache();
             const staleKey=`midi-${id}`;
-            if(state.polyMode) { releaseKeyboardVisualNote(staleKey); stopPolyVoice(staleKey); }
-            else if(state.releaseOnKeyup) releaseKeyboardNotes(staleKey);
+            if(state.releaseOnKeyup) releaseKeyboardNotes(staleKey);
             else releaseKeyboardVisualNote(staleKey);
             old=null;
           }
         }
         if(old){
-          old.downCount=Math.max(1,Number(old.downCount)||1)+1;
           old.velocity=velocity; old.velocityGain=midiVelocityGain(velocity);
-          old.sustained=!!old.sustained;
-          setKeyboardVisualNote(`midi-${id}`, old.semitone, old.velocityGain, true);
           state.midiLastVelocity=old.velocityGain;
+          if(state.polyMode){
+            const instances=midiPolyVoiceInstances(id,old);
+            const seq=(Number(state._midiPolyInstanceSequence)||0)+1;
+            state._midiPolyInstanceSequence=seq;
+            const keyId=`midi-${id}#${seq}`;
+            instances.push({keyId,held:true,sustained:false});
+            syncMidiPolyHeldNote(id,old);
+            const oldOct=state.octaveShift; state.octaveShift=0; state._midiInputVelocity=old.velocityGain;
+            playSemitone(old.semitone,keyId,old.velocityGain,'midi',midiTargetFrame); state.octaveShift=oldOct;
+          } else {
+            old.downCount=Math.max(1,Number(old.downCount)||1)+1;
+            old.sustained=!!old.sustained;
+            setKeyboardVisualNote(`midi-${id}`, old.semitone, old.velocityGain, true);
+          }
           scheduleMidiUiSync();
           queueMidiStoredMapping(d,status,channel);
           return;
         }
         const v=midiNoteToVoice(note); v.channel=channel; v.velocity=velocity; v.velocityGain=midiVelocityGain(velocity); v.sustained=false; v.downCount=1;
+        if(state.polyMode)v._midiPolyVoiceInstances=[{keyId:`midi-${id}`,held:true,sustained:false}];
         state.midiHeldNotes.set(id,v); invalidateKeyboardHeldCache();
         state.midiLastVelocity=v.velocityGain;
         const oldOct=state.octaveShift; state.octaveShift=0; state._midiInputVelocity=v.velocityGain;
@@ -10920,6 +10987,24 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         scheduleMidiUiSync();
       } else if(type===0x80 || (type===0x90 && velocity===0)){
         const id=midiChannelKey(channel,note), v=state.midiHeldNotes.get(id); if(!v)return;
+        if(state.polyMode){
+          const instances=midiPolyVoiceInstances(id,v);
+          let idx=-1;
+          for(let i=instances.length-1;i>=0;i--){if(instances[i].held){idx=i;break;}}
+          if(idx<0)return;
+          const inst=instances[idx];
+          if(state.midiSustainGlobal || state.midiSustainChannels.has(channel)){
+            inst.held=false; inst.sustained=true;
+          } else {
+            instances.splice(idx,1);
+            stopPolyVoice(inst.keyId,midiTargetFrame);
+          }
+          syncMidiPolyHeldNote(id,v);
+          if(state.midiHeldNotes.size===0)state._midiInputVelocity=1;
+          scheduleMidiUiSync();
+          queueMidiStoredMapping(d,status,channel);
+          return;
+        }
         if((Number(v.downCount)||1)>1){ v.downCount-=1; scheduleMidiUiSync(); return; }
         if(state.midiSustainGlobal || state.midiSustainChannels.has(channel)){
           v.sustained=true; scheduleMidiUiSync(); return;
@@ -10927,13 +11012,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         state.midiHeldNotes.delete(id); invalidateKeyboardHeldCache(); const keyId=`midi-${id}`;
         // MIDI Note Off always releases the keyboard's visual note state.
         // Visual feedback must not depend on the audio Continuous/release setting.
-        if(state.releaseOnKeyup){
-          if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId,midiTargetFrame); }
-          else { releaseKeyboardNotes(keyId); }
-        } else {
-          releaseKeyboardVisualNote(keyId);
-          if(state.polyMode) stopPolyVoice(keyId,midiTargetFrame);
-        }
+        if(state.releaseOnKeyup){ releaseKeyboardNotes(keyId); }
+        else { releaseKeyboardVisualNote(keyId); }
         if(state.midiHeldNotes.size===0) { state._midiInputVelocity=1; }
         scheduleMidiUiSync();
         // MIDI Learn/control mapping is non-audio work. Run it only after the
@@ -10962,9 +11042,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           const ids=[...state.midiHeldNotes.keys()];
           ids.forEach(id=>{
             const keyId=`midi-${id}`;
+            const held=state.midiHeldNotes.get(id);
             state.midiHeldNotes.delete(id);
-            if(state.polyMode) { releaseKeyboardVisualNote(keyId); stopPolyVoice(keyId); }
-            else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
+            if(state.polyMode){
+              midiPolyVoiceInstances(id,held).forEach(inst=>stopPolyVoice(inst.keyId));
+              releaseKeyboardVisualNote(keyId);
+              invalidateKeyboardHeldCache();
+            } else if(state.releaseOnKeyup) releaseKeyboardNotes(keyId);
             else releaseKeyboardVisualNote(keyId);
           });
           state._midiInputVelocity=1; scheduleMidiUiSync();
