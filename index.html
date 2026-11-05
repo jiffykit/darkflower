@@ -249,7 +249,7 @@ canvas:active{cursor:grabbing;}
 .key{position:relative;cursor:pointer;user-select:none;transition:transform 0.05s ease;}
 .white-key{flex:1;border:1px solid #94a3b8;border-radius:0 0 4px 4px;z-index:1;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px;font-size:0.65rem;font-weight:800;text-align:center;line-height:1.1;}
 .white-key.active,.white-key:active{background:var(--accent-cyan) !important;color:#000000 !important;transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);}
-.key.note-fading{transition:background-color 210ms linear, color 210ms linear !important;}
+.key.note-fading{transition:none !important;}
 .black-key{position:absolute;width:8.5%;height:52px;border:1px solid #475569;border-radius:0 0 3px 3px;z-index:2;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px;font-size:0.6rem;font-weight:700;text-align:center;line-height:1.1;}
 .black-key.active,.black-key:active{background:var(--accent-main) !important;color:#000000 !important;transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);}
 .white-key{background:#f8fafc !important;color:#0f172a !important;}
@@ -258,8 +258,8 @@ body.keyboard-inverted-keys .white-key{background:#000000 !important;color:#f8fa
 body.keyboard-inverted-keys .black-key{background:#f8fafc !important;color:#0f172a !important;}
 .white-key.active,.white-key:active,.black-key.active,.black-key:active{background:var(--note-active-color, var(--accent-cyan)) !important;color:#000000 !important;transform:translateY(2px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.3);}
 #virtual-keyboard{contain:layout paint;isolation:isolate;}
-#virtual-keyboard .key.note-lit{transition:background-color 0.14s linear, color 0.14s linear;will-change:auto;}
-#virtual-keyboard .key.note-lit.note-fading{transition-duration:0.18s;}
+#virtual-keyboard .key.note-lit{transition:none !important;will-change:auto;}
+#virtual-keyboard .key.note-lit.note-fading{transition:none !important;}
 #virtual-keyboard .key.note-lit{background-color:var(--note-lit-bg, #000) !important;color:var(--note-lit-fg, #f8fafc) !important;}
 html.df-audio-busy .hud-panel,html.df-audio-busy #ratio-palette-modal,html.df-audio-busy #desktop-focus-toggle{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
 html.df-audio-busy .hud-panel,html.df-audio-busy #ratio-palette-modal{box-shadow:none !important;}
@@ -2520,6 +2520,7 @@ body.wave-visual-mode #gear-network-dock #palette-fm-controls select,
         beltTargetId: null
       },
       polyMode: true,
+      subharmonicsLowestOnly: true,
       jiKeyboard: true,           // Retune POLY chords to nearest simple JI ratios
       keyboardTuning: {
         enabled: false,             // Keep existing 12-TET behaviour unchanged when off.
@@ -3466,6 +3467,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.sr=sampleRate; this._nyquistLimit=this.sr*.45; this._adsrKneeSamples=Math.max(1,Math.round(this.sr*0.006)); this._jiRatioTable=this.buildJIRatioTable();
     this.master=.3; this.masterTarget=.3;
     this.spatialEnabled=true; this.spatialMode='HRTF'; this.spatialScale=.01;
+    this.subharmonicsLowestOnly=true; this._subharmonicGainAlpha=1-Math.exp(-1/(Math.max(1,this.sr)*.006));
     this.bloomAmount=0; this.bloomPlacementOrder=false; this.bloomAttackCache=new Map();
     // POLY/JI tuning state belongs to the audio engine. The main thread sends
     // only the base keyboard tuning ratio and the JI policy inputs. The actual
@@ -3483,6 +3485,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // Preserve up to 10 held voices plus 10 independent release tails. Each tail follows
     // its own per-gear ADSR release (up to 10 seconds); render-time caches stay allocation-free.
     this.maxReleaseVoices=10;
+    // Reused per-quantum scratch for the smoothed subharmonic gain trajectory.
+    // The normal AudioWorklet quantum is 128 frames; extra room avoids allocation
+    // if a host supplies a larger block.
+    this._rtSubharmonicGainScratch=new Float32Array(2048);
     this.activeVoiceQueue=[]; this.activeVoiceHead=0; this.activeVoiceCount=0;
     this.releaseVoiceQueue=[]; this.releaseVoiceHead=0; this.polyReuseEnabled=false;
     this.voiceOrder=0; this.frame=0;
@@ -3504,6 +3510,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // Realtime render caches: expensive control/envelope math is evaluated only
     // once per active state per audio quantum (or after an in-quantum MIDI event).
     this._rtBlockSerial=0; this._rtBlockStartFrame=0; this._rtBlockEndFrame=128; this._rtEpoch=0;
+    this._fmLookupDirty=false;
     this.port.onmessage=e=>this.message(e.data||{});
   }
   message(m){
@@ -3514,6 +3521,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         case 'removeSample': this.samples.delete(Number(m.id)); break;
         case 'gear-audio-root': { const g=this.gears.get(Number(m.id)); if(g){const rn=Number(m.rootNote);g.audioRootNote=Math.max(0,Math.min(127,Math.round(Number.isFinite(rn)?rn:48)));g._audioRootHz=440*Math.pow(2,(g.audioRootNote-69)/12);} break; }
         case 'jiState': this.jiKeyboard=!!m.enabled; this.recomputePolyTuningTargets(); break;
+        case 'subharmonics-lowest-only': this.subharmonicsLowestOnly=!!m.enabled; this.refreshSubharmonicVoiceEligibility(); break;
         case 'driverSample': this.driver.left=m.left||null; this.driver.right=m.right||m.left||null; this.driver.sampleRate=Number(m.sampleRate)||this.sr; this.driver.pos=0; break;
         case 'pitch-bend': this.pitchBendRatio=Math.max(.000001,Number(m.ratio)||1); this.recomputePolyTuningTargets(); break;
         case 'poly-retune':
@@ -3557,7 +3565,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             const g=this.gears.get(Number(p.id)); if(!g)continue;
             if(p.fmEnabled!==undefined&&g.fmEnabled!==!!p.fmEnabled){g.fmEnabled=!!p.fmEnabled;fmRoutingChanged=true;}
             if(Number.isFinite(Number(p.fmSourceId))){const sid=Math.max(0,Math.round(Number(p.fmSourceId)||0));if(g.fmSourceId!==sid){g.fmSourceId=sid;fmRoutingChanged=true;}}
-            if(Number.isFinite(Number(p.fmIndex))){const ix=Math.max(0,Math.min(8,Number(p.fmIndex)||0));if(g.fmIndex!==ix){g.fmIndex=ix;fmRoutingChanged=true;}}
+            if(Number.isFinite(Number(p.fmIndex))){const ix=Math.max(0,Math.min(8,Number(p.fmIndex)||0));if(g.fmIndex!==ix){g.fmIndex=ix;g._fmIndex=ix;fmRoutingChanged=true;}}
             if(Number.isFinite(Number(p.ratio))){g.ratio=Number(p.ratio);}
             if(Number.isFinite(Number(p.shapeRate))){
               g.shapeRate=Math.max(.00001,Math.abs(Number(p.shapeRate)));
@@ -3630,7 +3638,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             // quantized table only for this live morph so width never waits for the
             // final preset handoff to become audible. The final config rebuilds it.
             g._waveTable=null;g._waveTableKey='';
-            g._freqMul=Math.max(.00001,Math.abs(g.ratio));
+            g._freqMul=Math.abs(g.ratio);
             this.polyReuseEnabled=this.gearArray.some(x=>Number(x.accelSec)>0.000001);
           }
           if(Number.isFinite(Number(m.baseFundamentalFreq))&&Number(m.baseFundamentalFreq)>0)this.baseFundamentalFreq=Number(m.baseFundamentalFreq);
@@ -3701,7 +3709,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             for(let i=0;i<updates.length;i++){
               const u=updates[i],g=this.gears.get(Number(u?.id));
               if(!g)continue;
-              if(Number.isFinite(Number(u?.ratio))){g.ratio=Number(u.ratio);g._freqMul=Math.max(.00001,Math.abs(g.ratio));}
+              if(Number.isFinite(Number(u?.ratio))){g.ratio=Number(u.ratio);g._freqMul=Math.abs(g.ratio);}
               if(Number.isFinite(Number(u?.freq))){const f=Math.max(.001,Math.abs(Number(u.freq)));g.freq=f;g.targetFreq=f;}
               if(Number.isFinite(Number(u?.teeth)))g.teeth=Math.max(1,Number(u.teeth));
               if(Number.isFinite(Number(u?.isUltrasonic)))g.isUltrasonic=!!u.isUltrasonic;
@@ -3726,12 +3734,13 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             if(Number.isFinite(Number(m.index)))g.fmIndex=Math.max(0,Math.min(8,Number(m.index)||0));
             if(m.fmFunction!==undefined){g.fmFunction=String(m.fmFunction||'none');g._fmFunction=g.fmFunction;}
             this.rebuildFmRouting();this.refreshVoiceGearPairs();
+            this.queueFmTransferLookup(g);
           }
           break;
         }
         case 'gear-fm-function': {
           const g=this.gears.get(Number(m.id));
-          if(g){g.fmFunction=String(m.fmFunction||'none');g._fmFunction=g.fmFunction;}
+          if(g){g.fmFunction=String(m.fmFunction||'none');g._fmFunction=g.fmFunction;this.queueFmTransferLookup(g);}
           break;
         }
         case 'gear-fm-index': {
@@ -3743,6 +3752,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             if(ix>0&&!g._fmEnabled&&g.fmEnabled&&g.fmSourceId>0&&g.fmSourceId!==g.id&&this.gears.has(g.fmSourceId)){
               this.rebuildFmRouting();this.refreshVoiceGearPairs();
             }
+            this.queueFmTransferLookup(g);
           }
           break;
         }
@@ -3904,6 +3914,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     if(m.spatialEnabled!==undefined)this.spatialEnabled=!!m.spatialEnabled; if(m.spatialMode!==undefined)this.spatialMode=String(m.spatialMode||'HRTF'); if(m.spatialScale!==undefined&&Number.isFinite(Number(m.spatialScale)))this.spatialScale=Math.max(.001,Math.min(2,Number(m.spatialScale)));
     this.bloomAmount=Math.max(-5,Math.min(5,Number(m.bloomAmount)||0));
     this.bloomPlacementOrder=!!m.bloomPlacementOrder;
+    if(m.subharmonicsLowestOnly!==undefined)this.subharmonicsLowestOnly=!!m.subharmonicsLowestOnly;
     this.jiKeyboard=!!m.jiKeyboard;
     this.jiTuningVersion=Number.isFinite(Number(m.keyboardTuningVersion))?Number(m.keyboardTuningVersion):this.jiTuningVersion;
     this.baseFundamentalFreq=Math.max(.001,Number(m.baseFundamentalFreq)||440);
@@ -3939,6 +3950,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // materialize Map values/entries into temporary arrays per audio sample.
     this.gearArray=Array.from(this.gears.values());
     this.rebuildFmRouting();
+    for(let gi=0;gi<this.gearArray.length;gi++)this.queueFmTransferLookup(this.gearArray[gi]);
+    // A cold worklet may build the tables before its first note. Live updates
+    // are budgeted across quanta so editing FM never monopolizes audio time.
+    if(!this.voices.size)this.buildFmLookups(8193);
     this.polyReuseEnabled=this.gearArray.some(g=>Number(g.accelSec)>0.000001);
     this.refreshVoiceGearPairs();
     this.maxReleaseSec=Math.max(0,...this.gearArray.map(x=>Math.max(0,Math.min(10,Number(x.adsr?.release)||0))));
@@ -3975,6 +3990,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       this.rebuildLifecycleQueues();
       this.recomputePolyTuningTargets();
     }
+    this.refreshSubharmonicVoiceEligibility();
   }
   rebuildLifecycleQueues(){
     this.activeVoiceQueue=[];this.activeVoiceHead=0;this.activeVoiceCount=0;this.releaseVoiceQueue=[];this.releaseVoiceHead=0;
@@ -4036,6 +4052,15 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(let i=0;i<all.length;i++)visit(all[i]);
     this.gearArray=ordered;
     for(let i=0;i<ordered.length;i++)if(ordered[i]._fmSource)ordered[i]._fmSource._fmTargetCount++;
+    // Each voice is rendered sequentially in the oscillator block path. Per-gear
+    // scratch holds the source's audio-rate FM output for the current voice only.
+    for(let i=0;i<ordered.length;i++){
+      const g=ordered[i];
+      if(g._fmTargetCount>0 && (!g._rtFmSignalScratch||g._rtFmSignalScratch.length<128)){
+        g._rtFmSignalScratch=new Float32Array(128);
+        g._rtFmFreqScratch=new Float32Array(128);
+      }
+    }
   }
   makeGearState(cfg){return {id:Number(cfg.id),sourceMode:'sawtooth',ratio:1,freq:440,targetFreq:440,currentFreq:440,fmEnabled:false,fmSourceId:0,fmIndex:1,fmFunction:'none',_fmFunction:'none',_fmEnabled:false,_fmSourceId:0,_fmIndex:1,_fmSource:null,_fmTargetCount:0,_fmSignal:0,_fmFrequency:440,_fmDc:0,accelSec:0,accelAlpha:1,shapeRate:1,waveform:'sawtooth',width:.5,volume:.2,muted:false,solo:false,isUltrasonic:false,adsr:{attack:.01,attackLevel:1,decay:.01,sustain:.8,sustainDuration:5,sustainAutomation:[],adsrPathPoints:[],adsrLoopSustain:false,release:.5,attackCurve:0,decayCurve:0,releaseCurve:0},bloomAttack:.01,widthMod:null,widthModEnabled:false,adsrTargetNonVolume:false,offcenter:0,offcenterTarget:0,offcenterCurrent:0,_offcenterActive:false,phase:0,modPhase:0,offcenterPhase:0,phaseOffset:0,motionShapeRate:1,motionShapeRateTarget:1,motionShapeRateAlpha:1,audioRef:Number(cfg.id)||0,loopStart:0,loopEnd:1,vinyl:false,audioRootNote:48,_audioRootHz:440*Math.pow(2,(48-69)/12),teeth:120,clockTickMs:4,spatial:{x:0,y:0,z:0},spatialL:.7071067812,spatialR:.7071067812,spatialOrbit:{enabled:false,baseAngle:0,phase:0,periodSec:8,direction:1,radius:0,phaseSyncFrame:0,hrtfZ:0,hrtfZAngleRad:0,hrtfZRate:1,scale:.01},env:{gate:false,start:0,releaseStart:0,releaseLevel:0,releasing:false},samplePos:0,noise1:0,noise2:0,driverMode:false};}
   updateSpatialCoeffs(g){const x=Number(g?.spatial?.x)||0,y=Number(g?.spatial?.y)||0,z=Number(g?.spatial?.z)||0,elevation=Math.max(-1,Math.min(1,y)),dist=Math.sqrt(x*x+y*y+z*z),pan=Math.max(-1,Math.min(1,x/(1+Math.abs(z)*.8))),a=(pan+1)*Math.PI/4,att=1/Math.sqrt(1+dist*dist*.18);g.spatialL=Math.cos(a)*att;g.spatialR=Math.sin(a)*att;/* Carry height into the per-gear binaural elevation cue as well as distance. The AudioWorklet mixes each gear to stereo, so a height-dependent spectral profile is required here. */const cutoffHz=2200+(elevation+1)*2600;g._hrtfElevationAlpha=1-Math.exp(-2*Math.PI*cutoffHz/this.sr);g._hrtfElevationHighGain=1+elevation*.32;}
@@ -4062,7 +4087,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const heldWidthFrom=Math.max(0,Math.min(.98,Number.isFinite(Number(g.widthFrom))?Number(g.widthFrom):Number(g.width)||.5));
     const heldWidthTo=Math.max(0,Math.min(.98,Number.isFinite(Number(g.widthTo))?Number(g.widthTo):Number(g.width)||.5));
     g.sourceMode=String(cfg.sourceMode||'sawtooth');
-    g.ratio=Number(cfg.ratio)||1;
+    g.ratio=(cfg.ratio!==undefined&&cfg.ratio!==null&&Number.isFinite(Number(cfg.ratio)))?Number(cfg.ratio):1;
     g.freq=Math.max(.001,Math.abs(Number(cfg.freq)||.001));
     // cfg.freq is already the gear's ratio-scaled carrier frequency. The visual
     // solver supplies the shape/network rate separately; the worklet performs this
@@ -4120,7 +4145,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }else if(!canTable){g._waveTable=null;g._waveTableKey='';g._waveN=0;}
     g.volume=Math.max(0,Math.min(1,Number(cfg.volume)||0));
     g._volume=g.volume;
-    g._freqMul=Math.max(.00001,Math.abs(g.ratio));
+    g._freqMul=Math.abs(g.ratio);
     g._phaseOffsetCycles=(Number(g.phaseOffset)||0)/(2*Math.PI);
     g.muted=!!cfg.muted; g.solo=!!cfg.solo; g.isUltrasonic=!!cfg.isUltrasonic;
     g.adsr=cfg.adsr||g.adsr; g.bloomAttack=Math.max(0,Math.min(10,Number(cfg.bloomAttack) || Number(g.adsr?.attack) || .01)); g.widthMod=cfg.widthMod||g.widthMod; g.widthModEnabled=!!cfg.widthModEnabled; g._adsrTargetNonVolume=!!cfg.adsrTargetNonVolume; g.fmEnabled=!!cfg.fmEnabled;g.fmFunction=String(cfg.fmFunction||'none');g._fmFunction=g.fmFunction;g.fmSourceId=Math.max(0,Math.round(Number(cfg.fmSourceId)||0));g.fmIndex=Math.max(0,Math.min(8,Number(cfg.fmIndex)||0)); g.offcenter=Math.max(0,Math.min(100,Number(cfg.offcenter)||0)); g.offcenterTarget=g.offcenter; g.offcenterCurrent=g.offcenter; g._offcenterActive=g.offcenter>0;
@@ -4159,7 +4184,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   makeVoice(id,cfg,seedVoice=null){
     const absoluteSemitone=Number.isFinite(Number(cfg.absoluteSemitone))?Number(cfg.absoluteSemitone):0;
     const baseRatio=Math.max(1e-12,Number(cfg.baseRatio)||1);
-    const v={id,absoluteSemitone,baseRatio,jiThresholdCents:Number.isFinite(Number(cfg.jiThresholdCents))?Number(cfg.jiThresholdCents):Infinity,masterFreq:Math.max(.001,this.baseFundamentalFreq*baseRatio),masterTarget:Math.max(.001,this.baseFundamentalFreq*baseRatio),currentMaster:Math.max(.001,this.baseFundamentalFreq*baseRatio),velocity:Math.max(.0001,Math.min(1,Number(cfg.velocity)||1)),releasing:false,releaseStart:0,order:++this.voiceOrder,gears:new Map(),gearPairs:[],maxReleaseSec:0};
+    const v={id,absoluteSemitone,baseRatio,jiThresholdCents:Number.isFinite(Number(cfg.jiThresholdCents))?Number(cfg.jiThresholdCents):Infinity,masterFreq:Math.max(.001,this.baseFundamentalFreq*baseRatio),masterTarget:Math.max(.001,this.baseFundamentalFreq*baseRatio),currentMaster:Math.max(.001,this.baseFundamentalFreq*baseRatio),velocity:Math.max(.0001,Math.min(1,Number(cfg.velocity)||1)),releasing:false,releaseStart:0,order:++this.voiceOrder,gears:new Map(),gearPairs:[],maxReleaseSec:0,_subharmonicsGain:this.subharmonicsLowestOnly?0:1,_subharmonicsTarget:1};
     for(const g of this.gearArray){
       const gid=g.id;
       const targetFreq=Math.max(.001,Math.abs(v.masterFreq*g.ratio));
@@ -4210,6 +4235,27 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.voiceArray=Array.from(this.voices.values());
     this.fadingTailArray=Array.from(this.fadingTails.values());
     this.voiceArraysDirty=false;
+  }
+  refreshSubharmonicVoiceEligibility(){
+    let lowest=null;
+    if(this.subharmonicsLowestOnly){
+      for(const v of this.voices.values()){
+        if(!v||v._dead||v.releasing)continue;
+        const semitone=Number(v.absoluteSemitone);
+        if(Number.isFinite(semitone)&&(!lowest||semitone<Number(lowest.absoluteSemitone)))lowest=v;
+      }
+    }
+    for(const v of this.voices.values()){
+      if(!v||v._dead)continue;
+      if(!this.subharmonicsLowestOnly){v._subharmonicsTarget=1;continue;}
+      // Released voices keep the subharmonic audibility they had at note-off so
+      // an existing ADSR tail is never abruptly cut when the lowest note changes.
+      if(v.releasing)continue;
+      v._subharmonicsTarget=v===lowest?1:0;
+    }
+    if(!this.subharmonicsLowestOnly){
+      for(const v of this.fadingTails.values())if(v&&!v._dead)v._subharmonicsTarget=1;
+    }
   }
   normalizeRatioOctaves(ratio){
     let r=Math.max(1e-12,Number(ratio)||1),oct=0;
@@ -4321,14 +4367,13 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }
     // Keep a large bounded set of independent release tails. This is an O(1)-ish queue
     // walk instead of allocating/filtering/sorting the complete voice Map for every note.
-    while(true){
+    const maxTails=Math.max(1,Number(this.maxReleaseVoices)||10);
+    while(this.countLiveReleaseVoices()>maxTails){
       const oldTail=this.oldestReleaseVoice();
-      const maxTails=Math.max(1,Number(this.maxReleaseVoices)||10);
-      if(this.countLiveReleaseVoices()<=maxTails){ if(oldTail)this.releaseVoiceHead--; break; }
       if(!oldTail)break;
       this.voices.delete(oldTail.id); oldTail._tailFadeSamples=Math.max(1,Math.ceil(this.sr*.008)); oldTail._tailFadeTotal=oldTail._tailFadeSamples; oldTail._tailFadeStart=1; this.fadingTails.set(String(oldTail.id),oldTail); this.voiceArraysDirty=true;
     }
-    while(this.activeVoiceCount>=10){
+    while(this.activeVoiceCount>=20){
       const victim=this.oldestActiveVoice();
       if(!victim){this.activeVoiceCount=0;break;}
       this.hardStopVoice(victim.id);
@@ -4343,6 +4388,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.lastPolyVoice=voice;
     this.lastPolyNoteOnFrame=this.frame;
     this.polyTuningDirty=true;
+    this.refreshSubharmonicVoiceEligibility();
   }
   countLiveReleaseVoices(){
     let n=0;
@@ -4364,7 +4410,32 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         if(candidate&&!candidate._dead&&candidate.releasing&&this.voices.get(candidate.id)===candidate){v=candidate;this.releaseVoiceQueue[i]._reopened=true;break;}
       }
     }
-    if(!v)return false;
+    if(!v){
+      // The main thread can outlive a Worklet tail after the 10-tail safety cap,
+      // a clear, or a rapid preset transition. Never silently consume a note-on
+      // because the requested release object no longer exists: reuse an already
+      // reconciled active voice, or create a fresh Worklet voice.
+      const active=this.voices.get(newId);
+      if(active&&!active._dead&&!active.releasing){
+        active.absoluteSemitone=Number.isFinite(Number(m.absoluteSemitone))?Number(m.absoluteSemitone):active.absoluteSemitone;
+        active.baseRatio=Math.max(1e-12,Number(m.baseRatio)||active.baseRatio||1);
+        active.jiThresholdCents=Number.isFinite(Number(m.jiThresholdCents))?Number(m.jiThresholdCents):active.jiThresholdCents;
+        const target=Math.max(.001,Number(m.masterFreq)||this.baseFundamentalFreq*active.baseRatio);
+        active.masterFreq=target;active.masterTarget=target;active.currentMaster=target;
+        active.velocity=Math.max(.0001,Math.min(1,Number(m.velocity)||1));
+        for(let pi=0;pi<active.gearPairs.length;pi++){
+          const st=active.gearPairs[pi].st;if(!st)continue;
+          st.samplePos=0;st.env={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};
+          st.widthEnv={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};
+        }
+        this.lastPolyVoice=active;this.lastPolyNoteOnFrame=this.frame;this.polyTuningDirty=true;this.voiceArraysDirty=true;
+        this.refreshSubharmonicVoiceEligibility();
+        return true;
+      }
+      if(active)this.hardStopVoice(newId);
+      this.noteOn({...m,type:'noteOn',mode:'poly',keyId:newId});
+      return this.voices.has(newId);
+    }
     this.voices.delete(v.id);
     v.id=newId;v.sourceKeyId=newId;v.absoluteSemitone=Number.isFinite(Number(m.absoluteSemitone))?Number(m.absoluteSemitone):v.absoluteSemitone;
     v.baseRatio=Math.max(1e-12,Number(m.baseRatio)||v.baseRatio||1);
@@ -4385,6 +4456,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       if(st.widthEnv){const wenv=st.widthEnv;const wh=Number.isFinite(Number(wenv.currentLevel))?Number(wenv.currentLevel):Math.max(0,Number(wenv.releaseLevel)||0);wenv.gate=true;wenv.start=this.frame;wenv.releaseStart=0;wenv.releaseLevel=0;wenv.releasing=false;wenv.currentLevel=wh;wenv.reentry=true;wenv.reentryLevel=wh;}
     }
     this.voices.set(newId,v);this.activeVoiceQueue.push(v);this.activeVoiceCount++;this.lastPolyVoice=v;this.polyTuningDirty=true;this.voiceArraysDirty=true;
+    this.refreshSubharmonicVoiceEligibility();
     return true;
   }
   noteOff(m){if(m.mode==='mono'){this.monoGate(false);return;}const v=this.voices.get(String(m.keyId));if(v){this.startVoiceRelease(v);this.polyTuningDirty=true;}}
@@ -4417,6 +4489,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       if(!ov)break;
       this.voices.delete(ov.id);ov._tailFadeSamples=Math.max(1,Math.ceil(this.sr*.008));ov._tailFadeTotal=ov._tailFadeSamples;ov._tailFadeStart=1;this.fadingTails.set(String(ov.id),ov);this.voiceArraysDirty=true;
     }
+    this.refreshSubharmonicVoiceEligibility();
   }
   envAt(env,frame,adsr,attackOverride=null){
     const attackSec=Number.isFinite(Number(attackOverride))?Math.max(0,Math.min(10,Number(attackOverride))):Math.max(0,Math.min(10,Number(adsr?.attack)||0));
@@ -4508,7 +4581,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   }
   tooth(type,phase,width,tickMs){const t=((phase%1)+1)%1,w=Math.max(0,Math.min(.98,Number(width)||0));if(type==='square'){if(w<=0)return t<.5?1:0;const duty=Math.max(.02,Math.min(.98,.5+(w-.5)*1.8));return t<duty?1:-1;}if(type==='triangle'){let y=1-4*Math.abs(t-.5);if(w<.5){const p=1+(.5-w)*3;y=Math.sign(y)*Math.pow(Math.abs(y),p);}else if(w>.5){const k=1+(w-.5)*14;y=Math.tanh(y*k)/Math.tanh(k);}return y;}if(type==='sawtooth'){if(w<=0)return 1-t;const saw=2*t-1;if(w<=.5){const p=1+(.5-w)*3;return Math.sign(saw)*Math.pow(Math.abs(saw),p);}const mix=(w-.5)*2,curved=Math.sin(Math.PI*(t*2-.5));return saw*(1-mix)+curved*mix;}if(type==='clockwork'){const q=Math.max(.0004,Math.min(.018,Math.max(.4,Math.min(18,Number(tickMs)||4))/1000));const strike=Math.exp(-Math.pow(((t+.5)%1-.5)/q,2));const body=.10*Math.sin(2*Math.PI*t)+.055*Math.sin(2*Math.PI*31*t)+.035*Math.sin(2*Math.PI*47*t);return Math.max(-1,Math.min(1,strike*.9+body));}const s=Math.sin(2*Math.PI*t);if(w<.5){const p=1+(.5-w)*4;return Math.sign(s)*Math.pow(Math.abs(s),p);}const k=1+(w-.5)*16;return Math.tanh(s*k)/Math.tanh(k);}
   spatial(sample,g){if(sample===0)return [0,0];if(!this.spatialEnabled)return [sample,sample];const sl=Number(g?.spatialL),sr=Number(g?.spatialR);return [sample*(Number.isFinite(sl)?sl:.7071067812),sample*(Number.isFinite(sr)?sr:.7071067812)];}
-  applyHrtfElevation(sample,g,voiceState){if(!this.spatialEnabled||sample===0)return sample;const st=voiceState||g,frame=Number(this.frame)||0,targetAlpha=Number.isFinite(Number(g?._hrtfElevationAlpha))?Math.max(.05,Math.min(.9,Number(g._hrtfElevationAlpha))):.45,targetGain=Number.isFinite(Number(g?._hrtfElevationHighGain))?Math.max(.55,Math.min(1.45,Number(g._hrtfElevationHighGain))):1;let alpha=Number(st._hrtfElevationAlpha),gain=Number(st._hrtfElevationHighGain),low=Number(st._hrtfElevationLow);if(!Number.isFinite(Number(st._hrtfElevationLastFrame))||Number(st._hrtfElevationLastFrame)!==frame-1||!Number.isFinite(low)){low=sample;alpha=targetAlpha;gain=targetGain;}else{alpha+=(targetAlpha-alpha)*.002;gain+=(targetGain-gain)*.002;}low+=alpha*(sample-low);st._hrtfElevationLow=low;st._hrtfElevationAlpha=alpha;st._hrtfElevationHighGain=gain;st._hrtfElevationLastFrame=frame;return low+(sample-low)*gain;}
+  applyHrtfElevation(sample,g,voiceState){if(!this.spatialEnabled||sample===0)return sample;const st=voiceState||g,frame=this.frame,targetAlpha=g._hrtfElevationAlpha,targetGain=g._hrtfElevationHighGain;let alpha=st._hrtfElevationAlpha,gain=st._hrtfElevationHighGain,low=st._hrtfElevationLow;if(targetGain===1&&(gain===1||!Number.isFinite(gain))){st._hrtfElevationAlpha=targetAlpha;st._hrtfElevationHighGain=1;st._hrtfElevationLow=sample;st._hrtfElevationLastFrame=frame;return sample;}if(st._hrtfElevationLastFrame!==frame-1||!Number.isFinite(low)){low=sample;alpha=targetAlpha;gain=gain===1?1:targetGain;}else{alpha+=(targetAlpha-alpha)*.002;gain+=(targetGain-gain)*.002;}if(targetGain===1&&Math.abs(gain-1)<1e-5)gain=1;low+=alpha*(sample-low);st._hrtfElevationLow=low;st._hrtfElevationAlpha=alpha;st._hrtfElevationHighGain=gain;st._hrtfElevationLastFrame=frame;return low+(sample-low)*gain;}
   readSampleStereo(s,pos){if(!s?.left?.length)return [0,0];const n=s.left.length,p=((pos%n)+n)%n,i=Math.floor(p),f=p-i,j=(i+1)%n,l=s.left[i]*(1-f)+s.left[j]*f,r=s.right?.length?s.right[i]*(1-f)+s.right[j]*f:l;return [l,r];}
   readSampleMono(s,pos){if(!s?.left?.length)return 0;const n=s.left.length,p=((pos%n)+n)%n,i=Math.floor(p),f=p-i,j=(i+1)%n,l=s.left[i]*(1-f)+s.left[j]*f,r=s.right?.length?s.right[i]*(1-f)+s.right[j]*f:l;return (l+r)*0.5;}
   readLoopSampleStereo(s,pos,start,end,crossfadeSamples){if(!s?.left?.length)return [0,0];const n=s.left.length,lo=Math.max(0,Math.min(n-2,start)),hi=Math.max(lo+1,Math.min(n,end)),len=Math.max(1,hi-lo);let p=((pos%len)+len)%len+lo;let base=this.readSampleStereo(s,p);const fade=Math.max(0,Math.min(len/2,Number(crossfadeSamples)||0));if(fade>1 && p>=hi-fade){const t=(p-(hi-fade))/fade;const headPos=lo+(p-(hi-fade));const h=this.readSampleStereo(s,headPos);const a=Math.cos(t*Math.PI/2),b=Math.sin(t*Math.PI/2);base=[base[0]*a+h[0]*b,base[1]*a+h[1]*b];}return base;}
@@ -4602,6 +4675,48 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     g._offcenterActive=offCurrent>1e-6;
     statePh.offcenterPhase=c.offPhaseStart+c.offPhaseStep*(idx+1);
     return rateValue<.001?.001:(rateValue>8?8:rateValue);
+  }
+  queueFmTransferLookup(g){
+    const fn=g._fmFunction,amount=g._fmIndex;
+    // Chaotic/discontinuous transfer curves must keep their exact mathematics;
+    // linear interpolation would erase their fine structure.
+    const exact=['square_wave','sawtooth','pulse_train','heaviside_step',
+      'logistic_map','tent_map','henon_map','mandelbrot','julia','burning_ship',
+      'tricorn','multibrot','fibonacci_spiral','ulam_spiral'];
+    if(!g._fmEnabled||!fn||fn==='none'||fn==='direct'||exact.includes(fn)){
+      g._fmLookup=null;g._fmLookupBuild=null;g._fmLookupFunction='';return;
+    }
+    if(g._fmLookupFunction===fn&&g._fmLookupAmount===amount)return;
+    g._fmLookupFunction=fn;g._fmLookupAmount=amount;
+    // A changed FM equation reuses its previous lookup buffer. Creating a new
+    // 32 KB typed array for each knob event caused avoidable realtime GC.
+    const storage=g._fmLookupBuild||g._fmLookup||new Float32Array(8193);
+    g._fmLookup=null;g._fmLookupBuild=storage;g._fmLookupCursor=0;
+    this._fmLookupDirty=true;
+  }
+  buildFmLookups(budget){
+    if(!this._fmLookupDirty)return;
+    let pending=false;
+    for(let gi=0;gi<this.gearArray.length;gi++){
+      const g=this.gearArray[gi],table=g._fmLookupBuild;
+      if(!table)continue;
+      const limit=Math.min(table.length,g._fmLookupCursor+budget);
+      for(let ix=g._fmLookupCursor;ix<limit;ix++)
+        table[ix]=this.transformFmSignal(ix/4096-1,g._fmLookupFunction,g._fmLookupAmount);
+      g._fmLookupCursor=limit;
+      if(limit===table.length){g._fmLookup=table;g._fmLookupBuild=null;}
+      else pending=true;
+    }
+    this._fmLookupDirty=pending;
+  }
+  fmTransferSignal(source,g){
+    const tab=g._fmLookup;
+    if(tab&&g._fmLookupFunction===g._fmFunction&&g._fmLookupAmount===g._fmIndex){
+      const x=Math.max(-1,Math.min(1,source)),position=(x+1)*4096;
+      const i=position|0,frac=position-i;
+      return i>=8192?tab[8192]:tab[i]+(tab[i+1]-tab[i])*frac;
+    }
+    return this.transformFmSignal(source,g._fmFunction,g._fmIndex);
   }
   transformFmSignal(input,functionName,amount){
     const x=Number.isFinite(input)?(input>1?1:(input< -1?-1:input)):0;
@@ -4735,7 +4850,105 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   }
 
   renderGear(g,st,baseFreq,velocity,isPoly=false){
-    const freqTarget=Math.max(.001,Math.abs(baseFreq)*(g._freqMul||1));
+    // Realtime FM oscillator route. A table-backed carrier with no live morph,
+    // noise, sample, width ADSR, acceleration or eccentric motion does not need
+    // the generic per-sample source dispatcher. FM and its modulator waveform
+    // remain evaluated at every audio sample in the same gear/voice order.
+    if(g._sourceKind===0 && g._waveTable && !g._waveMorphActive &&
+       !g._widthModEnabled && !g._presetTransitionActive && g._accelAlpha===1 &&
+       !g._offcenterActive && !(g.offcenterTarget>0) && !this.driver.playing){
+      const statePh=isPoly?st:g, envState=isPoly?st.env:g.env;
+      const mul=g._freqMul;
+      if(mul<=0){statePh.currentFreq=0;statePh._fmSignal=0;statePh._fmFrequency=0;return 0;}
+      const fundamental=Math.max(.001,Math.abs(baseFreq)*mul);
+      statePh.currentFreq=fundamental;
+      let fmShift=0;
+      if(g._fmEnabled){
+        const sourceState=isPoly?st._fmSourceState:g._fmSource;
+        if(sourceState){
+          const sourceSignal=sourceState._fmSignal||0;
+          const transfer=g._fmFunction;
+          let modSignal=sourceSignal;
+          if(transfer&&transfer!=='none'){
+            const table=g._fmLookup;
+            if(table&&g._fmLookupFunction===transfer&&g._fmLookupAmount===g._fmIndex){
+              const x=sourceSignal>1?1:(sourceSignal< -1?-1:sourceSignal);
+              const p=(x+1)*4096,ix=p|0;
+              modSignal=ix>=8192?table[8192]:table[ix]+(table[ix+1]-table[ix])*(p-ix);
+            }else modSignal=this.transformFmSignal(sourceSignal,transfer,g._fmIndex);
+          }
+          fmShift=modSignal*Math.abs(sourceState._fmFrequency||sourceState.currentFreq||sourceState.freq||.001)*g._fmIndex;
+        }
+      }
+      const signedFreq=fundamental+fmShift,lim=this._nyquistLimit;
+      const freq=signedFreq>lim?lim:(signedFreq< -lim?-lim:signedFreq);
+      // Shape-rate trajectory is global to a gear and is calculated once per
+      // quantum. Previously every one of 20 voices recalculated and mutated its
+      // source gear rate, creating both wasted work and polyphonic rate drift.
+      if(g._rtFastShapeSerial!==this._rtBlockSerial){
+        const a=Number.isFinite(g.motionShapeRate)?g.motionShapeRate:1;
+        const b=Math.max(.001,Math.min(8,g.motionShapeRateTarget||1));
+        const span=Math.max(1,this._rtBlockEndFrame-this._rtBlockStartFrame);
+        const alpha=1-Math.exp(-span/(.006*this.sr));
+        g._rtFastShapeStart=a;g._rtFastShapeStep=(b-a)*alpha/span;
+        g._rtFastShapeSerial=this._rtBlockSerial;
+      }
+      const shapeRate=g._rtFastShapeStart+g._rtFastShapeStep*(this.frame-this._rtBlockStartFrame);
+      g.motionShapeRate=shapeRate;
+      const tab=g._waveTable,N=tab.length-1,phaseOffset=g._phaseOffsetCycles;
+      const beforePhase=statePh.phase;
+      const tap=g._fmTargetCount>0;
+      let tapRaw=0;
+      if(tap){
+        const unit=beforePhase+phaseOffset-Math.floor(beforePhase+phaseOffset);
+        const p=unit*N,ii=p|0,frac=p-ii;
+        tapRaw=tab[ii]+(tab[ii+1]-tab[ii])*frac;
+        if(g.waveform==='square'){
+          if(g.width<=0)tapRaw=tapRaw*2-1;
+          else {const duty=Math.max(.02,Math.min(.98,.5+(g.width-.5)*1.8));tapRaw-=2*duty-1;}
+        }else if(g.waveform==='sawtooth'&&g.width<=0)tapRaw=tapRaw*2-1;
+        else if(g.waveform==='clockwork')tapRaw-=Math.min(.05,Math.max(.001,(Number(g.clockTickMs)||4)/1000*1.4));
+        statePh._fmSignal=tapRaw;statePh._fmFrequency=freq;
+        let advanced=beforePhase+freq/this.sr*shapeRate;
+        advanced-=Math.floor(advanced);statePh.phase=advanced;
+      }
+      let ec=envState._rtEnvelope;
+      if(!ec||ec.serial!==this._rtBlockSerial||ec.epoch!==this._rtEpoch||
+         ec.frameStart>this.frame||ec.frameEnd<this.frame){
+        this.getBlockEnvelope(envState,g,false);ec=envState._rtEnvelope;
+      }
+      const rawEnv=ec.start+ec.step*(this.frame-ec.frameStart);
+      const env=rawEnv<=0?0:(rawEnv>=1?1:rawEnv);
+      envState.currentLevel=env;
+      if(env<=.000001)return 0;
+      const vol=g._volume*(velocity>0?velocity:.0001)*env;
+      if(vol<=.000001||g.muted||g.isUltrasonic)return 0;
+      let raw=tapRaw;
+      if(!tap){
+        const ph=beforePhase+phaseOffset,unit=ph-Math.floor(ph);
+        const p=unit*N,ii=p|0,frac=p-ii;
+        raw=tab[ii]+(tab[ii+1]-tab[ii])*frac;
+      }
+      if(!tap){
+        let advanced=beforePhase+freq/this.sr*shapeRate;
+        advanced-=Math.floor(advanced);statePh.phase=advanced;
+      }
+      // Advance the dormant slow eccentric axle as on the generic path, so
+      // enabling off-center during a sustained note remains phase-continuous.
+      const offHz=this.offcenterVinylHzAt440*(fundamental/440)*shapeRate;
+      statePh.offcenterPhase=(statePh.offcenterPhase||0)+Math.max(.02,Math.min(20,offHz))/this.sr;
+      const sample=raw*vol;
+      return !this.spatialEnabled||sample===0||(g._hrtfElevationHighGain===1&&statePh._hrtfElevationHighGain===1)
+        ?sample:this.applyHrtfElevation(sample,g,statePh);
+    }
+    const rawFreqMul=Number(g._freqMul);
+    if(Number.isFinite(rawFreqMul)&&rawFreqMul<=0){
+      const silentState=isPoly?st:g;
+      if(silentState){silentState.currentFreq=0;silentState._fmSignal=0;silentState._fmFrequency=0;}
+      return 0;
+    }
+    const freqMul=Number.isFinite(rawFreqMul)?Math.abs(rawFreqMul):1;
+    const freqTarget=Math.max(.001,Math.abs(baseFreq)*freqMul);
     const envState=isPoly?st.env:g.env;
     const alpha=g._accelAlpha;
     const cur=isPoly?st.currentFreq:g.currentFreq;
@@ -4747,7 +4960,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       const fmSourceState=isPoly?st._fmSourceState:g._fmSource;
       if(fmSourceState){
         const sourceSignal=Number(fmSourceState._fmSignal)||0;
-        const modSignal=(g._fmFunction&&g._fmFunction!=='none')?this.transformFmSignal(sourceSignal,g._fmFunction,g._fmIndex):sourceSignal;
+        const modSignal=(g._fmFunction&&g._fmFunction!=='none')?this.fmTransferSignal(sourceSignal,g):sourceSignal;
         fmShift=modSignal*Math.abs(Number(fmSourceState._fmFrequency||fmSourceState.currentFreq||fmSourceState.freq)||.001)*g._fmIndex;
       }
     }
@@ -4914,12 +5127,17 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       }
     }
     const sample=raw*(outputSilenced?0:vol);
+    // Neutral elevation is exactly transparent. Keep that common case out of the
+    // per-gear/per-voice filter call; non-neutral elevation still follows the same
+    // smoothed HRTF filter and reinitializes its state safely when height changes.
+    if(!this.spatialEnabled||sample===0||(g._hrtfElevationHighGain===1&&statePh._hrtfElevationHighGain===1))return sample;
     return this.applyHrtfElevation(sample,g,statePh);
   }
   mixGear(g,st,baseFreq,velocity,isPoly){return this.renderGear(g,st,baseFreq,velocity,isPoly);}
   process(_,outputs){
     const out=outputs[0]||[],L=out[0]||new Float32Array(128),R=out[1]||L;
     this.beginRealtimeBlock(L.length);
+    if(this._fmLookupDirty)this.buildFmLookups(256);
     const gears=this.gearArray;
     // Active notes always win. Old release tails are moved into the existing
     // short-fade path before they can multiply the realtime workload.
@@ -4943,6 +5161,257 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // path light while making the pitch ramp continuous to perception.
     const presetPitchRatio=this.presetPitchGlideRatioAt(this.frame);
     const scheduled=this.scheduledMidiEvents;
+    const blockFrameStart=this.frame,blockFrameEnd=this._rtBlockEndFrame;
+
+    // Fast block renderer for the common POLY oscillator case. It keeps the same
+    // per-sample phase, ADSR, subharmonic-gain and shape-rate trajectories while
+    // removing repeated renderGear/getBlockEnvelope/getBlockMotion dispatches.
+    // Complex sources, eccentric motion, active morphs and in-block MIDI stay
+    // on the general sample-accurate path. Stable feed-forward oscillator FM
+    // is rendered per voice/gear in audio-rate blocks, without UI dependencies.
+    let usePolyBlockPath=R!==L&&L.length<=this._rtSubharmonicGainScratch.length&&(this.voiceArray.length>0||this.fadingTailArray.length>0)&&
+      !this.mono.active&&!this.mono.releasing&&!this.driver.playing&&!this._presetPitchGlide&&
+      !this.polyTuningDirty&&!transitionMode;
+    for(let gi=0;usePolyBlockPath&&gi<gears.length;gi++){
+      const g=gears[gi];
+      if(g._sourceKind!==0||g._waveMorphActive||!g._waveTable||
+         g._presetTransitionActive||g._accelAlpha!==1||g._offcenterActive||
+         Number(g.offcenterTarget??g.offcenter)>1e-6||Number(g.offcenterCurrent)>1e-6||
+         !Number.isFinite(Number(g.motionShapeRate))||!Number.isFinite(Number(g.motionShapeRateTarget))||
+         (g._fmTargetCount>0&&g._freqMul<=0)||
+         (g._fmTargetCount>0&&(!g._rtFmSignalScratch||g._rtFmSignalScratch.length<L.length)))usePolyBlockPath=false;
+    }
+    for(let vi=0;usePolyBlockPath&&vi<this.voiceArray.length+this.fadingTailArray.length;vi++){
+      const v=vi<this.voiceArray.length?this.voiceArray[vi]:this.fadingTailArray[vi-this.voiceArray.length];
+      if(!v||v._dead||!Array.isArray(v.gearPairs)){usePolyBlockPath=false;break;}
+      for(let pi=0;pi<v.gearPairs.length;pi++){
+        const st=v.gearPairs[pi]?.st;
+        if(!st?.env){usePolyBlockPath=false;break;}
+      }
+    }
+    if(usePolyBlockPath){
+      L.fill(0);R.fill(0);
+      if(this.spatialEnabled){
+        for(let gi=0;gi<gears.length;gi++){
+          const g=gears[gi];
+          if(g.spatialOrbit?.enabled)this.updateOrbitSpatialForFrame(g,quantumStartFrame);
+        }
+      }
+      const quantumLocalFrame=this.frame,blockLength=L.length;
+      let segmentStart=0;
+      while(segmentStart<blockLength){
+        // Preserve sample-accurate scheduled MIDI. A 64th-note attack or release
+        // splits this quantum into tiny oscillator blocks instead of forcing the
+        // whole quantum through the expensive generic per-sample gear dispatcher.
+        let next=scheduled[this.scheduledMidiHead];
+        const eventIndex=next?Math.max(0,Math.ceil(next.targetFrame-quantumStartFrame)):blockLength;
+        if(next&&eventIndex<=segmentStart){
+          this.frame=quantumLocalFrame+segmentStart;
+          let changed=false;
+          while(this.scheduledMidiHead<scheduled.length&&
+                scheduled[this.scheduledMidiHead].targetFrame<=quantumStartFrame+segmentStart){
+            const ev=scheduled[this.scheduledMidiHead++];
+            try{
+              if(ev.type==='noteOn')this.noteOn(ev.message);
+              else if(ev.type==='reopen')this.reopenVoice(ev.message);
+              else this.noteOff(ev.message);
+              if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??''));
+              changed=true;this._rtEpoch++;
+            }catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
+          }
+          if(changed){
+            if(this.voiceArraysDirty)this.refreshVoiceArrays();
+            if(this.polyTuningDirty){this.recomputePolyTuningTargets();this.polyTuningDirty=false;}
+          }
+          continue;
+        }
+        const segmentEnd=Math.min(blockLength,eventIndex);
+        const segmentLength=segmentEnd-segmentStart;
+        if(segmentLength<=0)break;
+        this.frame=quantumLocalFrame+segmentStart;
+        this.beginRealtimeBlock(segmentLength);
+        const blockFrameStart=this.frame,blockFrameEnd=this._rtBlockEndFrame;
+      const active=this.voiceArray,retiring=this.fadingTailArray;
+      const voiceCount=active.length+retiring.length,span=Math.max(1,blockFrameEnd-blockFrameStart);
+      for(let vi=0;vi<voiceCount;vi++){
+        const retiringVoice=vi>=active.length;
+        const v=retiringVoice?retiring[vi-active.length]:active[vi];if(!v||v._dead)continue;
+        const masterForAudio=Math.max(.001,Number(v.masterTarget)||Number(v.masterFreq)||440)*presetPitchRatio;
+        v.masterFreq=masterForAudio;
+        const subTarget=Number.isFinite(Number(v._subharmonicsTarget))?Math.max(0,Math.min(1,Number(v._subharmonicsTarget))):1;
+        let subGain=Number.isFinite(Number(v._subharmonicsGain))?Number(v._subharmonicsGain):1;
+        const subGainScratch=this._rtSubharmonicGainScratch;
+        for(let si=0;si<segmentLength;si++){
+          if(Math.abs(subTarget-subGain)>.00001)subGain+=(subTarget-subGain)*this._subharmonicGainAlpha;else subGain=subTarget;
+          subGainScratch[si]=subGain;
+        }
+        v._subharmonicsGain=subGain;
+        const pairs=v.gearPairs;
+        const releaseEndFrame=v.releasing?v.releaseStart+(Number(v.maxReleaseSec)||0)*this.sr:Infinity;
+        const sampleCount=v.releasing?Math.max(0,Math.min(segmentLength,Math.ceil(releaseEndFrame-blockFrameStart)+1)):segmentLength;
+        for(let pi=0;pi<pairs.length;pi++){
+          const pair=pairs[pi],g=pair.g,st=pair.st;if(!g||!st)continue;
+          const fmModOnly=anySolo&&!g.solo&&g._fmTargetCount>0;
+          if(anySolo&&!g.solo&&!fmModOnly)continue;
+          const rawFreqMul=Number(g._freqMul);
+          if(Number.isFinite(rawFreqMul)&&rawFreqMul<=0){st.currentFreq=0;st._fmSignal=0;st._fmFrequency=0;continue;}
+          const freqMul=Number.isFinite(rawFreqMul)?Math.abs(rawFreqMul):1;
+          const freqTarget=Math.max(.001,Math.abs(masterForAudio)*freqMul);
+          st.currentFreq=freqTarget;
+          const envState=st.env;
+          const envStart=this.envAtFast(envState,blockFrameStart,g,false);
+          const envEnd=this.envAtFast(envState,blockFrameEnd,g,false);
+          const envStep=(envEnd-envStart)/span;
+          const widthEnabled=g._widthModEnabled;
+          const widthStart=widthEnabled?this.envAtFast(st.widthEnv,blockFrameStart,g,true):1;
+          const widthEnd=widthEnabled?this.envAtFast(st.widthEnv,blockFrameEnd,g,true):1;
+          const widthStep=(widthEnd-widthStart)/span;
+          const phaseOffset=g._phaseOffsetCycles,tab=g._waveTable,N=tab.length-1;
+          const limit=this._nyquistLimit,carrierFreq=freqTarget>limit?limit:freqTarget;
+          const fmSource=g._fmEnabled?g._fmSource:null;
+          const fmSignals=fmSource?fmSource._rtFmSignalScratch:null;
+          const fmFreqs=fmSource?fmSource._rtFmFreqScratch:null;
+          const fmTransfer=g._fmFunction;
+          const fmIndex=g._fmIndex;
+          const fmTable=g._fmLookupFunction===fmTransfer&&g._fmLookupAmount===fmIndex?g._fmLookup:null;
+          const fmOutput=g._fmTargetCount>0;
+          const fmOutputSignal=g._rtFmSignalScratch,fmOutputFreq=g._rtFmFreqScratch;
+          const shapeStart=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):1;
+          const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
+          const shapeAlpha=1-Math.exp(-span/(.006*Math.max(1e-6,this.sr)));
+          const shapeEnd=shapeStart+(shapeTarget-shapeStart)*shapeAlpha;
+          const shapeStep=(shapeEnd-shapeStart)/span;
+          const volumeBase=g._volume*(v.velocity>0?v.velocity:.0001);
+          const ratioAbs=Math.abs(Number(g.ratio)||0),isSubharmonic=ratioAbs>0&&ratioAbs<.999999;
+          let phase=st.phase,lastMovedIndex=-1;
+          const srInverse=1/this.sr,spatial=this.spatialEnabled;
+          const heightGain=g._hrtfElevationHighGain,heightAlpha=g._hrtfElevationAlpha;
+          const heightActive=spatial&&(heightGain!==1||st._hrtfElevationHighGain!==undefined&&st._hrtfElevationHighGain!==1);
+          let heightPrevious=st._hrtfElevationLastFrame,heightLow=st._hrtfElevationLow;
+          let heightActualAlpha=st._hrtfElevationAlpha,heightActualGain=st._hrtfElevationHighGain;
+          for(let i=0;i<sampleCount;i++){
+            let freq=carrierFreq;
+            if(fmSignals){
+              const source=fmSignals[i];
+              let mod=source;
+              if(fmTransfer&&fmTransfer!=='none'){
+                if(fmTable){
+                  const x=source>1?1:(source< -1?-1:source),t=(x+1)*4096,j=t|0;
+                  mod=j>=8192?fmTable[8192]:fmTable[j]+(fmTable[j+1]-fmTable[j])*(t-j);
+                }else mod=this.transformFmSignal(source,fmTransfer,fmIndex);
+              }
+              const shifted=freqTarget+mod*Math.abs(fmFreqs[i]||.001)*fmIndex;
+              freq=shifted>limit?limit:(shifted< -limit?-limit:shifted);
+            }
+            const envRaw=envStart+envStep*i,env=envRaw<0?0:(envRaw>1?1:envRaw);
+            envState.currentLevel=env;
+            const vol=volumeBase*env;
+            // FM modulators continue to advance and modulate through quiet
+            // ADSR regions, just as they do in the ordinary sample renderer.
+            const audible=env>.000001&&vol>.000001&&!g.muted&&!g.isUltrasonic;
+            if(!audible&&!fmOutput)continue;
+            const ph=phase+phaseOffset,unit=ph-Math.floor(ph);
+            const position=unit*N,ii=position|0,frac=position-ii;
+            const shaped=tab[ii]+(tab[ii+1]-tab[ii])*frac;
+            let raw=shaped;
+            if(fmOutput){
+              let fmRaw=shaped;
+              if(g.waveform==='square'){
+                if(g.width<=0)fmRaw=fmRaw*2-1;
+                else{const duty=Math.max(.02,Math.min(.98,.5+(g.width-.5)*1.8));fmRaw-=2*duty-1;}
+              }else if(g.waveform==='sawtooth'&&g.width<=0)fmRaw=fmRaw*2-1;
+              else if(g.waveform==='clockwork')fmRaw-=Math.min(.05,Math.max(.001,(Number(g.clockTickMs)||4)/1000*1.4));
+              fmOutputSignal[i]=fmRaw*(isSubharmonic?subGainScratch[i]:1);
+              fmOutputFreq[i]=freq;
+              raw=fmRaw;
+            }
+            if(widthEnabled){
+              let w=widthStart+widthStep*i;
+              w=w<0?0:(w>1?1:w);
+              st.widthEnv.currentLevel=w;
+              if(w<.999999){const sine=Math.sin(2*Math.PI*ph);raw=sine+(raw-sine)*w;}
+            }
+            if(audible && !fmModOnly){
+              let sample=raw*vol;
+              if(heightActive&&sample!==0){
+                const frame=blockFrameStart+i;
+                if(heightGain===1&&(heightActualGain===1||!Number.isFinite(heightActualGain))){
+                  heightActualAlpha=heightAlpha;heightActualGain=1;heightLow=sample;
+                }else{
+                  if(heightPrevious!==frame-1||!Number.isFinite(heightLow)){
+                    heightLow=sample;heightActualAlpha=heightAlpha;
+                    heightActualGain=heightActualGain===1?1:heightGain;
+                  }else{
+                    heightActualAlpha+=(heightAlpha-heightActualAlpha)*.002;
+                    heightActualGain+=(heightGain-heightActualGain)*.002;
+                  }
+                  if(heightGain===1&&Math.abs(heightActualGain-1)<1e-5)heightActualGain=1;
+                  heightLow+=heightActualAlpha*(sample-heightLow);
+                  sample=heightLow+(sample-heightLow)*heightActualGain;
+                }
+                heightPrevious=frame;
+              }
+              const fade=v._tailFadeSamples>0?Math.max(0,(v._tailFadeSamples-i)/Math.max(1,v._tailFadeTotal||1)):1;
+              const d=sample*(isSubharmonic?subGainScratch[i]:1)*fade;
+              if(d!==0){const outIndex=segmentStart+i;if(spatial){L[outIndex]+=d*g.spatialL;R[outIndex]+=d*g.spatialR;}else{L[outIndex]+=d;R[outIndex]+=d;}}
+            }
+            let nextPhase=phase+freq*srInverse*(shapeStart+shapeStep*i);
+            nextPhase-=Math.floor(nextPhase);phase=nextPhase;lastMovedIndex=i;
+          }
+          if(fmOutput){
+            st._fmSignal=fmOutputSignal[Math.max(0,sampleCount-1)]||0;
+            st._fmFrequency=fmOutputFreq[Math.max(0,sampleCount-1)]||carrierFreq;
+          }
+          if(heightActive){
+            st._hrtfElevationLastFrame=heightPrevious;
+            st._hrtfElevationLow=heightLow;
+            st._hrtfElevationAlpha=heightActualAlpha;
+            st._hrtfElevationHighGain=heightActualGain;
+          }
+          st.phase=phase;
+          // Keep the dormant eccentric phase ready for a later off-centre change,
+          // without doing its rate calculation at every sample while disabled.
+          if(lastMovedIndex>=0){
+            const offStart=Number.isFinite(Number(st.offcenterPhase))?Number(st.offcenterPhase):0;
+            const carrierStart=this.offcenterCarrierHz(freqTarget,shapeStart),carrierEnd=this.offcenterCarrierHz(freqTarget,shapeEnd);
+            st.offcenterPhase=offStart+(carrierStart+carrierEnd)*.5*(lastMovedIndex+1)/this.sr;
+          }
+        }
+        if(v._tailFadeSamples>0){
+          v._tailFadeSamples=Math.max(0,v._tailFadeSamples-segmentLength);
+          if(v._tailFadeSamples===0){
+            v._dead=true;
+            if(retiringVoice)this.fadingTails.delete(v.id);else this.voices.delete(v.id);
+            this.voiceArraysDirty=true;
+          }
+        }
+        if(v.releasing&&blockFrameEnd>=releaseEndFrame){
+          v._dead=true;
+          if(retiringVoice)this.fadingTails.delete(v.id);else this.voices.delete(v.id);
+          this.voiceArraysDirty=true;
+        }
+      }
+      for(let gi=0;gi<gears.length;gi++){
+        const g=gears[gi],shapeStart=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):1;
+        const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
+        const alpha=1-Math.exp(-span/(.006*Math.max(1e-6,this.sr)));
+        g.motionShapeRate=shapeStart+(shapeTarget-shapeStart)*alpha;
+      }
+        segmentStart=segmentEnd;
+      }
+      // All audio events and per-voice envelopes have now advanced to the end
+      // of this quantum. The output fade and sample clock advance once only.
+      this.frame=quantumLocalFrame;
+      for(let i=0;i<blockLength;i++){
+        let fp=1;if(this.fadeSamples>0){const t=1-(this.fadeSamples/Math.max(1,this.fadeTotal));const eased=t*t*(3-2*t);fp=this.fadeStartGain+(this.fadeTarget-this.fadeStartGain)*eased;this.fadeSamples--;if(this.fadeSamples<=0)fp=this.fadeTarget;}
+        let pp=1;if(this.panicSamples>0){pp=this.panicStartGain*this.panicSamples/Math.max(1,this.panicTotal);this.panicSamples--;}
+        const g=fp*pp;L[i]=L[i]*this.master*g;R[i]=R[i]*this.master*g;this.frame++;
+      }
+      // Reconstruct the visible voice lists only after sound is complete.
+      if(this.voiceArraysDirty)this.refreshVoiceArrays();
+      if(!this.processNotified){this.processNotified=true;this.port.postMessage({type:'processed',frame:this.frame});}
+      return true;
+    }
     for(let i=0;i<L.length;i++){
       const audioFrame=quantumStartFrame+i;
       let scheduledPolyChanged=false;
@@ -4951,6 +5420,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         try{ if(ev.type==='noteOn')this.noteOn(ev.message); else if(ev.type==='reopen')this.reopenVoice(ev.message); else this.noteOff(ev.message); scheduledPolyChanged=true; this._rtEpoch++; if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??'')); }
         catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
       }
+      // Scheduled MIDI events mutate voice ownership inside this sample loop.
+      // Refresh the cached render list at the event sample, otherwise a fast note
+      // whose on/off both land in this quantum can be absent for the whole block.
+      if(scheduledPolyChanged && this.voiceArraysDirty)this.refreshVoiceArrays();
       if(scheduledPolyChanged || this.polyTuningDirty){ this.recomputePolyTuningTargets(); this.polyTuningDirty=false; }
       let l=0,r=0;
       if(i===0 && this.spatialEnabled){
@@ -4981,12 +5454,19 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         const tailFade = v._tailFadeSamples>0 ? Math.max(0,Math.min(1,v._tailFadeSamples/Math.max(1,v._tailFadeTotal||1))) : 1;
         const masterForAudio=Math.max(.001,Number(v.masterTarget)||Number(v.masterFreq)||440)*presetPitchRatio;
         v.masterFreq=masterForAudio;
+        const subTarget=Number.isFinite(Number(v._subharmonicsTarget))?Math.max(0,Math.min(1,Number(v._subharmonicsTarget))):1;
+        let subGain=Number.isFinite(Number(v._subharmonicsGain))?Number(v._subharmonicsGain):1;
+        if(Math.abs(subTarget-subGain)>.00001)subGain+=(subTarget-subGain)*this._subharmonicGainAlpha;else subGain=subTarget;
+        v._subharmonicsGain=subGain;
         const pairs=v.gearPairs||[];
         for(let pi=0;pi<pairs.length;pi++){
           const g=pairs[pi].g,st=pairs[pi].st;if(!g)continue;
           const modOnly=anySolo&&!g.solo&&g._fmTargetCount>0;
           if(anySolo&&!g.solo&&!modOnly)continue;
-          const d=this.mixGear(g,st,masterForAudio,v.velocity,true)*tailFade;
+          const raw=this.mixGear(g,st,masterForAudio,v.velocity,true);
+          const ratioAbs=Math.abs(Number(g.ratio)||0),isSubharmonic=ratioAbs>0&&ratioAbs<.999999;
+          if(isSubharmonic&&st&&subGain<.999999&&Number.isFinite(Number(st._fmSignal)))st._fmSignal*=subGain;
+          const d=raw*(isSubharmonic?subGain:1)*tailFade;
           if(!modOnly&&d!==0){if(this.spatialEnabled){l+=d*g.spatialL;r+=d*g.spatialR;}else{l+=d;r+=d;}}
         }
         if(v._tailFadeSamples>0){v._tailFadeSamples--;if(v._tailFadeSamples<=0)alive=false;}
@@ -4999,12 +5479,19 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         const tailFade=v._tailFadeSamples>0?Math.max(0,Math.min(1,v._tailFadeSamples/Math.max(1,v._tailFadeTotal||1))):1;
         const masterForAudio=Math.max(.001,Number(v.masterTarget)||Number(v.masterFreq)||440)*presetPitchRatio;
         v.masterFreq=masterForAudio;
+        const subTarget=Number.isFinite(Number(v._subharmonicsTarget))?Math.max(0,Math.min(1,Number(v._subharmonicsTarget))):1;
+        let subGain=Number.isFinite(Number(v._subharmonicsGain))?Number(v._subharmonicsGain):1;
+        if(Math.abs(subTarget-subGain)>.00001)subGain+=(subTarget-subGain)*this._subharmonicGainAlpha;else subGain=subTarget;
+        v._subharmonicsGain=subGain;
         const pairs=v.gearPairs||[];
         for(let pi=0;pi<pairs.length;pi++){
           const g=pairs[pi].g,st=pairs[pi].st;if(!g)continue;
           const modOnly=anySolo&&!g.solo&&g._fmTargetCount>0;
           if(anySolo&&!g.solo&&!modOnly)continue;
-          const d=this.mixGear(g,st,masterForAudio,v.velocity,true)*tailFade;
+          const raw=this.mixGear(g,st,masterForAudio,v.velocity,true);
+          const ratioAbs=Math.abs(Number(g.ratio)||0),isSubharmonic=ratioAbs>0&&ratioAbs<.999999;
+          if(isSubharmonic&&st&&subGain<.999999&&Number.isFinite(Number(st._fmSignal)))st._fmSignal*=subGain;
+          const d=raw*(isSubharmonic?subGain:1)*tailFade;
           if(!modOnly&&d!==0){if(this.spatialEnabled){l+=d*g.spatialL;r+=d*g.spatialR;}else{l+=d;r+=d;}}
         }
         if(v._tailFadeSamples>0){v._tailFadeSamples--;if(v._tailFadeSamples<=0)alive=false;}
@@ -5050,8 +5537,17 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   fadeTo(target,duration){this.fadeStartGain=this.currentOutputGain();this.fadeTarget=Math.max(0,Math.min(1,Number(target)||0));this.fadeTotal=Math.max(1,Math.ceil(this.sr*Math.max(.001,Number(duration)||.008)));this.fadeSamples=this.fadeTotal;}
   currentOutputGain(){return this.fadeSamples>0?this.fadeStartGain*(this.fadeSamples/Math.max(1,this.fadeTotal)):1;}
   panic(){this.fadeSamples=0;this.panicStartGain=1;this.panicTotal=Math.max(1,Math.ceil(this.sr*.008));this.panicSamples=this.panicTotal;this.mono.active=false;this.mono.gate=false;this.mono.releasing=false;for(const v of this.voices.values()){if(!v||v._dead)continue;if(!v.releasing){v.releasing=true;v.sourceKeyId=String(v.id);v.releaseStart=this.frame;this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);this.releaseVoiceQueue.push(v);}}this.lastPolyVoice=null;this.voiceArraysDirty=true;}
-  fadeVoice(id,duration=.008){const v=this.voices.get(String(id));if(!v)return;if(!v.releasing){v.releasing=true;v.sourceKeyId=String(v.id);v.releaseStart=this.frame;this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);this.releaseVoiceQueue.push(v);}v._tailFadeSamples=Math.max(1,Math.ceil(this.sr*Math.max(.001,duration))); this.voiceArraysDirty=true;v._tailFadeTotal=v._tailFadeSamples;v._tailFadeStart=1;}
-  hardStopVoice(id){const key=String(id),v=this.voices.get(key);if(v&&!v.releasing)this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);if(v)v._dead=true;this.voices.delete(key);this.fadingTails.delete(key);this.voiceArraysDirty=true;}
+  fadeVoice(id,duration=.008){
+    const key=String(id);let v=this.voices.get(key);
+    // Released POLY voices receive an internal #release ID. Legacy/main-thread
+    // lifecycle messages still carry the original key, so resolve that owner too.
+    if(!v){for(const candidate of this.voices.values()){if(candidate&&!candidate._dead&&candidate.releasing&&candidate.sourceKeyId===key){v=candidate;break;}}}
+    if(!v){for(const candidate of this.fadingTails.values()){if(candidate&&!candidate._dead&&candidate.sourceKeyId===key){v=candidate;break;}}}
+    if(!v)return;
+    if(!v.releasing){v.releasing=true;v.sourceKeyId=String(v.id);v.releaseStart=this.frame;this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);this.releaseVoiceQueue.push(v);}
+    v._tailFadeSamples=Math.max(1,Math.ceil(this.sr*Math.max(.001,duration)));this.voiceArraysDirty=true;v._tailFadeTotal=v._tailFadeSamples;v._tailFadeStart=1;
+  }
+  hardStopVoice(id){const key=String(id),v=this.voices.get(key);if(v&&!v.releasing)this.activeVoiceCount=Math.max(0,this.activeVoiceCount-1);if(v)v._dead=true;this.voices.delete(key);this.fadingTails.delete(key);this.voiceArraysDirty=true;this.refreshSubharmonicVoiceEligibility();}
   releaseGear(id){for(const v of this.voices.values()){const st=v.gears.get(id),g=this.gears.get(id);if(st&&g){this.captureRelease(st.env,this.envAtFast(st.env,this.frame,g,false));if(st.widthEnv)this.captureRelease(st.widthEnv,this.envAtFast(st.widthEnv,this.frame,g,true));}}}
   clearAll(){
     // Hard preset handover: nothing scheduled for the previous preset may wake up
@@ -5061,7 +5557,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.releaseVoiceQueue=[];this.releaseVoiceHead=0;this.polyReuseEnabled=false;this.polyTuningDirty=false;
     this.scheduledMidiEvents=[];this.scheduledMidiHead=0;this.scheduledMidiOns.clear();this.scheduledMidiOrder=0;
     this.mono.active=false;this.mono.gate=false;this.mono.releasing=false;this.mono.releaseStart=0;this.mono.velocity=0;
-    this.gears.clear();this.gearArray=[];this.maxReleaseSec=0;this.samples.clear();this.bloomAttackCache.clear();this.jiRootCacheKey='';this.jiRootCacheValue=null;this.jiStableRoot=null;
+    this.gears.clear();this.gearArray=[];this._fmLookupDirty=false;this.maxReleaseSec=0;this.samples.clear();this.bloomAttackCache.clear();this.jiRootCacheKey='';this.jiRootCacheValue=null;this.jiStableRoot=null;
     this.driver.playing=false;this.driver.left=null;this.driver.right=null;this.driver.pos=0;
     this.panicSamples=0;this.panicTotal=1;this.panicStartGain=1;this.fadeSamples=0;this.fadeTotal=1;this.fadeStartGain=1;this.fadeTarget=1;this.master=0;this.masterTarget=0;
     this._rtEpoch++;this._rtBlockSerial=-1;
@@ -5326,7 +5822,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const liveWidth=Math.max(0,Math.min(.98,Number(gear.toothWidth)||0));
       const transitionWidthFrom=transitionActive ? Math.max(0,Math.min(.98,Number.isFinite(Number(gear._presetTransitionFromToothWidth))?Number(gear._presetTransitionFromToothWidth):liveWidth)) : liveWidth;
       const transitionWidthTo=transitionActive ? Math.max(0,Math.min(.98,Number.isFinite(Number(gear._presetTransitionToToothWidth))?Number(gear._presetTransitionToToothWidth):liveWidth)) : liveWidth;
-      return {id:Number(gear.id),ratio:Number(gear.ratio)||1,sourceMode:gear.sourceMode||waveform,fmEnabled:!!gear.fmEnabled,fmSourceId:Number(gear.fmSourceId)||0,fmIndex:Math.max(0,Math.min(8,Number(gear.fmIndex)||0)),fmFunction:String(gear.fmFunction||'none'),freq:Math.max(.001,Math.abs(Number(gear.freq)||.001)),shapeRate,motionShapeRate,offcenter:getGearOffcenterPercent(gear),waveform,width:gear._presetTransitionFromToothWidth!==undefined&&transitionActive?liveWidth:getGearToothWidth(gear),waveformFrom:transitionFrom,waveformTo:transitionTo,waveMorph:transitionT,widthFrom:transitionWidthFrom,widthTo:transitionWidthTo,presetTransitionActive:!!transitionActive,soloFrom:transitionActive&&gear._presetTransitionFromSolo!==undefined?!!gear._presetTransitionFromSolo:!!gear.solo,soloTo:transitionActive&&gear._presetTransitionToSolo!==undefined?!!gear._presetTransitionToSolo:!!gear.solo,mutedFrom:transitionActive&&gear._presetTransitionFromMuted!==undefined?!!gear._presetTransitionFromMuted:!!gear.muted,mutedTo:transitionActive&&gear._presetTransitionToMuted!==undefined?!!gear._presetTransitionToMuted:!!gear.muted,transitionMix:transitionActive?((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1)+( ((gear._presetTransitionToMuted||((state._presetTransitionTargetSolo)&&!gear._presetTransitionToSolo))?0:1)-((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1))*transitionT:1,transitionSourceSolo:!!state._presetTransitionSourceSolo,transitionTargetSolo:!!state._presetTransitionTargetSolo,volume:Math.max(0,Math.min(1,Number(gear.volume)||0)),muted:!!gear.muted,solo:!!gear.solo,isUltrasonic:!!gear.isUltrasonic,adsr,widthMod,widthModEnabled:!!gear.widthModEnabled,adsrTargetNonVolume:gearAdsrTargetsNonVolume(gear),accelerationSec:Math.max(0,getEffectiveGearAccelerationMs(gear)/1000),bloomAttack:Math.max(0,Math.min(10,getBloomAttackForGear(gear))),phaseOffset:Number(gear.phaseOffsetRad)||0,phaseSeed:Number.isFinite(Number(gear._workletPhaseSeed))?Number(gear._workletPhaseSeed):Number(gear.angle||0)/(TAU),audioRef:Number(gear.id),audioRootNote:Math.max(0,Math.min(127,Math.round(Number.isFinite(Number(gear.audioRootNote))?Number(gear.audioRootNote):48))),loopStart:Number(gear.audioLoopStart)||0,loopEnd:Number(gear.audioLoopEnd)||Number(gear.audioBuffer?.duration)||.001,vinyl:isGearVinylMode(gear),teeth:Number(gear.teeth)||120,clockTickMs:Number(state.clockworkTickWidthMs)||4,...workletSpatialForGear(gear),orbitSpatial:{enabled:!!(gear.orbitEnabled&&!gear.hrtfZAdsr),baseAngle:Number(gear.orbitAngle)||0,phase:Number(gear.orbitPhase)||0,periodSec:Math.max(.25,Number(gear.orbitPeriodSec)||8),direction:gear.orbitDirection<0?-1:1,radius:Math.max(0,Number(gear.orbitRadius)||0),hrtfZ:Number(gear.hrtfZ)||0,hrtfZAngleRad:(Number(gear.hrtfZAngleDeg)||0)*Math.PI/180,hrtfZRate:Math.max(.1,Number(gear.hrtfZRate)||1),scale:Number(state.spatialScale)||.01}};
+      return {id:Number(gear.id),ratio:(Number.isFinite(Number(gear.ratio))?Number(gear.ratio):1),sourceMode:gear.sourceMode||waveform,fmEnabled:!!gear.fmEnabled,fmSourceId:Number(gear.fmSourceId)||0,fmIndex:Math.max(0,Math.min(8,Number(gear.fmIndex)||0)),fmFunction:String(gear.fmFunction||'none'),freq:Math.max(.001,Math.abs(Number(gear.freq)||.001)),shapeRate,motionShapeRate,offcenter:getGearOffcenterPercent(gear),waveform,width:gear._presetTransitionFromToothWidth!==undefined&&transitionActive?liveWidth:getGearToothWidth(gear),waveformFrom:transitionFrom,waveformTo:transitionTo,waveMorph:transitionT,widthFrom:transitionWidthFrom,widthTo:transitionWidthTo,presetTransitionActive:!!transitionActive,soloFrom:transitionActive&&gear._presetTransitionFromSolo!==undefined?!!gear._presetTransitionFromSolo:!!gear.solo,soloTo:transitionActive&&gear._presetTransitionToSolo!==undefined?!!gear._presetTransitionToSolo:!!gear.solo,mutedFrom:transitionActive&&gear._presetTransitionFromMuted!==undefined?!!gear._presetTransitionFromMuted:!!gear.muted,mutedTo:transitionActive&&gear._presetTransitionToMuted!==undefined?!!gear._presetTransitionToMuted:!!gear.muted,transitionMix:transitionActive?((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1)+( ((gear._presetTransitionToMuted||((state._presetTransitionTargetSolo)&&!gear._presetTransitionToSolo))?0:1)-((gear._presetTransitionFromMuted||((state._presetTransitionSourceSolo)&&!gear._presetTransitionFromSolo))?0:1))*transitionT:1,transitionSourceSolo:!!state._presetTransitionSourceSolo,transitionTargetSolo:!!state._presetTransitionTargetSolo,volume:Math.max(0,Math.min(1,Number(gear.volume)||0)),muted:!!gear.muted,solo:!!gear.solo,isUltrasonic:!!gear.isUltrasonic,adsr,widthMod,widthModEnabled:!!gear.widthModEnabled,adsrTargetNonVolume:gearAdsrTargetsNonVolume(gear),accelerationSec:Math.max(0,getEffectiveGearAccelerationMs(gear)/1000),bloomAttack:Math.max(0,Math.min(10,getBloomAttackForGear(gear))),phaseOffset:Number(gear.phaseOffsetRad)||0,phaseSeed:Number.isFinite(Number(gear._workletPhaseSeed))?Number(gear._workletPhaseSeed):Number(gear.angle||0)/(TAU),audioRef:Number(gear.id),audioRootNote:Math.max(0,Math.min(127,Math.round(Number.isFinite(Number(gear.audioRootNote))?Number(gear.audioRootNote):48))),loopStart:Number(gear.audioLoopStart)||0,loopEnd:Number(gear.audioLoopEnd)||Number(gear.audioBuffer?.duration)||.001,vinyl:isGearVinylMode(gear),teeth:Number(gear.teeth)||120,clockTickMs:Number(state.clockworkTickWidthMs)||4,...workletSpatialForGear(gear),orbitSpatial:{enabled:!!(gear.orbitEnabled&&!gear.hrtfZAdsr),baseAngle:Number(gear.orbitAngle)||0,phase:Number(gear.orbitPhase)||0,periodSec:Math.max(.25,Number(gear.orbitPeriodSec)||8),direction:gear.orbitDirection<0?-1:1,radius:Math.max(0,Number(gear.orbitRadius)||0),hrtfZ:Number(gear.hrtfZ)||0,hrtfZAngleRad:(Number(gear.hrtfZAngleDeg)||0)*Math.PI/180,hrtfZRate:Math.max(.1,Number(gear.hrtfZRate)||1),scale:Number(state.spatialScale)||.01}};
     }
     let unifiedConfigSyncTimer=0;
     let unifiedConfigSyncPending=false;
@@ -5373,7 +5869,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const jiThresholdCents=state.keyboardTuning?.enabled ? Math.max(0,tuningStepCentsAt(absoluteSemitone,state.keyboardTuning)*0.5) : Infinity;
         return {keyId:String(v.keyId),absoluteSemitone,baseRatio,jiThresholdCents,masterFreq:Math.max(.001,Number(v.masterFreq)||getPolyMasterFrequency(absoluteSemitone)),velocity:Number(v.velocity)||1,releasing:!!v.releasing};
       }):[];
-      postUnifiedAudio({type:'config',masterVolume:Math.max(0,Math.min(1,Number(state.masterVolume)||0)),spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:Number(state.spatialScale)||.01,bloomAmount:Math.max(-5,Math.min(5,Number(state.bloom?.amount)||0)),bloomPlacementOrder:!!state.bloom?.placementOrder,jiKeyboard:!!state.jiKeyboard,keyboardTuningVersion:Number(state._keyboardTuningVersion)||0,baseFundamentalFreq:Math.max(.001,Number(state.baseFundamentalFreq)||440),pitchBendRatio:Math.max(.000001,midiPitchBendRatio()),gears:gearList,mono:{active:monoActive,freq:monoFreq,velocity:1},polyVoices,driver:{playing:!!(state.audioDriver?.buffer&&state.audioDriver.playing),rate:Number(state.audioDriver?.driverRate)||1,keyboardKeyRatio:Number(state.audioDriver?.keyboardKeyRatio)||1,loopStart:Number(state.audioDriver?.loopStart)||0,loopEnd:Number(state.audioDriver?.loopEnd)||Number(state.audioDriver?.buffer?.duration)||.001,crossfadeSec:Number(typeof DRIVER_CROSSFADE_MS!=='undefined'?DRIVER_CROSSFADE_MS:25)/1000,posReset:!!force}});
+      postUnifiedAudio({type:'config',masterVolume:Math.max(0,Math.min(1,Number(state.masterVolume)||0)),spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:Number(state.spatialScale)||.01,subharmonicsLowestOnly:state.subharmonicsLowestOnly!==false,bloomAmount:Math.max(-5,Math.min(5,Number(state.bloom?.amount)||0)),bloomPlacementOrder:!!state.bloom?.placementOrder,jiKeyboard:!!state.jiKeyboard,keyboardTuningVersion:Number(state._keyboardTuningVersion)||0,baseFundamentalFreq:Math.max(.001,Number(state.baseFundamentalFreq)||440),pitchBendRatio:Math.max(.000001,midiPitchBendRatio()),gears:gearList,mono:{active:monoActive,freq:monoFreq,velocity:1},polyVoices,driver:{playing:!!(state.audioDriver?.buffer&&state.audioDriver.playing),rate:Number(state.audioDriver?.driverRate)||1,keyboardKeyRatio:Number(state.audioDriver?.keyboardKeyRatio)||1,loopStart:Number(state.audioDriver?.loopStart)||0,loopEnd:Number(state.audioDriver?.loopEnd)||Number(state.audioDriver?.buffer?.duration)||.001,crossfadeSec:Number(typeof DRIVER_CROSSFADE_MS!=='undefined'?DRIVER_CROSSFADE_MS:25)/1000,posReset:!!force}});
       unifiedConfigSyncLastPerf=performance.now();
       return true;
     }
@@ -6372,7 +6868,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         card.addEventListener('pointerup',()=>{card.style.opacity='';});
         card.addEventListener('pointercancel',()=>{card.style.opacity='';});
         card.addEventListener('click',()=>{
-          const gear=addGear(c.teeth);
+          const meshPosition=isSubharmonic?findRatioGearMeshPosition(c.teeth):null;
+          const gear=meshPosition?addGear(c.teeth,meshPosition.x,meshPosition.y):addGear(c.teeth);
           setActivePaletteGear(gear);
           gear.ratioLock=true;
           gear.teethLock=false;
@@ -10262,6 +10759,29 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       return common;
     }
 
+    function findRatioGearMeshPosition(teeth, preferredAngle=null) {
+      const main=state.gears.find(g=>g.isMain)||state.gears[0];
+      if(!main)return null;
+      const module=Math.max(0.000001,Number(state.pitchModule)||1);
+      const radius=Math.max(1,Math.round(Number(teeth)||1))*module*.5;
+      const distance=main.pitchRadius+radius;
+      const startAngle=preferredAngle!==null&&preferredAngle!==undefined&&Number.isFinite(Number(preferredAngle))?Number(preferredAngle):(Math.max(0,state.gears.length-1)*Math.PI/3);
+      let best=null,bestOverlap=Infinity;
+      const steps=180;
+      for(let i=0;i<steps;i++){
+        const angle=startAngle+i*(Math.PI*2/steps);
+        const x=main.x+Math.cos(angle)*distance,y=main.y+Math.sin(angle)*distance;
+        let overlapScore=0;
+        for(const other of state.gears){
+          if(!other||other.id===main.id)continue;
+          const penetration=radius+other.pitchRadius-Math.hypot(x-other.x,y-other.y)-1.5;
+          if(penetration>0)overlapScore+=penetration*penetration;
+        }
+        if(overlapScore<bestOverlap){bestOverlap=overlapScore;best={x,y};if(overlapScore===0)break;}
+      }
+      return best;
+    }
+
     function addGear(teeth = 60, x = null, y = null, isMain = false) {
       const color = isMain ? '#f59e0b' : COLOR_PALETTE[(state.gears.length - 1) % COLOR_PALETTE.length];
       const __dfPrefs = window.__dfAppSettings || {};
@@ -10805,15 +11325,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       voice.slot = voice.optimized ? voice.slot : (voice._legacyPooled ? voice.slot : null);
     }
 
-    // POLY voice budget: hard-cap NOTES CURRENTLY HELD at 10. Release tails are
-    // independent and are cleaned up when their ADSR completes (with a separate
-    // bounded safety cap of 256 so pathological long-release sessions cannot grow forever).
-    const POLY_MAX_VOICES = 10;
+    // Reserve ten sustained chord notes while allowing up to ten additional
+    // overlapping short-note attacks. The independent release pool stays at ten.
+    // Both limits must match noteOn() in the AudioWorklet.
+    const POLY_MAX_VOICES = 20;
     const POLY_STEAL_FADE = 0.100;
     const POLY_SAME_NOTE_FADE = 0.100;
     const POLY_OLD_TAIL_FADE = 0.100;
-    const POLY_MAX_RELEASE_TAILS = 256;
-    const POLY_MAX_ACCEL_REUSE_TAILS = 256;
+    const POLY_MAX_RELEASE_TAILS = 10;
+    const POLY_MAX_ACCEL_REUSE_TAILS = 10;
 
     function polyLiveVoices() {
       return [
@@ -10896,7 +11416,9 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const accelReuse=state.gears.some(g=>getEffectiveGearAccelerationMs(g)>0);
       const maxTails=accelReuse?POLY_MAX_ACCEL_REUSE_TAILS:POLY_MAX_RELEASE_TAILS;
       if(tails.length<=maxTails) return;
-      tails.sort((a,b)=>(Number(a._polyVoiceOrder)||0)-(Number(b._polyVoiceOrder)||0));
+      // Release age, not original note-on age, determines which tail the Worklet
+      // evicts first. Keeping these orders aligned prevents stale tail-reuse requests.
+      tails.sort((a,b)=>(Number(a._releaseStartedAt)||Number(a._noteStartedAt)||0)-(Number(b._releaseStartedAt)||Number(b._noteStartedAt)||0));
       while(tails.length>maxTails){
         const oldest=tails.shift();
         forceStopPolyVoice(oldest,POLY_OLD_TAIL_FADE,'old-release-tail');
@@ -10950,7 +11472,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         voice.keyHeld=true;voice.releasing=false;voice._forceStopped=false;voice._sameNoteInterrupted=false;voice._noteStartedAt=now;voice._releaseStartedAt=null;
         state.polyVoices.set(String(keyId),voice);state.polyVoiceRegistry?.add(voice);markPolyVoiceOrder(voice);
         const msg={type:'reopen',sourceKeyId:oldKeyId,keyId:String(keyId),masterFreq,absoluteSemitone,baseRatio,jiThresholdCents,velocity:Math.max(.0001,Math.min(1,Number(velocity)||1))};
-        if(Number.isFinite(Number(midiTargetFrame)))msg.targetFrame=Number(midiTargetFrame);
+        if(midiTargetFrame!=null && Number.isFinite(Number(midiTargetFrame)))msg.targetFrame=Number(midiTargetFrame);
         postUnifiedAudio(msg);
         queuePolyVisualBatch(voice,false);
         return true;
@@ -12260,13 +12782,36 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     }
 
     const ADSR_PATH_STAGE_ORDER={attack:0,decay:1,sustain:2,release:3};
-    function normalizedAdsrPathPoints(adsr){
-      const raw=Array.isArray(adsr?.adsrPathPoints)&&adsr.adsrPathPoints.length
-        ? adsr.adsrPathPoints
-        : (Array.isArray(adsr?.sustainAutomation)?adsr.sustainAutomation.map(p=>({...p,stage:'sustain'})):[]);
-      return raw.filter(p=>p&&Object.prototype.hasOwnProperty.call(ADSR_PATH_STAGE_ORDER,String(p.stage||'sustain'))&&Number.isFinite(Number(p.t))&&Number.isFinite(Number(p.value)))
-        .map(p=>({stage:String(p.stage||'sustain'),t:Math.max(.01,Math.min(.99,Number(p.t))),value:Math.max(0,Math.min(1,Number(p.value)))}))
-        .sort((a,b)=>(ADSR_PATH_STAGE_ORDER[a.stage]-ADSR_PATH_STAGE_ORDER[b.stage])||(a.t-b.t)).slice(0,30);
+    const ADSR_PATH_POINTS_CACHE=new WeakMap();
+    function normalizedAdsrPathPoints(adsr, stage=null){
+      if(!adsr || (typeof adsr!=='object' && typeof adsr!=='function')) return [];
+      const pathPoints=Array.isArray(adsr.adsrPathPoints)?adsr.adsrPathPoints:null;
+      const sustainAutomation=Array.isArray(adsr.sustainAutomation)?adsr.sustainAutomation:null;
+      const pathLength=pathPoints?pathPoints.length:-1;
+      const sustainLength=sustainAutomation?sustainAutomation.length:-1;
+      let cached=ADSR_PATH_POINTS_CACHE.get(adsr);
+      if(!cached || cached.pathPoints!==pathPoints || cached.sustainAutomation!==sustainAutomation ||
+         cached.pathLength!==pathLength || cached.sustainLength!==sustainLength){
+        const usePath=!!pathPoints&&pathPoints.length>0;
+        const raw=usePath?pathPoints:(sustainAutomation||[]);
+        const points=[];
+        for(let i=0;i<raw.length;i++){
+          const p=raw[i];
+          if(!p)continue;
+          const pointStage=String(usePath?(p.stage||'sustain'):'sustain');
+          if(!Object.prototype.hasOwnProperty.call(ADSR_PATH_STAGE_ORDER,pointStage))continue;
+          const t=Number(p.t),value=Number(p.value);
+          if(!Number.isFinite(t)||!Number.isFinite(value))continue;
+          points.push({stage:pointStage,t:Math.max(.01,Math.min(.99,t)),value:Math.max(0,Math.min(1,value))});
+        }
+        points.sort((a,b)=>(ADSR_PATH_STAGE_ORDER[a.stage]-ADSR_PATH_STAGE_ORDER[b.stage])||(a.t-b.t));
+        if(points.length>30)points.length=30;
+        const byStage={attack:[],decay:[],sustain:[],release:[]};
+        for(let i=0;i<points.length;i++)byStage[points[i].stage].push(points[i]);
+        cached={pathPoints,sustainAutomation,pathLength,sustainLength,points,byStage};
+        ADSR_PATH_POINTS_CACHE.set(adsr,cached);
+      }
+      return stage ? (cached.byStage[stage]||[]) : cached.points.slice();
     }
     function adsrStageFallbackValue(adsr,stage,t,start,end){
       const u=Math.max(0,Math.min(1,Number(t)||0));
@@ -12276,7 +12821,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       return start+(end-start)*u;
     }
     function adsrPathStageValue(adsr,stage,t,start,end,fallbackValue){
-      const u=Math.max(0,Math.min(1,Number(t)||0)),points=normalizedAdsrPathPoints(adsr).filter(p=>p.stage===stage);
+      const u=Math.max(0,Math.min(1,Number(t)||0)),points=normalizedAdsrPathPoints(adsr,stage);
       if(!points.length)return Number.isFinite(Number(fallbackValue))?Number(fallbackValue):start+(end-start)*u;
       if(u<=0)return start;if(u>=1)return end;
       let prevT=0,prevV=start,nextT=1,nextV=end;
@@ -12897,7 +13442,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       // Send the audio event before any visual/envelope bookkeeping. The Worklet
       // owns the sound, so the MIDI release should never wait behind UI work.
       const noteOffMessage={type:'noteOff',mode:'poly',keyId:String(keyId)};
-      if(Number.isFinite(Number(midiTargetFrame)))noteOffMessage.targetFrame=Number(midiTargetFrame);
+      if(midiTargetFrame!=null && Number.isFinite(Number(midiTargetFrame)))noteOffMessage.targetFrame=Number(midiTargetFrame);
       postUnifiedAudio(noteOffMessage);
       queuePolyVisualBatch(voice,true);
       state.polyVoices.delete(keyId);state.polyReleaseTails?.add(voice);state.polyVoiceRegistry?.add(voice);trimPolyReleaseTails();
@@ -13007,7 +13552,11 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if(state.polyVoices.size>=POLY_MAX_VOICES){
         // With Accelleration at zero, never recycle a release tail into a new note.
         // Preserve the requested first-eight independent release behaviour.
-        const oldest=[...state.polyVoices.values()].sort((a,b)=>(a._polyVoiceOrder||0)-(b._polyVoiceOrder||0))[0]; if(oldest){hardStopPolyVoice(oldest,.008);}
+        let oldest=null;
+        for(const v of state.polyVoices.values()){
+          if(!oldest||(v._polyVoiceOrder||0)<(oldest._polyVoiceOrder||0))oldest=v;
+        }
+        if(oldest)hardStopPolyVoice(oldest,.008);
       }
       const absoluteSemitone=Number(semitone)+state.octaveShift*12;
       const baseRatioForVoice=Math.max(1e-12,getKeyboardBaseTuningRatio(absoluteSemitone));
@@ -13019,7 +13568,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const baseRatio=baseRatioForVoice;
       const jiThresholdCents=state.keyboardTuning?.enabled ? Math.max(0,tuningStepCentsAt(absoluteSemitone,state.keyboardTuning)*0.5) : Infinity;
       const noteOnMessage={type:'noteOn',mode:'poly',keyId:String(keyId),masterFreq,absoluteSemitone,baseRatio,jiThresholdCents,velocity:voice.velocity};
-      if(Number.isFinite(Number(midiTargetFrame)))noteOnMessage.targetFrame=Number(midiTargetFrame);
+      if(midiTargetFrame!=null && Number.isFinite(Number(midiTargetFrame)))noteOnMessage.targetFrame=Number(midiTargetFrame);
       postUnifiedAudio(noteOnMessage);
       // Visual ADSR bookkeeping happens after the audio message. For MIDI it is
       // deferred one animation frame so layout/rendering cannot sit in the hot path.
@@ -13145,62 +13694,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         state.keyboardVisualReleaseRaf=0;
         const pending=[...state.keyboardVisualReleaseQueue];
         state.keyboardVisualReleaseQueue.clear();
-        const keys=state.keyboardDomKeys.length?state.keyboardDomKeys:document.querySelectorAll('#virtual-keyboard .key');
-        const fadeKeys=new Set(), fadeRecords=[];
         pending.forEach(id=>{
-          const rec=state.keyboardVisualNotes.get(String(id));
-          if(!rec?.fading)return;
-          const note=Number(rec.semitone)+(Number(state.octaveShift)||0)*12;
-          const otherActive=[...state.keyboardVisualNotes.values()].some(other=>other!==rec && !other?.fading && Number(other?.semitone)+(Number(state.octaveShift)||0)*12===note);
-          if(otherActive)return;
-          const fadeColor=`hsl(${Number(rec.hue)||0},100%,${7+53*Math.max(.04,Math.min(1,Number(rec.intensity)||1))}%)`;
-          const fadeFg=(Number(rec.intensity)||1)>0.45?'#000000':'#f8fafc';
-          const exact=keys.filter(k=>String(k.dataset.noteVisualKey||'').split('|').includes(String(id)));
-          const candidates=exact.length?exact:keys;
-          candidates.forEach(k=>{
-            if(Number(k.getAttribute('data-note'))!==note)return;
-            fadeKeys.add(k);fadeRecords.push({id:String(id),key:k,fadeColor,fadeFg});
-            k.classList.add('note-lit','note-fading');
-            k.classList.remove('active');
-            k.style.setProperty('--note-lit-bg',fadeColor);
-            k.style.setProperty('--note-lit-fg',fadeFg);
-            k.style.setProperty('background-color',fadeColor,'important');
-            k.style.setProperty('color',fadeFg,'important');
-            k.__dfNoteRenderState=null;
-          });
+          const key=String(id);
+          const rec=state.keyboardVisualNotes.get(key);
+          if(rec?.fading)state.keyboardVisualNotes.delete(key);
         });
-        // One RAF later: force the actual rendered property to black. This avoids
-        // relying on a custom-property dependency to start the CSS transition.
-        if(fadeKeys.size)requestAnimationFrame(()=>{
-          fadeKeys.forEach(k=>{
-            k.style.setProperty('background','#000000','important');
-            k.style.setProperty('background-color','#000000','important');
-            k.style.setProperty('background-image','none','important');
-            k.style.setProperty('color','#f8fafc','important');
-          });
-        });
-        if(fadeRecords.length){
-          window.setTimeout(()=>{
-            const affected=[...fadeKeys];
-            fadeRecords.forEach(({id})=>{
-              const rec=state.keyboardVisualNotes.get(id);
-              if(rec?.fading)state.keyboardVisualNotes.delete(id);
-            });
-            affected.forEach(k=>{
-              const note=Number(k.getAttribute('data-note'));
-              const stillActive=[...state.keyboardVisualNotes.values()].some(rec=>!rec?.fading && Number(rec?.semitone)+(Number(state.octaveShift)||0)*12===note);
-              const stillFading=[...state.keyboardVisualNotes.values()].some(rec=>rec?.fading && Number(rec?.semitone)+(Number(state.octaveShift)||0)*12===note);
-              if(!stillActive&&!stillFading){
-                k.classList.remove('note-lit','note-fading','active');
-                k.__dfNoteRenderState=null;
-                k.removeAttribute('data-note-visual-key');
-                k.style.removeProperty('--note-lit-bg');k.style.removeProperty('--note-lit-fg');
-                k.style.removeProperty('background');k.style.removeProperty('background-image');k.style.removeProperty('background-color');k.style.removeProperty('color');
-              }
-            });
-            updateKeyboardUI(state.activeSemitone,1.0);
-          },210);
-        }
+        // Remove released-note lighting on the next frame; no paint-only color fade.
         updateKeyboardUI(state.activeSemitone,1.0);
       });
     }
@@ -16418,8 +16917,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           state.gears.forEach(g => {
             if (g.isMain) return;
             if (g.ratioLock) {
-              const targetRatio = oldRatios.get(g.id) || 1;
-              g.teeth = Math.min(15015, Math.max(1, Math.round(newTeeth / Math.max(1e-9, targetRatio))));
+              const targetRatio = oldRatios.get(g.id);
+              // A disconnected gear has ratio 0. Preserve its tooth count until
+              // it meshes again instead of silently locking it to the 1:1 main gear.
+              if (Number.isFinite(targetRatio) && targetRatio > 0) {
+                g.teeth = Math.min(15015, Math.max(1, Math.round(newTeeth / targetRatio)));
+              }
             } else if (!g.teethLock) {
               const scale = oldMainTeeth > 0 ? newTeeth / oldMainTeeth : 1;
               g.teeth = Math.min(15015, Math.max(1, Math.round(g.teeth * scale)));
@@ -17143,7 +17646,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const main=state.gears.find(g=>g.isMain); if(!main)return;
       const v=Math.min(99999,Math.max(1,parseInt(val)||120));
       const oldMainTeeth=main.teeth; const oldRatios=new Map(state.gears.map(g=>[g.id,Math.abs(g.ratio)])); main.teeth=v;state.mainTeeth=v;
-      state.gears.forEach(g=>{if(g.isMain)return;if(g.ratioLock){const r=oldRatios.get(g.id)||1;g.teeth=Math.min(15015,Math.max(1,Math.round(v/Math.max(1e-9,r))));}else if(!g.teethLock){g.teeth=Math.min(15015,Math.max(1,Math.round(g.teeth*(oldMainTeeth>0?v/oldMainTeeth:1))));}});
+      state.gears.forEach(g=>{if(g.isMain)return;if(g.ratioLock){const r=oldRatios.get(g.id);if(Number.isFinite(r)&&r>0)g.teeth=Math.min(15015,Math.max(1,Math.round(v/r)));}else if(!g.teethLock){g.teeth=Math.min(15015,Math.max(1,Math.round(g.teeth*(oldMainTeeth>0?v/oldMainTeeth:1))));}});
       const pf=document.getElementById('palette-main-teeth');if(pf)pf.value=v;
       const pps=document.getElementById('palette-main-teeth-preset');if(pps)pps.value='';
       updateKinematicNetwork();renderRationalGearPalette();syncPaletteGearEditor();updateAudioNodes();renderGearList();
@@ -17220,7 +17723,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         document.getElementById('input-add-teeth').value = teeth;
       }
 
-      const gear = addGear(teeth);
+      const meshPosition=targetRatio<1?findRatioGearMeshPosition(teeth):null;
+      const gear = meshPosition?addGear(teeth,meshPosition.x,meshPosition.y):addGear(teeth);
       setActivePaletteGear(gear);
       gear.setPhaseOffsetDeg(phaseDeg);
       gear.ratioLock = ratioLock;
@@ -17277,7 +17781,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
         if (!Number.isFinite(Number(data.teeth))) return;
         const mouse = screenToWorld(e.offsetX, e.offsetY);
-        const gear = addGear(Math.max(1, Math.min(15015, Number(data.teeth))), mouse.x, mouse.y);
+        const droppedTeeth=Math.max(1,Math.min(15015,Number(data.teeth)));
+        const isSubharmonic=Number(data.num)>0&&Number(data.den)>0&&Number(data.num)<Number(data.den);
+        const mainForDrop=state.gears.find(g=>g.isMain)||state.gears[0];
+        const preferredAngle=mainForDrop?Math.atan2(mouse.y-mainForDrop.y,mouse.x-mainForDrop.x):null;
+        const meshPosition=isSubharmonic?findRatioGearMeshPosition(droppedTeeth,preferredAngle):null;
+        const gear = meshPosition?addGear(droppedTeeth,meshPosition.x,meshPosition.y):addGear(droppedTeeth,mouse.x,mouse.y);
         setActivePaletteGear(gear);
         gear.ratioLock = true;
         gear.teethLock = false;
@@ -17532,8 +18041,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         state.gears.forEach(g => {
           if (g.isMain) return;
           if (g.ratioLock) {
-            const targetRatio = oldRatios.get(g.id) || 1;
-            g.teeth = Math.min(15015, Math.max(1, Math.round(newTeeth / Math.max(1e-9, targetRatio))));
+            const targetRatio = oldRatios.get(g.id);
+            // A disconnected gear has ratio 0. Preserve its tooth count until
+            // it meshes again instead of silently locking it to the 1:1 main gear.
+            if (Number.isFinite(targetRatio) && targetRatio > 0) {
+              g.teeth = Math.min(15015, Math.max(1, Math.round(newTeeth / targetRatio)));
+            }
           } else if (!g.teethLock) {
             const scale = oldMainTeeth > 0 ? newTeeth / oldMainTeeth : 1;
             g.teeth = Math.min(15015, Math.max(1, Math.round(g.teeth * scale)));
@@ -18336,6 +18849,11 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const input=document.getElementById('chk-highlight-c-major'); if(input)input.checked=!!value;
         try{localStorage.setItem('darkflower.highlightCMajor.v1',value?'1':'0');}catch(_){}
         try{updateKeyboardLandmarks();}catch(_){}
+      },
+      setSubharmonicsLowestOnly(value){
+        state.subharmonicsLowestOnly=!!value;
+        try{postUnifiedAudio({type:'subharmonics-lowest-only',enabled:state.subharmonicsLowestOnly});}catch(_){}
+        return state.subharmonicsLowestOnly;
       },
       setInvertKeys(value){
         state.keyboardInvertedKeys=!!value;
@@ -19759,7 +20277,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         gear.teeth=newTeeth;
         state.gears.forEach(g=>{
           if(g.isMain)return;
-          if(g.ratioLock){const targetRatio=oldRatios.get(g.id)||1;g.teeth=clamp(Math.round(newTeeth/Math.max(1e-9,targetRatio)),1,15015);}
+          if(g.ratioLock){const targetRatio=oldRatios.get(g.id);if(Number.isFinite(targetRatio)&&targetRatio>0)g.teeth=clamp(Math.round(newTeeth/targetRatio),1,15015);}
           else if(!g.teethLock){const scale=oldMainTeeth>0?newTeeth/oldMainTeeth:1;g.teeth=clamp(Math.round((Number(g.teeth)||1)*scale),1,15015);}
         });
         state.mainTeeth=newTeeth;
@@ -22692,7 +23210,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
   const defaults={
     keyboardHandleMode:'behind', defaultBackgroundColor:'#120e09', defaultEDO:12,
     newGearMode:'copy', blankWaveform:'sawtooth', startupMode:'last', startupPresetName:'',
-    audioOutputIds:[], invertKeys:false, highlightScale:true, lightPlayedNotes:true,
+    audioOutputIds:[], invertKeys:false, highlightScale:true, lightPlayedNotes:true, subharmonicsLowestOnly:true,
     noVisualizer:false, startupVisualizer:'wave', adsrBouncyBall:false
   };
   let settings={...defaults};
@@ -22704,6 +23222,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
   if(!['sawtooth','sine','square','triangle'].includes(settings.blankWaveform))settings.blankWaveform='sawtooth';
   settings.defaultEDO=Math.max(1,Math.min(99,Math.round(Number(settings.defaultEDO)||12)));
   settings.audioOutputIds=Array.isArray(settings.audioOutputIds)?settings.audioOutputIds.map(String):[];
+  settings.subharmonicsLowestOnly=settings.subharmonicsLowestOnly!==false;
   window.__dfAppSettings=settings;
   const $=id=>document.getElementById(id);
   const bridge=()=>window.__dfCoreBridge||null;
@@ -22756,6 +23275,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       <div class="df-settings-subtitle">KEYBOARD FEEDBACK</div>
       <div class="df-two-col"><div class="df-setting"><label><input id="df-invert-keys" type="checkbox"> Invert keys</label></div><div class="df-setting"><label><input id="df-highlight-scale" type="checkbox"> Highlight scale</label></div></div>
       <div class="df-setting"><label><input id="df-light-played-notes" type="checkbox"> Light played notes</label><div class="df-setting-note">Turn off to remove coloured note feedback while keeping note input and audio unchanged.</div></div>
+      <div class="df-setting"><label><input id="df-subharmonics-lowest-only" type="checkbox"> Subharmonics only on the lowest held note</label><div class="df-setting-note">When enabled, subharmonic gears sound under the lowest held note only. Other held notes keep their normal gear tones.</div></div>
       <div class="df-two-col"><div class="df-setting"><label for="df-default-background">Default background</label><input id="df-default-background" type="color" value="#120e09"></div><div class="df-setting"><label for="df-default-edo">Default EDO</label><input id="df-default-edo" type="number" min="1" max="99" step="1" value="12"></div></div>
       <div class="df-settings-subtitle">NEW GEAR DEFAULTS</div>
       <div class="df-setting"><label for="df-new-gear-mode">When adding a gear</label><select id="df-new-gear-mode"><option value="copy">Copy the previous created gear's settings</option><option value="blank">Create a fresh blank gear</option></select></div>
@@ -22850,6 +23370,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     $('df-invert-keys').checked=!!settings.invertKeys;
     $('df-highlight-scale').checked=!!settings.highlightScale;
     $('df-light-played-notes').checked=settings.lightPlayedNotes!==false;
+    $('df-subharmonics-lowest-only').checked=settings.subharmonicsLowestOnly!==false;
     $('df-default-background').value=settings.defaultBackgroundColor;
     $('df-default-edo').value=String(settings.defaultEDO);
     $('df-new-gear-mode').value=settings.newGearMode;
@@ -22866,6 +23387,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     $('df-invert-keys').addEventListener('change',e=>{settings.invertKeys=!!e.target.checked;persist();bridge()?.setInvertKeys?.(settings.invertKeys);});
     $('df-highlight-scale').addEventListener('change',e=>{settings.highlightScale=!!e.target.checked;persist();bridge()?.setScaleHighlight?.(settings.highlightScale);});
     $('df-light-played-notes').addEventListener('change',e=>{settings.lightPlayedNotes=!!e.target.checked;persist();applyPlayedLighting();});
+    $('df-subharmonics-lowest-only').addEventListener('change',e=>{settings.subharmonicsLowestOnly=!!e.target.checked;persist();bridge()?.setSubharmonicsLowestOnly?.(settings.subharmonicsLowestOnly);status(settings.subharmonicsLowestOnly?'Subharmonics now affect only the lowest held note.':'Subharmonics now affect every held note.');});
     $('df-default-background').addEventListener('input',e=>{settings.defaultBackgroundColor=e.target.value;persist();applyBackground(settings.defaultBackgroundColor);});
     $('df-default-edo').addEventListener('change',e=>{settings.defaultEDO=Math.max(1,Math.min(99,Math.round(Number(e.target.value)||12)));e.target.value=String(settings.defaultEDO);persist();bridge()?.setDefaultEDO?.(settings.defaultEDO);status(`Default EDO set to ${settings.defaultEDO}.`);});
     $('df-new-gear-mode').addEventListener('change',e=>{settings.newGearMode=e.target.value;persist();status(settings.newGearMode==='copy'?'New gears copy the previous created gear.':'New gears start fresh with the selected waveform.');});
@@ -22922,6 +23444,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     bridge()?.setScaleHighlight?.(settings.highlightScale);
     if(applyEDO)bridge()?.setDefaultEDO?.(settings.defaultEDO);
     applyPlayedLighting();applyKeyboardPreference();applyNoVisualizer();
+    bridge()?.setSubharmonicsLowestOnly?.(settings.subharmonicsLowestOnly!==false);
     if(settings.audioOutputIds.length&&bridge()?.state?.audioWorkletOutputGain)window.__dfAudioOutputAPI.apply();
   }
   let isRestoringStartup=false,saveTimer=0;
