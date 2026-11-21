@@ -264,6 +264,7 @@ body.keyboard-inverted-keys .black-key{background:#f8fafc !important;color:#0f17
 html.df-audio-busy .hud-panel,html.df-audio-busy #ratio-palette-modal,html.df-audio-busy #desktop-focus-toggle{backdrop-filter:none !important;-webkit-backdrop-filter:none !important;}
 html.df-audio-busy .hud-panel,html.df-audio-busy #ratio-palette-modal{box-shadow:none !important;}
 html.df-audio-busy #virtual-keyboard .key.note-lit{transition:none !important;}
+html.df-audio-busy #gear-network-dock .gear-item.fm-carrier .gear-mini-knob-index{animation-play-state:paused!important;}
 #btn-midi-user{min-width:62px;padding:4px 9px;font-size:.65rem;font-weight:800;}
 #btn-midi-user.user-armed{outline:2px solid #62f08a !important;outline-offset:1px;background:linear-gradient(180deg,#88c96f,#466c31) !important;color:#071006 !important;}
 #midi-user-status{font-size:.62rem;color:var(--text-muted);line-height:1.3;margin-top:5px;min-height:1.3em;}
@@ -3495,8 +3496,8 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // MIDI note messages are timestamped on the main thread and applied here at
     // their target audio frame. This keeps rapid note bursts ordered even when the
     // browser main thread is temporarily busy with layout/UI work.
-    this.scheduledMidiEvents=[]; this.scheduledMidiHead=0; this.scheduledMidiOrder=0;
-    this.scheduledMidiOns=new Map();
+    this.scheduledMidiEvents=[]; this.scheduledMidiHead=0;
+    this.scheduledMidiOns=new Map();this.scheduledMidiOffs=new Map();
     this.midiMinNoteFrames=Math.max(1,Math.round(this.sr*0.002));
     // The most recently created POLY voice is retained as the pitch-transition
     // source for the next note. The object remains useful even after release, so
@@ -3511,6 +3512,8 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // once per active state per audio quantum (or after an in-quantum MIDI event).
     this._rtBlockSerial=0; this._rtBlockStartFrame=0; this._rtBlockEndFrame=128; this._rtEpoch=0;
     this._fmLookupDirty=false;
+    this._morphAlpha=1-Math.exp(-1/(.005*this.sr));
+    this._transitionAlpha=1-Math.exp(-1/(.008*this.sr));
     this.port.onmessage=e=>this.message(e.data||{});
   }
   message(m){
@@ -3878,14 +3881,19 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const id=String(message?.keyId??'');
     let targetFrame=Math.max(0,Math.round(Number(message?.targetFrame)));
     const nowFrame=(typeof currentFrame==='number'&&Number.isFinite(currentFrame))?currentFrame:this.frame;
+    targetFrame=Number.isFinite(targetFrame)?Math.max(nowFrame,targetFrame):nowFrame;
     if(type==='noteOff'){
       const pendingOn=this.scheduledMidiOns.get(id);
-      if(Number.isFinite(pendingOn)) targetFrame=Math.max(targetFrame,pendingOn+this.midiMinNoteFrames);
-      else targetFrame=Math.max(targetFrame,nowFrame);
-    }else if(type==='noteOn' || type==='reopen'){
-      this.scheduledMidiOns.set(id,targetFrame);
+      if(pendingOn)targetFrame=Math.max(targetFrame,pendingOn.targetFrame+this.midiMinNoteFrames);
+    }else{
+      // The previous key-up can be delayed to guarantee a short audible gate.
+      // A second key-down must still land after that key-up, even in a MIDI burst.
+      const pendingOff=this.scheduledMidiOffs.get(id);
+      if(pendingOff)targetFrame=Math.max(targetFrame,pendingOff.targetFrame);
     }
-    const ev={type,targetFrame,order:++this.scheduledMidiOrder,message};
+    const ev={type,targetFrame,id,message};
+    if(type==='noteOff')this.scheduledMidiOffs.set(id,ev);
+    else this.scheduledMidiOns.set(id,ev);
     const q=this.scheduledMidiEvents;
     if(!q.length||targetFrame>=q[q.length-1].targetFrame){q.push(ev);return;}
     // MIDI normally arrives in timestamp order. Preserve correctness for the rare
@@ -3896,18 +3904,23 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   }
   applyScheduledMidiEvents(audioFrame){
     const q=this.scheduledMidiEvents;
-    while(this.scheduledMidiHead<q.length && q[this.scheduledMidiHead].targetFrame<=audioFrame){
+    let changed=false;
+    while(this.scheduledMidiHead<q.length&&q[this.scheduledMidiHead].targetFrame<=audioFrame){
       const ev=q[this.scheduledMidiHead++];
       try{
-        if(ev.type==='noteOn') this.noteOn(ev.message);
-        else if(ev.type==='reopen') this.reopenVoice(ev.message);
-        else this.noteOff(ev.message);
-        if(ev.type==='noteOff') this.scheduledMidiOns.delete(String(ev.message?.keyId??''));
+        if(ev.type==='noteOn')this.noteOn(ev.message);
+        else if(ev.type==='reopen')this.reopenVoice(ev.message);
+        else{
+          this.noteOff(ev.message);
+          if(this.scheduledMidiOffs.get(ev.id)===ev)this.scheduledMidiOffs.delete(ev.id);
+          const latestOn=this.scheduledMidiOns.get(ev.id);
+          if(latestOn&&latestOn.targetFrame<ev.targetFrame)this.scheduledMidiOns.delete(ev.id);
+        }
+        changed=true;this._rtEpoch++;
       }catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
     }
-    if(this.scheduledMidiHead>64 && this.scheduledMidiHead*2>q.length){
-      q.splice(0,this.scheduledMidiHead); this.scheduledMidiHead=0;
-    }
+    if(this.scheduledMidiHead===q.length){q.length=0;this.scheduledMidiHead=0;}
+    return changed;
   }
   applyConfig(m){
     this.masterTarget=Math.max(0,Math.min(1,Number(m.masterVolume)||0));
@@ -3945,7 +3958,11 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       this.updateGearState(g,cfg,sourceChanged);
       if(!wasExisting&&this.mono.gate){g.env={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};g.widthEnv={gate:true,start:this.frame,releaseStart:0,releaseLevel:0,releasing:false,currentLevel:0};}
     }
-    for(const id of [...this.gears.keys()]) if(!incoming.has(id))this.gears.delete(id);
+    for(const id of this.gears.keys())if(!incoming.has(id)){
+      this.gears.delete(id);this.samples.delete(id);
+      for(const v of this.voices.values())v.gears.delete(id);
+      for(const v of this.fadingTails.values())v.gears.delete(id);
+    }
     // Cache the stable gear object list. The realtime process() path must never
     // materialize Map values/entries into temporary arrays per audio sample.
     this.gearArray=Array.from(this.gears.values());
@@ -3953,7 +3970,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(let gi=0;gi<this.gearArray.length;gi++)this.queueFmTransferLookup(this.gearArray[gi]);
     // A cold worklet may build the tables before its first note. Live updates
     // are budgeted across quanta so editing FM never monopolizes audio time.
-    if(!this.voices.size)this.buildFmLookups(8193);
+    if(!this.voices.size&&!this.mono.active)this.buildFmLookups(512);
     this.polyReuseEnabled=this.gearArray.some(g=>Number(g.accelSec)>0.000001);
     this.refreshVoiceGearPairs();
     this.maxReleaseSec=Math.max(0,...this.gearArray.map(x=>Math.max(0,Math.min(10,Number(x.adsr?.release)||0))));
@@ -4001,8 +4018,22 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }
   }
   compactLifecycleQueues(){
-    if(this.activeVoiceHead>32 && this.activeVoiceHead*2>this.activeVoiceQueue.length){this.activeVoiceQueue=this.activeVoiceQueue.slice(this.activeVoiceHead);this.activeVoiceHead=0;}
-    if(this.releaseVoiceHead>32 && this.releaseVoiceHead*2>this.releaseVoiceQueue.length){this.releaseVoiceQueue=this.releaseVoiceQueue.slice(this.releaseVoiceHead);this.releaseVoiceHead=0;}
+    // Keep dead voices and their PCM/envelope state out of long-running sessions
+    // even when the player stays below the voice-stealing limits.
+    const active=this.activeVoiceQueue;
+    let end=0;
+    for(let i=this.activeVoiceHead;i<active.length;i++){
+      const v=active[i];
+      if(v&&!v._dead&&!v.releasing&&this.voices.get(v.id)===v)active[end++]=v;
+    }
+    active.length=end;this.activeVoiceHead=0;
+    const releases=this.releaseVoiceQueue;
+    end=0;
+    for(let i=this.releaseVoiceHead;i<releases.length;i++){
+      const v=releases[i];
+      if(v&&!v._dead&&v.releasing&&this.voices.get(v.id)===v)releases[end++]=v;
+    }
+    releases.length=end;this.releaseVoiceHead=0;
   }
   oldestActiveVoice(){
     while(this.activeVoiceHead<this.activeVoiceQueue.length){
@@ -4057,15 +4088,15 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(let i=0;i<ordered.length;i++){
       const g=ordered[i];
       if(g._fmTargetCount>0 && (!g._rtFmSignalScratch||g._rtFmSignalScratch.length<128)){
-        g._rtFmSignalScratch=new Float32Array(128);
-        g._rtFmFreqScratch=new Float32Array(128);
+        g._rtFmSignalScratch=new Float64Array(128);
+        g._rtFmFreqScratch=new Float64Array(128);
       }
     }
   }
   makeGearState(cfg){return {id:Number(cfg.id),sourceMode:'sawtooth',ratio:1,freq:440,targetFreq:440,currentFreq:440,fmEnabled:false,fmSourceId:0,fmIndex:1,fmFunction:'none',_fmFunction:'none',_fmEnabled:false,_fmSourceId:0,_fmIndex:1,_fmSource:null,_fmTargetCount:0,_fmSignal:0,_fmFrequency:440,_fmDc:0,accelSec:0,accelAlpha:1,shapeRate:1,waveform:'sawtooth',width:.5,volume:.2,muted:false,solo:false,isUltrasonic:false,adsr:{attack:.01,attackLevel:1,decay:.01,sustain:.8,sustainDuration:5,sustainAutomation:[],adsrPathPoints:[],adsrLoopSustain:false,release:.5,attackCurve:0,decayCurve:0,releaseCurve:0},bloomAttack:.01,widthMod:null,widthModEnabled:false,adsrTargetNonVolume:false,offcenter:0,offcenterTarget:0,offcenterCurrent:0,_offcenterActive:false,phase:0,modPhase:0,offcenterPhase:0,phaseOffset:0,motionShapeRate:1,motionShapeRateTarget:1,motionShapeRateAlpha:1,audioRef:Number(cfg.id)||0,loopStart:0,loopEnd:1,vinyl:false,audioRootNote:48,_audioRootHz:440*Math.pow(2,(48-69)/12),teeth:120,clockTickMs:4,spatial:{x:0,y:0,z:0},spatialL:.7071067812,spatialR:.7071067812,spatialOrbit:{enabled:false,baseAngle:0,phase:0,periodSec:8,direction:1,radius:0,phaseSyncFrame:0,hrtfZ:0,hrtfZAngleRad:0,hrtfZRate:1,scale:.01},env:{gate:false,start:0,releaseStart:0,releaseLevel:0,releasing:false},samplePos:0,noise1:0,noise2:0,driverMode:false};}
   updateSpatialCoeffs(g){const x=Number(g?.spatial?.x)||0,y=Number(g?.spatial?.y)||0,z=Number(g?.spatial?.z)||0,elevation=Math.max(-1,Math.min(1,y)),dist=Math.sqrt(x*x+y*y+z*z),pan=Math.max(-1,Math.min(1,x/(1+Math.abs(z)*.8))),a=(pan+1)*Math.PI/4,att=1/Math.sqrt(1+dist*dist*.18);g.spatialL=Math.cos(a)*att;g.spatialR=Math.sin(a)*att;/* Carry height into the per-gear binaural elevation cue as well as distance. The AudioWorklet mixes each gear to stereo, so a height-dependent spectral profile is required here. */const cutoffHz=2200+(elevation+1)*2600;g._hrtfElevationAlpha=1-Math.exp(-2*Math.PI*cutoffHz/this.sr);g._hrtfElevationHighGain=1+elevation*.32;}
-  updateOrbitSpatial(g,a){const o=g?.spatialOrbit;if(!o?.enabled){this.updateSpatialCoeffs(g);return;}const r=Math.max(0,Number(o.radius)||0),theta=Number(o.hrtfZAngleRad)||0,rate=Math.max(.1,Number(o.hrtfZRate)||1),base=Math.max(-1,Math.min(1,Number(o.hrtfZ)||0)),scale=Math.max(.001,Number(o.scale)||.01);g.spatial={x:Math.cos(a)*r*scale,y:Math.max(-1,Math.min(1,base+Math.sin(a*rate)*Math.sin(theta))),z:Math.sin(a)*r*Math.cos(theta)*scale};this.updateSpatialCoeffs(g);}
-  updateOrbitSpatialForFrame(g,frame){const o=g?.spatialOrbit;if(!o?.enabled)return;const dt=Math.max(0,(Number(frame)-Number(o.phaseSyncFrame||frame))/this.sr),speed=(2*Math.PI/Math.max(.25,Number(o.periodSec)||8))*(Number(o.direction)||1);this.updateOrbitSpatial(g,Number(o.baseAngle||0)+Number(o.phase||0)+speed*dt);}
+  updateOrbitSpatial(g,a){const o=g?.spatialOrbit;if(!o?.enabled){this.updateSpatialCoeffs(g);return;}const r=Math.max(0,Number(o.radius)||0),theta=Number(o.hrtfZAngleRad)||0,rate=Math.max(.1,Number(o.hrtfZRate)||1),base=Math.max(-1,Math.min(1,Number(o.hrtfZ)||0)),scale=Math.max(.001,Number(o.scale)||.01);g.spatial.x=Math.cos(a)*r*scale;g.spatial.y=Math.max(-1,Math.min(1,base+Math.sin(a*rate)*Math.sin(theta)));g.spatial.z=Math.sin(a)*r*Math.cos(theta)*scale;this.updateSpatialCoeffs(g);}
+  updateOrbitSpatialForFrame(g,frame){const o=g?.spatialOrbit;if(!o?.enabled)return;const dt=Math.max(0,(Number(frame)-Number(o.phaseSyncFrame??frame))/this.sr),speed=(2*Math.PI/Math.max(.25,Number(o.periodSec)||8))*(Number(o.direction)||1);this.updateOrbitSpatial(g,Number(o.baseAngle||0)+Number(o.phase||0)+speed*dt);}
   updateGearState(g,cfg,sourceChanged){
     // Preserve a live preset waveform morph across any incidental full-config sync.
     // The main thread can legitimately send a config snapshot while the transition
@@ -4140,13 +4171,13 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const canTable=['sine','triangle','sawtooth','square'].includes(g.waveform) && !g._waveMorphActive;
     const tableKey=canTable?String(g.waveform)+':'+g.width.toFixed(6):'';
     if(canTable && g._waveTableKey!==tableKey){
-      const N=2048,tab=new Float32Array(N+1);for(let ti=0;ti<=N;ti++)tab[ti]=this.tooth(g.waveform,ti/N,g.width,g.clockTickMs);
+      const N=2048,tab=g._waveTable||new Float32Array(N+1);for(let ti=0;ti<=N;ti++)tab[ti]=this.tooth(g.waveform,ti/N,g.width,g.clockTickMs);
       g._waveTable=tab;g._waveTableKey=tableKey;g._waveN=N;
     }else if(!canTable){g._waveTable=null;g._waveTableKey='';g._waveN=0;}
     g.volume=Math.max(0,Math.min(1,Number(cfg.volume)||0));
     g._volume=g.volume;
     g._freqMul=Math.abs(g.ratio);
-    g._phaseOffsetCycles=(Number(g.phaseOffset)||0)/(2*Math.PI);
+    g._phaseOffsetCycles=(Number(cfg.phaseOffset)||0)/(2*Math.PI);
     g.muted=!!cfg.muted; g.solo=!!cfg.solo; g.isUltrasonic=!!cfg.isUltrasonic;
     g.adsr=cfg.adsr||g.adsr; g.bloomAttack=Math.max(0,Math.min(10,Number(cfg.bloomAttack) || Number(g.adsr?.attack) || .01)); g.widthMod=cfg.widthMod||g.widthMod; g.widthModEnabled=!!cfg.widthModEnabled; g._adsrTargetNonVolume=!!cfg.adsrTargetNonVolume; g.fmEnabled=!!cfg.fmEnabled;g.fmFunction=String(cfg.fmFunction||'none');g._fmFunction=g.fmFunction;g.fmSourceId=Math.max(0,Math.round(Number(cfg.fmSourceId)||0));g.fmIndex=Math.max(0,Math.min(8,Number(cfg.fmIndex)||0)); g.offcenter=Math.max(0,Math.min(100,Number(cfg.offcenter)||0)); g.offcenterTarget=g.offcenter; g.offcenterCurrent=g.offcenter; g._offcenterActive=g.offcenter>0;
     g.phaseOffset=Number(cfg.phaseOffset)||0; g.audioRef=Number(cfg.audioRef||0); g.loopStart=Math.max(0,Number(cfg.loopStart)||0); g.loopEnd=Math.max(g.loopStart+.001,Number(cfg.loopEnd)||g.loopStart+.001); g.vinyl=!!cfg.vinyl; g.audioRootNote=Math.max(0,Math.min(127,Math.round(Number(cfg.audioRootNote??g.audioRootNote??48)))); g._audioRootHz=440*Math.pow(2,(g.audioRootNote-69)/12);
@@ -4232,8 +4263,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   }
   refreshVoiceArrays(){
     if(!this.voiceArraysDirty)return;
-    this.voiceArray=Array.from(this.voices.values());
-    this.fadingTailArray=Array.from(this.fadingTails.values());
+    this.voiceArray.length=0;this.fadingTailArray.length=0;
+    for(const v of this.voices.values())this.voiceArray.push(v);
+    for(const v of this.fadingTails.values())this.fadingTailArray.push(v);
+    this.compactLifecycleQueues();
     this.voiceArraysDirty=false;
   }
   refreshSubharmonicVoiceEligibility(){
@@ -4382,7 +4415,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     if(!Number.isFinite(Number(cfg.baseRatio)))cfg.baseRatio=Math.max(1e-12,(Number(cfg.masterFreq)||440)/this.baseFundamentalFreq);
     if(!Number.isFinite(Number(cfg.absoluteSemitone)))cfg.absoluteSemitone=0;
     // Acceleration seeds from the most recently rendered voice. No temporary Map is built.
-    const seedVoice=this.lastPolyVoice&&!this.lastPolyVoice._dead?this.lastPolyVoice:this.oldestActiveVoice()||null;
+    const seedVoice=this.lastPolyVoice&&!this.lastPolyVoice._dead?this.lastPolyVoice:null;
     const voice=this.makeVoice(id,cfg,seedVoice);
     this.voices.set(id,voice); this.activeVoiceQueue.push(voice); this.activeVoiceCount++; this.voiceArraysDirty=true;
     this.lastPolyVoice=voice;
@@ -4454,6 +4487,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       const held=Number.isFinite(Number(env.currentLevel))?Number(env.currentLevel):Math.max(0,Number(env.releaseLevel)||0);
       env.gate=true;env.start=this.frame;env.releaseStart=0;env.releaseLevel=0;env.releasing=false;env.currentLevel=held;env.reentry=true;env.reentryLevel=held;
       if(st.widthEnv){const wenv=st.widthEnv;const wh=Number.isFinite(Number(wenv.currentLevel))?Number(wenv.currentLevel):Math.max(0,Number(wenv.releaseLevel)||0);wenv.gate=true;wenv.start=this.frame;wenv.releaseStart=0;wenv.releaseLevel=0;wenv.releasing=false;wenv.currentLevel=wh;wenv.reentry=true;wenv.reentryLevel=wh;}
+    }
+    for(let i=this.activeVoiceHead;i<this.activeVoiceQueue.length;i++){
+      if(this.activeVoiceQueue[i]===v)this.activeVoiceQueue[i]=null;
     }
     this.voices.set(newId,v);this.activeVoiceQueue.push(v);this.activeVoiceCount++;this.lastPolyVoice=v;this.polyTuningDirty=true;this.voiceArraysDirty=true;
     this.refreshSubharmonicVoiceEligibility();
@@ -4683,7 +4719,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const exact=['square_wave','sawtooth','pulse_train','heaviside_step',
       'logistic_map','tent_map','henon_map','mandelbrot','julia','burning_ship',
       'tricorn','multibrot','fibonacci_spiral','ulam_spiral'];
-    if(!g._fmEnabled||!fn||fn==='none'||fn==='direct'||exact.includes(fn)){
+    if(!g._fmEnabled||amount<=0||!fn||fn==='none'||fn==='direct'||exact.includes(fn)){
       g._fmLookup=null;g._fmLookupBuild=null;g._fmLookupFunction='';return;
     }
     if(g._fmLookupFunction===fn&&g._fmLookupAmount===amount)return;
@@ -4700,7 +4736,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     for(let gi=0;gi<this.gearArray.length;gi++){
       const g=this.gearArray[gi],table=g._fmLookupBuild;
       if(!table)continue;
-      const limit=Math.min(table.length,g._fmLookupCursor+budget);
+      if(budget<=0){pending=true;break;}
+      const first=g._fmLookupCursor;
+      const limit=Math.min(table.length,first+budget);
+      budget-=limit-first;
       for(let ix=g._fmLookupCursor;ix<limit;ix++)
         table[ix]=this.transformFmSignal(ix/4096-1,g._fmLookupFunction,g._fmLookupAmount);
       g._fmLookupCursor=limit;
@@ -4863,7 +4902,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       const fundamental=Math.max(.001,Math.abs(baseFreq)*mul);
       statePh.currentFreq=fundamental;
       let fmShift=0;
-      if(g._fmEnabled){
+      if(g._fmEnabled&&g._fmIndex>0){
         const sourceState=isPoly?st._fmSourceState:g._fmSource;
         if(sourceState){
           const sourceSignal=sourceState._fmSignal||0;
@@ -4956,7 +4995,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     if(isPoly)st.currentFreq=next;else g.currentFreq=next;
     const statePh=isPoly?st:g;
     let fmShift=0;
-    if(g._fmEnabled){
+    if(g._fmEnabled&&g._fmIndex>0){
       const fmSourceState=isPoly?st._fmSourceState:g._fmSource;
       if(fmSourceState){
         const sourceSignal=Number(fmSourceState._fmSignal)||0;
@@ -5014,7 +5053,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     if(g._presetTransitionActive){
       const tgt=Math.max(0,Math.min(1,Number(g._transitionAudibilityTarget??1)));
       const curGain=Math.max(0,Math.min(1,Number(g._transitionAudibility??tgt)));
-      const a=1-Math.exp(-1/(0.008*this.sr));
+      const a=this._transitionAlpha;
       g._transitionAudibility=curGain+(tgt-curGain)*a;
       if(Math.abs(tgt-g._transitionAudibility)<1e-7)g._transitionAudibility=tgt;
       transitionGain=g._transitionAudibility;
@@ -5089,7 +5128,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
       if(morphActive){
         const morphTarget=Math.max(0,Math.min(1,Number(g.waveMorphTarget ?? g.waveMorph) || 0));
         const morphCurrent=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
-        const morphAlpha=1-Math.exp(-1/(0.005*this.sr));
+        const morphAlpha=this._morphAlpha;
         g.waveMorph=morphCurrent+(morphTarget-morphCurrent)*morphAlpha;
         if(Math.abs(morphTarget-g.waveMorph)<1e-7)g.waveMorph=morphTarget;
         const m=Math.max(0,Math.min(1,Number(g.waveMorph)||0));
@@ -5135,7 +5174,9 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
   }
   mixGear(g,st,baseFreq,velocity,isPoly){return this.renderGear(g,st,baseFreq,velocity,isPoly);}
   process(_,outputs){
-    const out=outputs[0]||[],L=out[0]||new Float32Array(128),R=out[1]||L;
+    const out=outputs[0];
+    if(!out?.[0]?.length)return true;
+    const L=out[0],R=out[1]||L;
     this.beginRealtimeBlock(L.length);
     if(this._fmLookupDirty)this.buildFmLookups(256);
     const gears=this.gearArray;
@@ -5156,6 +5197,15 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     let anySolo=false,transitionMode=false;
     for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g._presetTransitionActive)transitionMode=true;if(g.solo&&!g.muted){anySolo=true;}}
     this.master=this.smooth(this.master,this.masterTarget,.008);
+    // Discard consumed MIDI references once per quantum, including on both render paths.
+    if(this.scheduledMidiHead>0){
+      if(this.scheduledMidiHead===this.scheduledMidiEvents.length){
+        this.scheduledMidiEvents.length=0;this.scheduledMidiHead=0;
+      }else if(this.scheduledMidiHead>=64&&this.scheduledMidiHead*2>=this.scheduledMidiEvents.length){
+        this.scheduledMidiEvents.copyWithin(0,this.scheduledMidiHead);
+        this.scheduledMidiEvents.length-=this.scheduledMidiHead;this.scheduledMidiHead=0;
+      }
+    }
     const quantumStartFrame=(typeof currentFrame==='number'&&Number.isFinite(currentFrame))?currentFrame:this.frame;
     // Updating once per render quantum (~2.7 ms at 48 kHz) keeps the realtime
     // path light while making the pitch ramp continuous to perception.
@@ -5163,38 +5213,26 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     const scheduled=this.scheduledMidiEvents;
     const blockFrameStart=this.frame,blockFrameEnd=this._rtBlockEndFrame;
 
-    // Fast block renderer for the common POLY oscillator case. It keeps the same
-    // per-sample phase, ADSR, subharmonic-gain and shape-rate trajectories while
-    // removing repeated renderGear/getBlockEnvelope/getBlockMotion dispatches.
-    // Complex sources, eccentric motion, active morphs and in-block MIDI stay
-    // on the general sample-accurate path. Stable feed-forward oscillator FM
-    // is rendered per voice/gear in audio-rate blocks, without UI dependencies.
-    let usePolyBlockPath=R!==L&&L.length<=this._rtSubharmonicGainScratch.length&&(this.voiceArray.length>0||this.fadingTailArray.length>0)&&
-      !this.mono.active&&!this.mono.releasing&&!this.driver.playing&&!this._presetPitchGlide&&
-      !this.polyTuningDirty&&!transitionMode;
+    // Render the polyphonic graph in source-before-carrier order. A sample,
+    // noise or clockwork gear uses its own renderer without slowing every oscillator.
+    // Preset morphs retain their shared, sample-ordered transition state.
+    let usePolyBlockPath=R!==L&&L.length<=this._rtSubharmonicGainScratch.length&&
+      (this.voiceArray.length>0||this.fadingTailArray.length>0||this.scheduledMidiHead<scheduled.length)&&
+      !this.mono.active&&!this.mono.releasing&&!this.driver.playing&&!transitionMode;
     for(let gi=0;usePolyBlockPath&&gi<gears.length;gi++){
       const g=gears[gi];
-      if(g._sourceKind!==0||g._waveMorphActive||!g._waveTable||
-         g._presetTransitionActive||g._accelAlpha!==1||g._offcenterActive||
-         Number(g.offcenterTarget??g.offcenter)>1e-6||Number(g.offcenterCurrent)>1e-6||
-         !Number.isFinite(Number(g.motionShapeRate))||!Number.isFinite(Number(g.motionShapeRateTarget))||
-         (g._fmTargetCount>0&&g._freqMul<=0)||
-         (g._fmTargetCount>0&&(!g._rtFmSignalScratch||g._rtFmSignalScratch.length<L.length)))usePolyBlockPath=false;
+      if(g._waveMorphActive ||
+         (g._fmTargetCount>0&&g._rtFmSignalScratch.length<L.length))usePolyBlockPath=false;
     }
-    for(let vi=0;usePolyBlockPath&&vi<this.voiceArray.length+this.fadingTailArray.length;vi++){
-      const v=vi<this.voiceArray.length?this.voiceArray[vi]:this.fadingTailArray[vi-this.voiceArray.length];
-      if(!v||v._dead||!Array.isArray(v.gearPairs)){usePolyBlockPath=false;break;}
-      for(let pi=0;pi<v.gearPairs.length;pi++){
-        const st=v.gearPairs[pi]?.st;
-        if(!st?.env){usePolyBlockPath=false;break;}
-      }
+    if(usePolyBlockPath&&this.polyTuningDirty){
+      this.recomputePolyTuningTargets();this.polyTuningDirty=false;
     }
     if(usePolyBlockPath){
       L.fill(0);R.fill(0);
       if(this.spatialEnabled){
         for(let gi=0;gi<gears.length;gi++){
           const g=gears[gi];
-          if(g.spatialOrbit?.enabled)this.updateOrbitSpatialForFrame(g,quantumStartFrame);
+          if(g.spatialOrbit?.enabled)this.updateOrbitSpatialForFrame(g,this.frame);
         }
       }
       const quantumLocalFrame=this.frame,blockLength=L.length;
@@ -5207,18 +5245,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         const eventIndex=next?Math.max(0,Math.ceil(next.targetFrame-quantumStartFrame)):blockLength;
         if(next&&eventIndex<=segmentStart){
           this.frame=quantumLocalFrame+segmentStart;
-          let changed=false;
-          while(this.scheduledMidiHead<scheduled.length&&
-                scheduled[this.scheduledMidiHead].targetFrame<=quantumStartFrame+segmentStart){
-            const ev=scheduled[this.scheduledMidiHead++];
-            try{
-              if(ev.type==='noteOn')this.noteOn(ev.message);
-              else if(ev.type==='reopen')this.reopenVoice(ev.message);
-              else this.noteOff(ev.message);
-              if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??''));
-              changed=true;this._rtEpoch++;
-            }catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
-          }
+          const changed=this.applyScheduledMidiEvents(quantumStartFrame+segmentStart);
           if(changed){
             if(this.voiceArraysDirty)this.refreshVoiceArrays();
             if(this.polyTuningDirty){this.recomputePolyTuningTargets();this.polyTuningDirty=false;}
@@ -5231,6 +5258,15 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         this.frame=quantumLocalFrame+segmentStart;
         this.beginRealtimeBlock(segmentLength);
         const blockFrameStart=this.frame,blockFrameEnd=this._rtBlockEndFrame;
+      // Motion control trajectories are shared by all voices. Each voice keeps
+      // its own eccentric axle phase and instantaneous carrier frequency.
+      const controlStep=(1-Math.exp(-(segmentLength-1)/(.006*this.sr)))/Math.max(1,segmentLength-1);
+      for(let gi=0;gi<gears.length;gi++){
+        const g=gears[gi];
+        g._blockShapeStep=(g.motionShapeRateTarget-g.motionShapeRate)*controlStep;
+        g._blockOffcenterStep=(g.offcenterTarget-g.offcenterCurrent)*controlStep;
+        g._blockShapeStart=g.motionShapeRate;g._blockOffcenterStart=g.offcenterCurrent;
+      }
       const active=this.voiceArray,retiring=this.fadingTailArray;
       const voiceCount=active.length+retiring.length,span=Math.max(1,blockFrameEnd-blockFrameStart);
       for(let vi=0;vi<voiceCount;vi++){
@@ -5248,90 +5284,141 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         v._subharmonicsGain=subGain;
         const pairs=v.gearPairs;
         const releaseEndFrame=v.releasing?v.releaseStart+(Number(v.maxReleaseSec)||0)*this.sr:Infinity;
-        const sampleCount=v.releasing?Math.max(0,Math.min(segmentLength,Math.ceil(releaseEndFrame-blockFrameStart)+1)):segmentLength;
+        let sampleCount=v.releasing?Math.max(0,Math.min(segmentLength,Math.ceil(releaseEndFrame-blockFrameStart)+1)):segmentLength;
+        const tailSamples=v._tailFadeSamples||0;
+        const tailScale=tailSamples>0?1/Math.max(1,v._tailFadeTotal):0;
+        if(tailSamples>0)sampleCount=Math.min(sampleCount,tailSamples);
         for(let pi=0;pi<pairs.length;pi++){
           const pair=pairs[pi],g=pair.g,st=pair.st;if(!g||!st)continue;
           const fmModOnly=anySolo&&!g.solo&&g._fmTargetCount>0;
           if(anySolo&&!g.solo&&!fmModOnly)continue;
-          const rawFreqMul=Number(g._freqMul);
-          if(Number.isFinite(rawFreqMul)&&rawFreqMul<=0){st.currentFreq=0;st._fmSignal=0;st._fmFrequency=0;continue;}
-          const freqMul=Number.isFinite(rawFreqMul)?Math.abs(rawFreqMul):1;
+          const fmSource=g._fmEnabled&&g._fmIndex>0?g._fmSource:null;
+          const fmSignals=fmSource?fmSource._rtFmSignalScratch:null;
+          const fmFreqs=fmSource?fmSource._rtFmFreqScratch:null;
+          const fmOutput=g._fmTargetCount>0;
+          const fmOutputSignal=g._rtFmSignalScratch,fmOutputFreq=g._rtFmFreqScratch;
+          const freqMul=g._freqMul;
+          const limit=this._nyquistLimit,srInverse=1/this.sr,spatial=this.spatialEnabled;
+          const ratioAbs=Math.abs(g.ratio),isSubharmonic=ratioAbs>0&&ratioAbs<.999999;
+          if(freqMul<=0){
+            st.currentFreq=0;st._fmSignal=0;st._fmFrequency=0;
+            if(fmOutput){fmOutputSignal.fill(0,0,sampleCount);fmOutputFreq.fill(0,0,sampleCount);}
+            continue;
+          }
+          const audioSample=g._sourceKind===1?this.samples.get(g.audioRef):null;
+          if(g._sourceKind!==0&&!audioSample){
+            // These sources share the oscillator's sample-rate FM routing, but
+            // still use their existing sample, vinyl, clockwork or noise DSP.
+            g.motionShapeRate=g._blockShapeStart;g.offcenterCurrent=g._blockOffcenterStart;
+            const source=st._fmSourceState;
+            for(let i=0;i<sampleCount;i++){
+              this.frame=blockFrameStart+i;
+              if(source&&fmSignals){
+                source._fmSignal=fmSignals[i];source._fmFrequency=fmFreqs[i];
+              }
+              const raw=this.renderGear(g,st,masterForAudio,v.velocity,true);
+              const gain=isSubharmonic?subGainScratch[i]:1;
+              if(fmOutput){fmOutputSignal[i]=st._fmSignal*gain;fmOutputFreq[i]=st._fmFrequency;}
+              if(!fmModOnly&&raw!==0){
+                const d=raw*gain*(tailSamples>0?(tailSamples-i)*tailScale:1);
+                const j=segmentStart+i;
+                L[j]+=spatial?d*g.spatialL:d;R[j]+=spatial?d*g.spatialR:d;
+              }
+            }
+            this.frame=blockFrameStart;
+            continue;
+          }
           const freqTarget=Math.max(.001,Math.abs(masterForAudio)*freqMul);
-          st.currentFreq=freqTarget;
+          const accel=g._accelAlpha;
+          let currentFreq=st.currentFreq;
           const envState=st.env;
           const envStart=this.envAtFast(envState,blockFrameStart,g,false);
           const envEnd=this.envAtFast(envState,blockFrameEnd,g,false);
           const envStep=(envEnd-envStart)/span;
-          const widthEnabled=g._widthModEnabled;
+          const widthEnabled=g._widthModEnabled&&!audioSample;
           const widthStart=widthEnabled?this.envAtFast(st.widthEnv,blockFrameStart,g,true):1;
           const widthEnd=widthEnabled?this.envAtFast(st.widthEnv,blockFrameEnd,g,true):1;
           const widthStep=(widthEnd-widthStart)/span;
-          const phaseOffset=g._phaseOffsetCycles,tab=g._waveTable,N=tab.length-1;
-          const limit=this._nyquistLimit,carrierFreq=freqTarget>limit?limit:freqTarget;
-          const fmSource=g._fmEnabled?g._fmSource:null;
-          const fmSignals=fmSource?fmSource._rtFmSignalScratch:null;
-          const fmFreqs=fmSource?fmSource._rtFmFreqScratch:null;
+          const phaseOffset=g._phaseOffsetCycles,tab=g._waveTable,N=tab?tab.length-1:0;
           const fmTransfer=g._fmFunction;
+          const useTransfer=fmTransfer&&fmTransfer!=='none';
           const fmIndex=g._fmIndex;
           const fmTable=g._fmLookupFunction===fmTransfer&&g._fmLookupAmount===fmIndex?g._fmLookup:null;
-          const fmOutput=g._fmTargetCount>0;
-          const fmOutputSignal=g._rtFmSignalScratch,fmOutputFreq=g._rtFmFreqScratch;
-          const shapeStart=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):1;
-          const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
-          const shapeAlpha=1-Math.exp(-span/(.006*Math.max(1e-6,this.sr)));
-          const shapeEnd=shapeStart+(shapeTarget-shapeStart)*shapeAlpha;
-          const shapeStep=(shapeEnd-shapeStart)/span;
+          const shapeStart=g._blockShapeStart,shapeStep=g._blockShapeStep;
+          const shapeEnd=shapeStart+shapeStep*(segmentLength-1);
+          const offStart=g._blockOffcenterStart,offEnd=offStart+g._blockOffcenterStep*(segmentLength-1);
+          const offPhase=st.offcenterPhase||0;
+          const offPhaseStep=(this.offcenterCarrierHz(currentFreq,shapeStart)+this.offcenterCarrierHz(freqTarget,shapeEnd))*.5*srInverse;
+          const eccentric=offStart>1e-6||offEnd>1e-6;
+          const rateStart=eccentric?shapeStart*this.offcenterRate(offStart,2*Math.PI*offPhase):shapeStart;
+          const rateEnd=eccentric?shapeEnd*this.offcenterRate(offEnd,2*Math.PI*(offPhase+offPhaseStep*segmentLength)):shapeEnd;
+          const rateStep=(rateEnd-rateStart)/span;
           const volumeBase=g._volume*(v.velocity>0?v.velocity:.0001);
-          const ratioAbs=Math.abs(Number(g.ratio)||0),isSubharmonic=ratioAbs>0&&ratioAbs<.999999;
-          let phase=st.phase,lastMovedIndex=-1;
-          const srInverse=1/this.sr,spatial=this.spatialEnabled;
+          const mixAudible=volumeBase>.000001&&!g.muted&&!g.isUltrasonic&&!fmModOnly;
+          const waveform=g.waveform,width=g.width;
+          const fmBipolar=fmOutput&&width<=0&&(waveform==='square'||waveform==='sawtooth');
+          const fmCenter=fmOutput&&waveform==='square'&&width>0?2*Math.max(.02,Math.min(.98,.5+(width-.5)*1.8))-1:0;
+          let phase=st.phase,lastMovedIndex=-1,samplePosition=st.samplePos;
+          const sampleRateScale=audioSample?audioSample.sampleRate*srInverse:0;
+          const sampleRootScale=audioSample?1/Math.max(.001,g._audioRootHz):0;
+          const sampleStart=audioSample?g.loopStart*audioSample.sampleRate:0;
+          const sampleEnd=audioSample?Math.max(sampleStart+1,g.loopEnd*audioSample.sampleRate):0;
+          const sampleSpan=Math.max(1,sampleEnd-sampleStart);
+          const sampleCrossfade=audioSample?Math.min(sampleSpan/2,.025*audioSample.sampleRate):0;
           const heightGain=g._hrtfElevationHighGain,heightAlpha=g._hrtfElevationAlpha;
           const heightActive=spatial&&(heightGain!==1||st._hrtfElevationHighGain!==undefined&&st._hrtfElevationHighGain!==1);
           let heightPrevious=st._hrtfElevationLastFrame,heightLow=st._hrtfElevationLow;
           let heightActualAlpha=st._hrtfElevationAlpha,heightActualGain=st._hrtfElevationHighGain;
+          let lastEnv=envState.currentLevel,lastWidth=st.widthEnv.currentLevel;
           for(let i=0;i<sampleCount;i++){
-            let freq=carrierFreq;
+            currentFreq=accel===1?freqTarget:currentFreq+(freqTarget-currentFreq)*accel;
+            const envRaw=envStart+envStep*i,env=envRaw<0?0:(envRaw>1?1:envRaw);
+            lastEnv=env;
+            const vol=volumeBase*env;
+            // FM modulators continue to advance and modulate through quiet
+            // ADSR regions, just as they do in the ordinary sample renderer.
+            const audible=mixAudible&&env>.000001&&vol>.000001;
+            if(!audible&&!fmOutput)continue;
+            let freq=currentFreq>limit?limit:currentFreq;
             if(fmSignals){
               const source=fmSignals[i];
               let mod=source;
-              if(fmTransfer&&fmTransfer!=='none'){
+              if(useTransfer){
                 if(fmTable){
                   const x=source>1?1:(source< -1?-1:source),t=(x+1)*4096,j=t|0;
                   mod=j>=8192?fmTable[8192]:fmTable[j]+(fmTable[j+1]-fmTable[j])*(t-j);
                 }else mod=this.transformFmSignal(source,fmTransfer,fmIndex);
               }
-              const shifted=freqTarget+mod*Math.abs(fmFreqs[i]||.001)*fmIndex;
+              const shifted=currentFreq+mod*Math.abs(fmFreqs[i]||.001)*fmIndex;
               freq=shifted>limit?limit:(shifted< -limit?-limit:shifted);
             }
-            const envRaw=envStart+envStep*i,env=envRaw<0?0:(envRaw>1?1:envRaw);
-            envState.currentLevel=env;
-            const vol=volumeBase*env;
-            // FM modulators continue to advance and modulate through quiet
-            // ADSR regions, just as they do in the ordinary sample renderer.
-            const audible=env>.000001&&vol>.000001&&!g.muted&&!g.isUltrasonic;
-            if(!audible&&!fmOutput)continue;
-            const ph=phase+phaseOffset,unit=ph-Math.floor(ph);
-            const position=unit*N,ii=position|0,frac=position-ii;
-            const shaped=tab[ii]+(tab[ii+1]-tab[ii])*frac;
-            let raw=shaped;
+            const motionRate=rateStart+rateStep*i;
+            const rate=eccentric?Math.max(.001,Math.min(8,motionRate)):motionRate;
+            const ph=phase+phaseOffset;
+            let raw,tap;
+            if(audioSample){
+              raw=this.readLoopSampleMono(audioSample,samplePosition,sampleStart,sampleEnd,sampleCrossfade);
+              tap=Math.max(-1,Math.min(1,Number.isFinite(raw)?raw:0));
+              const step=Math.max(.000001,Math.max(.001,Math.abs(freq))*sampleRootScale*rate);
+              samplePosition=(samplePosition+step*sampleRateScale)%sampleSpan;
+            }else{
+              const unit=ph-Math.floor(ph);
+              const position=unit*N,ii=position|0,frac=position-ii;
+              const shaped=tab?tab[ii]+(tab[ii+1]-tab[ii])*frac:this.tooth(waveform,ph,width,g.clockTickMs);
+              tap=fmBipolar?shaped*2-1:shaped-fmCenter;
+              raw=fmOutput?tap:shaped;
+            }
             if(fmOutput){
-              let fmRaw=shaped;
-              if(g.waveform==='square'){
-                if(g.width<=0)fmRaw=fmRaw*2-1;
-                else{const duty=Math.max(.02,Math.min(.98,.5+(g.width-.5)*1.8));fmRaw-=2*duty-1;}
-              }else if(g.waveform==='sawtooth'&&g.width<=0)fmRaw=fmRaw*2-1;
-              else if(g.waveform==='clockwork')fmRaw-=Math.min(.05,Math.max(.001,(Number(g.clockTickMs)||4)/1000*1.4));
-              fmOutputSignal[i]=fmRaw*(isSubharmonic?subGainScratch[i]:1);
+              fmOutputSignal[i]=tap*(isSubharmonic?subGainScratch[i]:1);
               fmOutputFreq[i]=freq;
-              raw=fmRaw;
             }
-            if(widthEnabled){
-              let w=widthStart+widthStep*i;
-              w=w<0?0:(w>1?1:w);
-              st.widthEnv.currentLevel=w;
-              if(w<.999999){const sine=Math.sin(2*Math.PI*ph);raw=sine+(raw-sine)*w;}
-            }
-            if(audible && !fmModOnly){
+            if(audible){
+              if(widthEnabled){
+                let w=widthStart+widthStep*i;
+                w=w<0?0:(w>1?1:w);
+                lastWidth=w;
+                if(w<.999999){const sine=Math.sin(2*Math.PI*ph);raw=sine+(raw-sine)*w;}
+              }
               let sample=raw*vol;
               if(heightActive&&sample!==0){
                 const frame=blockFrameStart+i;
@@ -5351,16 +5438,22 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
                 }
                 heightPrevious=frame;
               }
-              const fade=v._tailFadeSamples>0?Math.max(0,(v._tailFadeSamples-i)/Math.max(1,v._tailFadeTotal||1)):1;
+              const fade=tailSamples>0?(tailSamples-i)*tailScale:1;
               const d=sample*(isSubharmonic?subGainScratch[i]:1)*fade;
               if(d!==0){const outIndex=segmentStart+i;if(spatial){L[outIndex]+=d*g.spatialL;R[outIndex]+=d*g.spatialR;}else{L[outIndex]+=d;R[outIndex]+=d;}}
             }
-            let nextPhase=phase+freq*srInverse*(shapeStart+shapeStep*i);
-            nextPhase-=Math.floor(nextPhase);phase=nextPhase;lastMovedIndex=i;
+            if(!audioSample||fmOutput){
+              let nextPhase=phase+freq*srInverse*rate;
+              nextPhase-=Math.floor(nextPhase);phase=nextPhase;
+            }
+            lastMovedIndex=i;
           }
-          if(fmOutput){
-            st._fmSignal=fmOutputSignal[Math.max(0,sampleCount-1)]||0;
-            st._fmFrequency=fmOutputFreq[Math.max(0,sampleCount-1)]||carrierFreq;
+          envState.currentLevel=lastEnv;
+          if(widthEnabled)st.widthEnv.currentLevel=lastWidth;
+          st.currentFreq=currentFreq;
+          if(fmOutput&&sampleCount>0){
+            st._fmSignal=fmOutputSignal[sampleCount-1];
+            st._fmFrequency=fmOutputFreq[sampleCount-1];
           }
           if(heightActive){
             st._hrtfElevationLastFrame=heightPrevious;
@@ -5369,13 +5462,8 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
             st._hrtfElevationHighGain=heightActualGain;
           }
           st.phase=phase;
-          // Keep the dormant eccentric phase ready for a later off-centre change,
-          // without doing its rate calculation at every sample while disabled.
-          if(lastMovedIndex>=0){
-            const offStart=Number.isFinite(Number(st.offcenterPhase))?Number(st.offcenterPhase):0;
-            const carrierStart=this.offcenterCarrierHz(freqTarget,shapeStart),carrierEnd=this.offcenterCarrierHz(freqTarget,shapeEnd);
-            st.offcenterPhase=offStart+(carrierStart+carrierEnd)*.5*(lastMovedIndex+1)/this.sr;
-          }
+          if(audioSample)st.samplePos=samplePosition;
+          if(lastMovedIndex>=0)st.offcenterPhase=offPhase+offPhaseStep*(lastMovedIndex+1);
         }
         if(v._tailFadeSamples>0){
           v._tailFadeSamples=Math.max(0,v._tailFadeSamples-segmentLength);
@@ -5392,10 +5480,10 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         }
       }
       for(let gi=0;gi<gears.length;gi++){
-        const g=gears[gi],shapeStart=Number.isFinite(Number(g.motionShapeRate))?Number(g.motionShapeRate):1;
-        const shapeTarget=Math.max(.001,Math.min(8,Number(g.motionShapeRateTarget)||1));
-        const alpha=1-Math.exp(-span/(.006*Math.max(1e-6,this.sr)));
-        g.motionShapeRate=shapeStart+(shapeTarget-shapeStart)*alpha;
+        const g=gears[gi];
+        g.motionShapeRate=g._blockShapeStart+g._blockShapeStep*(segmentLength-1);
+        g.offcenterCurrent=g._blockOffcenterStart+g._blockOffcenterStep*(segmentLength-1);
+        g._offcenterActive=g.offcenterCurrent>1e-6;
       }
         segmentStart=segmentEnd;
       }
@@ -5414,12 +5502,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     }
     for(let i=0;i<L.length;i++){
       const audioFrame=quantumStartFrame+i;
-      let scheduledPolyChanged=false;
-      while(this.scheduledMidiHead<scheduled.length && scheduled[this.scheduledMidiHead].targetFrame<=audioFrame){
-        const ev=this.scheduledMidiEvents[this.scheduledMidiHead++];
-        try{ if(ev.type==='noteOn')this.noteOn(ev.message); else if(ev.type==='reopen')this.reopenVoice(ev.message); else this.noteOff(ev.message); scheduledPolyChanged=true; this._rtEpoch++; if(ev.type==='noteOff')this.scheduledMidiOns.delete(String(ev.message?.keyId??'')); }
-        catch(err){this.port.postMessage({type:'worklet-error',message:String(err?.message||err)});}
-      }
+      const scheduledPolyChanged=this.scheduledMidiHead<scheduled.length&&this.applyScheduledMidiEvents(audioFrame);
       // Scheduled MIDI events mutate voice ownership inside this sample loop.
       // Refresh the cached render list at the event sample, otherwise a fast note
       // whose on/off both land in this quantum can be absent for the whole block.
@@ -5431,7 +5514,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
         // spatial coefficients once per audio quantum (128 samples) is far below
         // perceptual motion resolution while removing hundreds of thousands of
         // trig calls per second from the realtime sample loop.
-        for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g.spatialOrbit?.enabled)this.updateOrbitSpatialForFrame(g,audioFrame);}
+        for(let gi=0;gi<gears.length;gi++){const g=gears[gi];if(g.spatialOrbit?.enabled)this.updateOrbitSpatialForFrame(g,this.frame);}
       }
       if(this.mono.active||this.mono.releasing){
         for(let gi=0;gi<gears.length;gi++){
@@ -5509,7 +5592,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     // This processor becomes a temporary tail-only engine. It keeps its own gear
     // objects and voice pairs frozen, releases every currently-held note, and
     // discards future scheduled note events so nothing can wake up after handoff.
-    this.scheduledMidiEvents=[];this.scheduledMidiHead=0;this.scheduledMidiOns.clear();
+    this.scheduledMidiEvents=[];this.scheduledMidiHead=0;this.scheduledMidiOns.clear();this.scheduledMidiOffs.clear();
     this.polyReuseEnabled=false;this.lastPolyVoice=null;this._retiringForPresetHandover=true;
     if(this.mono.active||this.mono.gate)this.monoGate(false);
     for(const v of Array.from(this.voices.values()))if(v&&!v._dead&&!v.releasing)this.startVoiceRelease(v);
@@ -5555,7 +5638,7 @@ class UnifiedGearAudioProcessor extends AudioWorkletProcessor {
     this.voices.clear();this.fadingTails.clear();this.voiceArray=[];this.fadingTailArray=[];this.voiceArraysDirty=true;
     this.lastPolyVoice=null;this.lastPolyNoteOnFrame=-1e15;this.activeVoiceQueue=[];this.activeVoiceHead=0;this.activeVoiceCount=0;
     this.releaseVoiceQueue=[];this.releaseVoiceHead=0;this.polyReuseEnabled=false;this.polyTuningDirty=false;
-    this.scheduledMidiEvents=[];this.scheduledMidiHead=0;this.scheduledMidiOns.clear();this.scheduledMidiOrder=0;
+    this.scheduledMidiEvents=[];this.scheduledMidiHead=0;this.scheduledMidiOns.clear();this.scheduledMidiOffs.clear();
     this.mono.active=false;this.mono.gate=false;this.mono.releasing=false;this.mono.releaseStart=0;this.mono.velocity=0;
     this.gears.clear();this.gearArray=[];this._fmLookupDirty=false;this.maxReleaseSec=0;this.samples.clear();this.bloomAttackCache.clear();this.jiRootCacheKey='';this.jiRootCacheValue=null;this.jiStableRoot=null;
     this.driver.playing=false;this.driver.left=null;this.driver.right=null;this.driver.pos=0;
@@ -5692,6 +5775,13 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const fadeNewPreset=!!state._presetWorkletFadeInPending;
         outputGain.gain.setValueAtTime(fadeNewPreset?0:1,outputNow);
         if(fadeNewPreset)outputGain.gain.linearRampToValueAtTime(1,outputNow+Math.max(.06,Math.min(5,Number(state._presetWorkletFadeInSeconds)||.12)));
+        node.onprocessorerror=()=>{
+          if(state.audioWorkletNode!==node)return;
+          node.port.close();node.disconnect();outputGain.disconnect();
+          state.audioWorkletReady=false;state.audioWorkletNode=null;
+          state.audioWorkletPromise=null;state.audioWorkletOutputGain=null;
+          state.audioWorkletLastError='Audio processor stopped unexpectedly';
+        };
         node.port.onmessage=e=>{if(e.data?.type==='worklet-error')state.audioWorkletLastError=String(e.data.message||'');if(e.data?.type==='processed')state.audioWorkletProcessedFrame=Number(e.data.frame)||0;};
         node.connect(outputGain);if(!(window.__dfAudioOutputAPI?.connect?.(outputGain)))outputGain.connect(state.audioCtx.destination);
         state.audioWorkletNode=node;state.audioWorkletOutputGain=outputGain;state.audioWorkletReady=true;state.masterOutputConnected=true;
@@ -5709,7 +5799,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         }
         flushUnifiedAudioPending();
         return node;
-      })().catch(err=>{ state.audioWorkletReady=false; state.audioWorkletNode=null; state.audioWorkletLastError=String(err?.message||err); throw err; });
+      })().catch(err=>{ state.audioWorkletReady=false; state.audioWorkletNode=null; state.audioWorkletLastError=String(err?.message||err); state.audioWorkletPromise=null; throw err; });
       return state.audioWorkletPromise;
     }
 
@@ -5721,9 +5811,9 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       state.audioWorkletSampleVersions.delete(Number(gear.id));
       try{
         const left=gear.audioBuffer.getChannelData(0).slice(0);
-        const right=(gear.audioBuffer.numberOfChannels>1?gear.audioBuffer.getChannelData(1):gear.audioBuffer.getChannelData(0)).slice(0);
+        const right=gear.audioBuffer.numberOfChannels>1?gear.audioBuffer.getChannelData(1).slice(0):null;
         state.audioWorkletSampleVersions.set(Number(gear.id),gear.audioBuffer);
-        postUnifiedAudio({type:'sample',id:Number(gear.id),left,right,sampleRate:gear.audioBuffer.sampleRate},[left.buffer,right.buffer]);
+        postUnifiedAudio({type:'sample',id:Number(gear.id),left,right,sampleRate:gear.audioBuffer.sampleRate},right?[left.buffer,right.buffer]:[left.buffer]);
         return true;
       }catch(_){return false;}
     }
@@ -5732,8 +5822,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const key=b;
       if(state._workletDriverBuffer===key)return true;
       try{
-        const left=b.getChannelData(0).slice(0), right=(b.numberOfChannels>1?b.getChannelData(1):b.getChannelData(0)).slice(0);
-        state._workletDriverBuffer=key; postUnifiedAudio({type:'driverSample',left,right,sampleRate:b.sampleRate},[left.buffer,right.buffer]); return true;
+        const left=b.getChannelData(0).slice(0),right=b.numberOfChannels>1?b.getChannelData(1).slice(0):null;
+        state._workletDriverBuffer=key; postUnifiedAudio({type:'driverSample',left,right,sampleRate:b.sampleRate},right?[left.buffer,right.buffer]:[left.buffer]); return true;
       }catch(_){return false;}
     }
     function normalizeHrtfPanDegrees(value){const n=Number(value);return Number.isFinite(n)?((n%360)+360)%360:0;}
@@ -5870,13 +5960,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         return {keyId:String(v.keyId),absoluteSemitone,baseRatio,jiThresholdCents,masterFreq:Math.max(.001,Number(v.masterFreq)||getPolyMasterFrequency(absoluteSemitone)),velocity:Number(v.velocity)||1,releasing:!!v.releasing};
       }):[];
       postUnifiedAudio({type:'config',masterVolume:Math.max(0,Math.min(1,Number(state.masterVolume)||0)),spatialEnabled:!!state.spatialEnabled,spatialMode:state.spatialMode,spatialScale:Number(state.spatialScale)||.01,subharmonicsLowestOnly:state.subharmonicsLowestOnly!==false,bloomAmount:Math.max(-5,Math.min(5,Number(state.bloom?.amount)||0)),bloomPlacementOrder:!!state.bloom?.placementOrder,jiKeyboard:!!state.jiKeyboard,keyboardTuningVersion:Number(state._keyboardTuningVersion)||0,baseFundamentalFreq:Math.max(.001,Number(state.baseFundamentalFreq)||440),pitchBendRatio:Math.max(.000001,midiPitchBendRatio()),gears:gearList,mono:{active:monoActive,freq:monoFreq,velocity:1},polyVoices,driver:{playing:!!(state.audioDriver?.buffer&&state.audioDriver.playing),rate:Number(state.audioDriver?.driverRate)||1,keyboardKeyRatio:Number(state.audioDriver?.keyboardKeyRatio)||1,loopStart:Number(state.audioDriver?.loopStart)||0,loopEnd:Number(state.audioDriver?.loopEnd)||Number(state.audioDriver?.buffer?.duration)||.001,crossfadeSec:Number(typeof DRIVER_CROSSFADE_MS!=='undefined'?DRIVER_CROSSFADE_MS:25)/1000,posReset:!!force}});
+      state._spatialSyncGeneration=(state._spatialSyncGeneration||0)+1;
       unifiedConfigSyncLastPerf=performance.now();
       return true;
     }
 
     function initAudio(manualCrankStart = false, warmMidi = false) {
       if (!state.audioCtx) {
-        try { state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 0.002 }); }
+        try { state.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' }); }
         catch (_) { state.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
       }
       if(state.audioCtx.state==='suspended') state.audioCtx.resume().catch?.(()=>{});
@@ -5886,16 +5977,17 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         setFundamentalFrequency(autoFreq,false,true);
       }
       state.audioRunning=true; state.masterOutputConnected=true; state._midiInputVelocity=state._midiInputVelocity||1;
-      ensureUnifiedAudioWorklet().then(()=>syncUnifiedAudioWorklet(true)).catch(()=>{});
+      if(state.audioWorkletReady)syncUnifiedAudioWorklet(true);
+      else ensureUnifiedAudioWorklet().catch(()=>{});
       startAudioMaintenanceScheduler(); startAudioRoutingWatchdog();
       document.getElementById('btn-toggle-audio').textContent='⏸ PAUSE AUDIO'; document.getElementById('btn-toggle-audio').style.background='#10b981';
-      if(!state.releaseOnKeyup && !manualCrankStart && !state.polyMode){ state.keyboardAudioActive=true; playSemitone(0,'startup-a'); state.lastNoteDownPerf=0; } else { state.gears.forEach(g=>g._neonEnvelope=null); syncUnifiedAudioWorklet(true); }
+      if(!state.releaseOnKeyup && !manualCrankStart && !state.polyMode){ state.keyboardAudioActive=true; playSemitone(0,'startup-a'); state.lastNoteDownPerf=0; } else { state.gears.forEach(g=>g._neonEnvelope=null); }
     }
 
     function stopAudio() {
       const stoppedNode=state.audioWorkletNode;
       try{stoppedNode?.port?.postMessage({type:'panic'});}catch(_){ }
-      window.setTimeout(()=>{if(!state.audioRunning)try{stoppedNode?.port?.postMessage({type:'clear'});}catch(_){ }},12);
+      window.setTimeout(()=>{if(!state.audioRunning&&stoppedNode&&stoppedNode===state.audioWorkletNode)postUnifiedAudio({type:'clear'});},12);
       state.pressedKeys.clear(); state.keyboardPointerHeldKeys.clear(); state.keyboardPhysicalKeyDownCodes.clear(); state.keyboardPointerToKey.clear(); state.keyboardKeyPointerCounts.clear(); state.midiHeldNotes.clear(); state.midiSustainChannels.clear(); state.midiSustainGlobal=false; state.keyboardAudioActive=false; state.activeSemitone=null;
       try{stopAudioDriverSources();}catch(_){} state.audioDriver.playing=false; const driverBtn=document.getElementById('btn-driver-play'); if(driverBtn)driverBtn.textContent='▶ DRIVE';
       state.audioRunning=false; stopAudioMaintenanceScheduler(); if(state.audioRoutingWatchdog){clearInterval(state.audioRoutingWatchdog);state.audioRoutingWatchdog=null;} state.masterOutputConnected=false;
@@ -6868,8 +6960,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         card.addEventListener('pointerup',()=>{card.style.opacity='';});
         card.addEventListener('pointercancel',()=>{card.style.opacity='';});
         card.addEventListener('click',()=>{
-          const meshPosition=isSubharmonic?findRatioGearMeshPosition(c.teeth):null;
-          const gear=meshPosition?addGear(c.teeth,meshPosition.x,meshPosition.y):addGear(c.teeth);
+          const gear=addRatioGear(c.teeth);
           setActivePaletteGear(gear);
           gear.ratioLock=true;
           gear.teethLock=false;
@@ -8231,7 +8322,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       // Use 64 samples per wave period where the pixel budget allows it, so narrow
       // bright teeth keep a real peak instead of vanishing between texture samples.
       // The texture width and LRU cache remain strictly bounded.
-      const tex=document.createElement('canvas');tex.width=Math.max(64,Math.min(6144,Math.ceil(cycles*64)));tex.height=4;
+      const tex=document.createElement('canvas');tex.width=Math.max(64,Math.min(6144,Math.ceil(cycles*64)));tex.height=1;
       const tc=tex.getContext('2d',{alpha:!!alphaOutput});
       const img=tc.createImageData(tex.width,tex.height);
       const cam=offcenter/100,phaseBias=phaseOffset*Math.PI/180;
@@ -8286,12 +8377,16 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         // width slider here would attenuate every mask in the shared product field.
         mask=Math.pow(Math.max(0,Math.min(1,mask)),exponent);
         const v=Math.round(mask*255);
-        for(let y=0;y<tex.height;y++){const i=(y*tex.width+x)*4;img.data[i]=img.data[i+1]=img.data[i+2]=alphaOutput?255:v;img.data[i+3]=alphaOutput?v:255;}
+        const i=x*4;img.data[i]=img.data[i+1]=img.data[i+2]=alphaOutput?255:v;img.data[i+3]=alphaOutput?v:255;
       }
       tc.putImageData(img,0,0);
       tex._waveCycles=cycles;
       waveGridMaskCache.set(key,tex);
-      while(waveGridMaskCache.size>64)waveGridMaskCache.delete(waveGridMaskCache.keys().next().value);
+      while(waveGridMaskCache.size>64){
+        const oldest=waveGridMaskCache.keys().next().value;
+        waveGridMaskCache.get(oldest).width=1;
+        waveGridMaskCache.delete(oldest);
+      }
       return tex;
     }
     function waveStampGrid(target,texture,size,angle,phase=0){
@@ -8655,6 +8750,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     // crops for scale modulation, applies gain, and composites the cached image.
     const WAVE_LAYER_OVERSCAN=1.75;
     const WAVE_GEAR_LAYER_CACHE_LIMIT=18;
+    const WAVE_LAYER_CACHE_PIXEL_LIMIT=24*1024*1024/4;
+    let waveGearLayerPixels=0, waveNewLayersRemaining=Infinity;
     const waveGearLayerCache=new Map();
     // Penrose/Ammann-inspired pentagrid constants. Five line families and a golden-
     // ratio phase sequence add quasiperiodic-looking interference without extra layers
@@ -8673,7 +8770,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       if(waveCurvatureGLFailed)return null;
       try{
         const surface=document.createElement('canvas');
-        const gl=surface.getContext('webgl',{alpha:true,antialias:true,premultipliedAlpha:true,preserveDrawingBuffer:false})||surface.getContext('experimental-webgl');
+        const gl=surface.getContext('webgl',{alpha:true,antialias:false,premultipliedAlpha:true,preserveDrawingBuffer:false})||surface.getContext('experimental-webgl');
         if(!gl){waveCurvatureGLFailed=true;return null;}
         const compile=(type,source)=>{const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(sh)||'Curvature shader compile failed');return sh;};
         const vs=compile(gl.VERTEX_SHADER,'attribute vec2 a_position; varying vec2 v_uv; void main(){ gl_Position=vec4(a_position,0.0,1.0); v_uv=a_position*0.5+0.5; }');
@@ -8688,7 +8785,11 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
         gl.uniform1i(gl.getUniformLocation(program,'u_texture'),0);
-        waveCurvatureGL={gl,canvas:surface,program,texture,curvatureLoc:gl.getUniformLocation(program,'u_curvature')};
+        surface.addEventListener('webglcontextlost',()=>{
+          waveCurvatureGL=null;waveCurvatureGLFailed=true;
+        },{once:true});
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,1);
+        waveCurvatureGL={gl,canvas:surface,program,texture,curvatureLoc:gl.getUniformLocation(program,'u_curvature'),sourceWidth:0,sourceHeight:0};
         return waveCurvatureGL;
       }catch(err){waveCurvatureGLFailed=true;return null;}
     }
@@ -8704,9 +8805,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         targetCtx.drawImage(source,0,0,w,h);targetCtx.restore();return;
       }
       const {gl,canvas:surface,program,texture,curvatureLoc}=stateGL;
-      if(surface.width!==w||surface.height!==h){surface.width=w;surface.height=h;}
-      gl.viewport(0,0,w,h);gl.useProgram(program);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,1);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source);
+      const sw=source.width,sh=source.height;
+      if(surface.width!==sw)surface.width=sw;
+      if(surface.height!==sh)surface.height=sh;
+      gl.viewport(0,0,sw,sh);gl.useProgram(program);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);
+      if(stateGL.sourceWidth!==sw||stateGL.sourceHeight!==sh){
+        gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,source);
+        stateGL.sourceWidth=sw;stateGL.sourceHeight=sh;
+      }else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,source);
       gl.uniform1f(curvatureLoc,c);
       gl.disable(gl.BLEND);gl.drawArrays(gl.TRIANGLES,0,6);
       targetCtx.drawImage(surface,0,0,w,h);targetCtx.restore();
@@ -8727,7 +8833,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       light=Math.max(.43,Math.min(.59,light));
       return `hsl(${Math.round((hue+360)%360)},100%,${Math.round(light*100)}%)`;
     }
-    function waveLayerPixelSize(w,h){
+    function waveLayerPixelSize(w,h,visibleLayerCount){
       const d=Math.hypot(w,h),gears=Array.isArray(state.gears)?state.gears:[];
       const fmCount=gears.filter(g=>g?.fmEnabled&&Number(g.fmSourceId)>0&&Number(g.fmSourceId)!==Number(g.id)&&Number(g.fmIndex)>0).length;
       const mobile=!!state._mobilePortraitCached;
@@ -8735,10 +8841,11 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       // Lower resolution is smoothed by the viewport compositor. Keep enough source
       // samples for crisp interference lines while preventing many 2K canvases living
       // in the gear-layer cache at once.
-      return Math.max(512,Math.min(cap,Math.ceil(d*1.02)));
+      const cacheCap=Math.floor(Math.sqrt(WAVE_LAYER_CACHE_PIXEL_LIMIT/Math.max(1,visibleLayerCount)));
+      return Math.min(cacheCap,Math.max(512,Math.min(cap,Math.ceil(d*1.02))));
     }
-    function waveGetCachedGearLayer(gear,rootMidi,frequency,baseCycles,gearIndex,settings,w,h){
-      const size=waveLayerPixelSize(w,h),overscan=WAVE_LAYER_OVERSCAN;
+    function waveGetCachedGearLayer(gear,rootMidi,frequency,baseCycles,gearIndex,settings,size){
+      const overscan=WAVE_LAYER_OVERSCAN;
       const phaseOffset=Number(gear.phaseOffsetDeg)||0;
       if(!Number.isFinite(Number(gear._waveMoireBaseAngle)))gear._waveMoireBaseAngle=Number(gear.angle)||0;
       const gearSeed=Number.isFinite(Number(gear.id))?Math.abs(Math.trunc(Number(gear.id))):Math.abs(Math.trunc(gearIndex));
@@ -8761,6 +8868,16 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const key=[size,String(gear.id),Number(frequency).toFixed(4),Number(gear.ratio).toFixed(8),layerCycles.toFixed(3),scaleSetting.toFixed(3),baseAngle.toFixed(4),phase.toFixed(4),String(gear.toothWaveform||gear.sourceMode||''),Number(getGearToothWidth(gear)).toFixed(3),Number(getGearOffcenterPercent(gear)).toFixed(2),String(gear.shape||''),shapeParams,Math.round(Number(settings.bandWidth)||0),penroseEnabled?'penrose':'regular',neon].join('|');
       let layer=waveGearLayerCache.get(key);
       if(layer){waveGearLayerCache.delete(key);waveGearLayerCache.set(key,layer);return layer;}
+      // Avoid allocating an entire chord's worth of canvases in a single input frame.
+      if(waveNewLayersRemaining<=0)return null;
+      waveNewLayersRemaining--;
+      while(waveGearLayerCache.size&&(waveGearLayerCache.size>=WAVE_GEAR_LAYER_CACHE_LIMIT||
+            waveGearLayerPixels+size*size>WAVE_LAYER_CACHE_PIXEL_LIMIT)){
+        const oldestKey=waveGearLayerCache.keys().next().value,oldest=waveGearLayerCache.get(oldestKey);
+        waveGearLayerCache.delete(oldestKey);
+        waveGearLayerPixels-=oldest.width*oldest.height;
+        oldest.width=1;oldest.height=1;
+      }
       layer=document.createElement('canvas');layer.width=layer.height=size;
       const lctx=layer.getContext('2d',{alpha:true});
       lctx.clearRect(0,0,size,size);
@@ -8770,10 +8887,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       // curved once at the end of drawWaveMachine, not line-by-line here.
       lctx.globalCompositeOperation='source-in';lctx.fillStyle=neon;lctx.fillRect(0,0,size,size);lctx.globalCompositeOperation='source-over';
       waveGearLayerCache.set(key,layer);
-      while(waveGearLayerCache.size>WAVE_GEAR_LAYER_CACHE_LIMIT){
-        const oldestKey=waveGearLayerCache.keys().next().value,oldest=waveGearLayerCache.get(oldestKey);
-        waveGearLayerCache.delete(oldestKey);if(oldest){oldest.width=1;oldest.height=1;}
-      }
+      waveGearLayerPixels+=size*size;
       return layer;
     }
     // Visual-only FM estimate. It is intentionally calculated on the main thread
@@ -9337,6 +9451,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const modFactor=1-.75*modDepth*modPhase*shakeAmount;
       const gears=waveSelectGridGears(eligibleGears,renderBudget.maxGears);
       if(!gears.length)return;
+      waveNewLayersRemaining=state.audioRunning?4:Infinity;
+      const layerSize=waveLayerPixelSize(w,h,state.audioRunning?WAVE_GEAR_LAYER_CACHE_LIMIT:gears.length*voices.length);
       const motions=new Map();
       for(const gear of gears)motions.set(gear.id,waveGearMoireMotion(gear,time,diag));
       const maxVolume=gears.reduce((m,g)=>Math.max(m,Math.max(0,Math.min(1,Number(g.volume)||0))),0)||1;
@@ -9355,13 +9471,14 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
           const rawLiveFmRatio=waveGetIndependentFmVisualRatio(gear,voice,time);
           const liveFmRatio=1+(rawLiveFmRatio-1)*shakeAmount;
           const baseCycles=Math.max(.28,Math.min(WAVE_MAX_BANDS,frequency*WAVE_SPATIAL_SCALE*referenceW/referenceDiag));
-          const layer=waveGetCachedGearLayer(gear,rootMidi,frequency,baseCycles,gi,settings,w,h);
           const motion=motions.get(gear.id)||{angle:0,dx:0,dy:0};
           const perGearVolume=Math.max(0,Math.min(1,Number(gear.volume)||0))/maxVolume;
           const releaseDuration=voice._waveVisualTail?Math.max(0,Number(voice._waveReleaseByGear?.get(gear.id))||0):0;
           const releaseGain=voice._waveVisualTail?(releaseDuration>0?Math.max(0,1-(visualReleaseClock-voice._waveReleaseAt)/releaseDuration):0):1;
           const alpha=Math.max(0,Math.min(1,noteGain*perGearVolume*Math.min(1,globalBrightness)*releaseGain));
           if(alpha<=.001)continue;
+          const layer=waveGetCachedGearLayer(gear,rootMidi,frequency,baseCycles,gi,settings,layerSize);
+          if(!layer)continue;
           // Angle mode changes only dx/dy. All other direction modes rotate the
           // cached layer using that gear's own RPM and the global visual-speed factor.
           waveViewportCtx.save();waveViewportCtx.setTransform(1,0,0,1,0,0);
@@ -9651,8 +9768,16 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       const now=performance.now();
       if(now < (Number(state._spatialSyncNextPerfMs)||0))return false;
       state._spatialSyncNextPerfMs=now+33;
-      const gears=state.gears.map(g=>{const p=workletSpatialForGear(g);return{id:Number(g.id),x:Number(p.x)||0,y:Number(p.y)||0,z:Number(p.z)||0};});
-      return postUnifiedAudio({type:'spatial',gears});
+      const gears=[];
+      const generation=state._spatialSyncGeneration;
+      for(const g of state.gears){
+        if(g.orbitEnabled&&!g.hrtfZAdsr)continue;
+        const p=workletSpatialForGear(g),prev=g._lastSpatialUpdate;
+        if(prev&&prev.generation===generation&&prev.x===p.x&&prev.y===p.y&&prev.z===p.z)continue;
+        g._lastSpatialUpdate={generation,x:p.x,y:p.y,z:p.z};
+        gears.push({id:Number(g.id),x:p.x,y:p.y,z:p.z});
+      }
+      return gears.length>0&&postUnifiedAudio({type:'spatial',gears});
     }
 
     function getGearHrtfHeight(gear, now=state.audioCtx?.currentTime||0){
@@ -9986,7 +10111,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     let audioPriorityVisualBusy=false;
     function syncAudioPriorityVisualMode(){
       const liveVoices=(state.polyVoices?.size||0)+(state.polyReleaseTails?.size||0);
-      const busy=!!state.polyMode && liveVoices>=6;
+      const busy=state.audioRunning&&(liveVoices>=6||(liveVoices>0&&state.gears.length>=10));
       if(busy===audioPriorityVisualBusy)return;
       audioPriorityVisualBusy=busy;
       try { document.documentElement.classList.toggle('df-audio-busy',busy); } catch (_) {}
@@ -10759,30 +10884,47 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
       return common;
     }
 
-    function findRatioGearMeshPosition(teeth, preferredAngle=null) {
+    function addRatioGear(teeth, dropPosition=null) {
       const main=state.gears.find(g=>g.isMain)||state.gears[0];
-      if(!main)return null;
-      const module=Math.max(0.000001,Number(state.pitchModule)||1);
-      const radius=Math.max(1,Math.round(Number(teeth)||1))*module*.5;
-      const distance=main.pitchRadius+radius;
-      const startAngle=preferredAngle!==null&&preferredAngle!==undefined&&Number.isFinite(Number(preferredAngle))?Number(preferredAngle):(Math.max(0,state.gears.length-1)*Math.PI/3);
-      let best=null,bestOverlap=Infinity;
-      const steps=180;
-      for(let i=0;i<steps;i++){
-        const angle=startAngle+i*(Math.PI*2/steps);
-        const x=main.x+Math.cos(angle)*distance,y=main.y+Math.sin(angle)*distance;
-        let overlapScore=0;
-        for(const other of state.gears){
-          if(!other||other.id===main.id)continue;
-          const penetration=radius+other.pitchRadius-Math.hypot(x-other.x,y-other.y)-1.5;
-          if(penetration>0)overlapScore+=penetration*penetration;
-        }
-        if(overlapScore<bestOverlap){bestOverlap=overlapScore;best={x,y};if(overlapScore===0)break;}
+      if(!main)return addGear(teeth);
+      const radius=teeth*state.pitchModule*.5;
+      const connected=state.gears.filter(g=>g===main||g.ratio!==0);
+      const probe={pitchRadius:radius};
+      if(dropPosition){
+        const snap=findSnapPosition(probe,dropPosition.x,dropPosition.y);
+        if(snap&&connected.includes(snap.parent))return addGear(teeth,snap.x,snap.y,false,snap.parent);
       }
-      return best;
+
+      // Try the main wheel first, then let the machine grow outward through
+      // its connected gears. The tooth ratios along any path telescope to
+      // MAIN teeth / new teeth, so the selected pitch survives another mesh.
+      const distanceFromMain=g=>Math.hypot(g.x-main.x,g.y-main.y);
+      const outerGears=connected.filter(g=>g!==main).sort(
+        (a,b)=>(distanceFromMain(b)+b.pitchRadius)-(distanceFromMain(a)+a.pitchRadius)
+      );
+      const mainAngle=dropPosition
+        ?Math.atan2(dropPosition.y-main.y,dropPosition.x-main.x)
+        :(state.gears.length-1)*Math.PI/3;
+      const steps=180;
+      for(const parent of [main,...outerGears]){
+        const start=parent===main?mainAngle:Math.atan2(parent.y-main.y,parent.x-main.x);
+        const distance=parent.pitchRadius+radius;
+        for(let i=0;i<steps;i++){
+          const offset=(i%2===0?-1:1)*Math.ceil(i/2)*TAU/steps;
+          const angle=start+offset;
+          const x=parent.x+Math.cos(angle)*distance;
+          const y=parent.y+Math.sin(angle)*distance;
+          if(!checkOverlap(probe,x,y))return addGear(teeth,x,y,false,parent);
+        }
+      }
+      // A manually crowded or disconnected layout can surround every driven
+      // gear. Keep an explicit main mesh so a preset still plays its pitch.
+      const distance=main.pitchRadius+radius;
+      return addGear(teeth,main.x+Math.cos(mainAngle)*distance,
+        main.y+Math.sin(mainAngle)*distance,false,main);
     }
 
-    function addGear(teeth = 60, x = null, y = null, isMain = false) {
+    function addGear(teeth = 60, x = null, y = null, isMain = false, meshParent = null) {
       const color = isMain ? '#f59e0b' : COLOR_PALETTE[(state.gears.length - 1) % COLOR_PALETTE.length];
       const __dfPrefs = window.__dfAppSettings || {};
       const __dfPreviousGear = !isMain ? [...state.gears].reverse().find(Boolean) : null;
@@ -10879,8 +11021,10 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         if (x !== null && y !== null) {
           gear.x = x;
           gear.y = y;
-          // Check if spawned tangent to an existing gear
-          state.gears.forEach(other => {
+          if(meshParent){
+            gear.neighbors.add(meshParent.id);
+            meshParent.neighbors.add(gear.id);
+          }else state.gears.forEach(other => {
             const dist = Math.hypot(gear.x - other.x, gear.y - other.y);
             const targetDist = gear.pitchRadius + other.pitchRadius;
             if (Math.abs(dist - targetDist) < 5.0) {
@@ -10913,12 +11057,12 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
 
       updateKinematicNetwork();
 
-      // Preserve the requested creation phase: a newly created connected gear
-      // starts with its hand/tooth-1 at the exact main-driver angle.
+      // Start the new gear at its driving wheel's current phase.
       if (!isMain) {
         const main = state.gears.find(g => g.isMain);
-        if (main && gear.neighbors.has(main.id)) {
-          alignGearPhaseToParent(main, gear);
+        const parent=meshParent||(main&&gear.neighbors.has(main.id)?main:null);
+        if (parent) {
+          alignGearPhaseToParent(parent, gear);
           updateAudioNodes();
         } else if (main) {
           gear.angle = main.angle;
@@ -17723,8 +17867,7 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         document.getElementById('input-add-teeth').value = teeth;
       }
 
-      const meshPosition=targetRatio<1?findRatioGearMeshPosition(teeth):null;
-      const gear = meshPosition?addGear(teeth,meshPosition.x,meshPosition.y):addGear(teeth);
+      const gear = addRatioGear(teeth);
       setActivePaletteGear(gear);
       gear.setPhaseOffsetDeg(phaseDeg);
       gear.ratioLock = ratioLock;
@@ -17781,12 +17924,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
         const data = JSON.parse(e.dataTransfer.getData('text/plain') || '{}');
         if (!Number.isFinite(Number(data.teeth))) return;
         const mouse = screenToWorld(e.offsetX, e.offsetY);
-        const droppedTeeth=Math.max(1,Math.min(15015,Number(data.teeth)));
-        const isSubharmonic=Number(data.num)>0&&Number(data.den)>0&&Number(data.num)<Number(data.den);
-        const mainForDrop=state.gears.find(g=>g.isMain)||state.gears[0];
-        const preferredAngle=mainForDrop?Math.atan2(mouse.y-mainForDrop.y,mouse.x-mainForDrop.x):null;
-        const meshPosition=isSubharmonic?findRatioGearMeshPosition(droppedTeeth,preferredAngle):null;
-        const gear = meshPosition?addGear(droppedTeeth,meshPosition.x,meshPosition.y):addGear(droppedTeeth,mouse.x,mouse.y);
+        const droppedTeeth=Math.max(1,Math.min(15015,Math.round(Number(data.teeth))));
+        const gear = addRatioGear(droppedTeeth,mouse);
         setActivePaletteGear(gear);
         gear.ratioLock = true;
         gear.teethLock = false;
@@ -19900,7 +20039,15 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
     const r=el.getBoundingClientRect();
     return clientToCablePoint(r.left+r.width/2,r.top+r.height/2,metrics);
   }
+  let cableDrawFrame=0;
   function drawFmCables(){
+    if(cableDrawFrame)return;
+    cableDrawFrame=requestAnimationFrame(()=>{
+      cableDrawFrame=0;
+      paintFmCables();
+    });
+  }
+  function paintFmCables(){
     if(!cableSvg.isConnected||!cableHandleSvg.isConnected||!dock.isConnected)return;
     const edges=[];const bySource=new Map();
     const tileCenterY=el=>{const r=el.getBoundingClientRect();return r.top+r.height/2;};
@@ -20395,8 +20542,8 @@ registerProcessor('unified-gear-audio',UnifiedGearAudioProcessor);
   window.addEventListener('resize',()=>{updateRailBottomForKeyboard();drawFmCables();},{passive:true});
   window.addEventListener('orientationchange',()=>{setTimeout(()=>{updateRailBottomForKeyboard();drawFmCables();},80);},{passive:true});
   window.visualViewport?.addEventListener('resize',()=>{updateRailBottomForKeyboard();drawFmCables();},{passive:true});
-  container.addEventListener('click',()=>{requestAnimationFrame(drawFmCables);});
-  const listObserver=new MutationObserver(()=>{requestAnimationFrame(drawFmCables);});
+  container.addEventListener('click',drawFmCables);
+  const listObserver=new MutationObserver(drawFmCables);
   listObserver.observe(container,{childList:true,subtree:true});
   const keyboard=document.getElementById('mobile-keyboard-dock');
   if(keyboard&&typeof ResizeObserver==='function')new ResizeObserver(()=>updateRailBottomForKeyboard()).observe(keyboard);
